@@ -1,0 +1,31 @@
+// Copyright 2020 Converter Systems LLC. All rights reserved.
+
+package opcua
+
+// ServiceRequest is a request for a service.
+type ServiceRequest interface {
+	Header() *RequestHeader
+	//	Encodable
+}
+
+// Header returns the request header.
+func (h *RequestHeader) Header() *RequestHeader {
+	return h
+}
+
+// ServiceResponse is a response from a service.
+type ServiceResponse interface {
+	Header() *ResponseHeader
+	//	Encodable
+}
+
+// Header returns the response header.
+func (h *ResponseHeader) Header() *ResponseHeader {
+	return h
+}
+
+// ResponseWriter is used to write a response to the client.
+type ResponseWriter interface {
+	// Write a response to the client.
+	Write(res ServiceResponse) error
+}
