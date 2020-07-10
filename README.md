@@ -1,6 +1,6 @@
 ![robot][1]
 
-# opcua  - [![Godoc](https://godoc.org/github.com/awcullen/opcua?status.svg)](https://godoc.org/github.com/awcullen/opcua)
+# opcua  - [![Godoc](https://godoc.org/github.com/awcullen/opcua?status.svg)](https://pkg.go.dev/mod/github.com/awcullen/opcua)
 
 Browse, read, write and subscribe to the live data published by the OPC UA servers on your network.
 
