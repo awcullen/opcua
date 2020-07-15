@@ -1,5 +1,6 @@
 // Copyright 2020 Converter Systems LLC. All rights reserved.
 
+// gen_opcua is a tool to generate the standard types, nodeids, and status codes from the schema provided by the OPC Foundation.
 package main
 
 import (
