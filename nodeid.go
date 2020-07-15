@@ -192,7 +192,7 @@ func (n NodeID) ToExpandedNodeID(namespaceURIs []string) ExpandedNodeID {
 		case IDTypeGUID:
 			return NewExpandedNodeIDGUID(0, nsu, n.gid)
 		case IDTypeOpaque:
-			return NewOpaqueExpandedNodeID(0, nsu, n.bid)
+			return NewExpandedNodeIDOpaque(0, nsu, n.bid)
 		}
 	}
 	return ExpandedNodeID{nodeID: n}

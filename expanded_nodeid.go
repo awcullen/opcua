@@ -37,8 +37,8 @@ func NewExpandedNodeIDGUID(serverIndex uint32, namespaceURI string, identifier u
 	return ExpandedNodeID{serverIndex, namespaceURI, NewNodeIDGUID(0, identifier)}
 }
 
-// NewOpaqueExpandedNodeID constructs a new ExpandedNodeID of opaque type.
-func NewOpaqueExpandedNodeID(serverIndex uint32, namespaceURI string, identifier ByteString) ExpandedNodeID {
+// NewExpandedNodeIDOpaque constructs a new ExpandedNodeID of opaque type.
+func NewExpandedNodeIDOpaque(serverIndex uint32, namespaceURI string, identifier ByteString) ExpandedNodeID {
 	return ExpandedNodeID{serverIndex, namespaceURI, NewNodeIDOpaque(0, identifier)}
 }
 
