@@ -37,6 +37,17 @@ func ParseQualifiedName(s string) QualifiedName {
 	return QualifiedName{uint16(ns), s}
 }
 
+// ParseBrowsePath returns a slice of QualifiedNames from a string, e.g. ParseBrowsePath("2:Demo/2:Dynamic")
+func ParseBrowsePath(s string) []QualifiedName {
+	//TODO: see part4 Annex A.2
+	toks := strings.Split(s, "/")
+	path := make([]QualifiedName, len(toks))
+	for i, tok := range toks {
+		path[i] = ParseQualifiedName(tok)
+	}
+	return path
+}
+
 // String returns a string representation, e.g. "2:Demo"
 func (a QualifiedName) String() string {
 	return fmt.Sprintf("%d:%s", a.NamespaceIndex, a.Name)

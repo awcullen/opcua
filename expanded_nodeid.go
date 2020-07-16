@@ -132,27 +132,20 @@ func (n ExpandedNodeID) String() string {
 
 // ToNodeID converts ExpandedNodeID to NodeID by looking up the NamespaceURI and replacing it with the index.
 func (n ExpandedNodeID) ToNodeID(namespaceURIs []string) NodeID {
-	if n.IsNil() {
-		return NilNodeID
+	if n.namespaceURI == "" {
+		return n.nodeID
 	}
-	ns := n.nodeID.namespaceIndex
-	nsu := n.namespaceURI
-	if nsu != "" {
-		if namespaceURIs != nil {
-			flag := false
-			for i, u := range namespaceURIs {
-				if u == nsu {
-					ns = uint16(i)
-					flag = true
-					break
-				}
-			}
-			if !flag {
-				return NilNodeID
-			}
-		} else {
-			return NilNodeID
+	ns := uint16(0)
+	flag := false
+	for i, uri := range namespaceURIs {
+		if uri == n.namespaceURI {
+			ns = uint16(i)
+			flag = true
+			break
 		}
+	}
+	if !flag {
+		return NilNodeID
 	}
 	switch n.nodeID.idType {
 	case IDTypeNumeric:

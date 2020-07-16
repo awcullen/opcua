@@ -182,7 +182,7 @@ func (dec *BinaryDecoder) Decode(value interface{}) error {
 						// fmt.Printf("new %s \n", field.String())
 					}
 					if err := dec.Decode(field.Addr().Interface()); err != nil {
-						return BadEncodingError
+						return BadDecodingError
 					}
 
 					// 		case reflect.Interface: // e.g. interface{}
@@ -240,7 +240,7 @@ func (dec *BinaryDecoder) Decode(value interface{}) error {
 
 				default:
 					if err := dec.Decode(field.Addr().Interface()); err != nil {
-						return BadEncodingError
+						return BadDecodingError
 					}
 				}
 			} // end for

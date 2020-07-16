@@ -180,19 +180,16 @@ func (n NodeID) String() string {
 // Note: When creating a reference, and the target NodeID is a local node,
 // use: NewExpandedNodeID(nodeId)
 func (n NodeID) ToExpandedNodeID(namespaceURIs []string) ExpandedNodeID {
-	ns := n.namespaceIndex
-	nsu := ""
-	if namespaceURIs != nil && ns > 0 && ns < uint16(len(namespaceURIs)) {
-		nsu = namespaceURIs[ns]
+	if n.namespaceIndex > 0 && n.namespaceIndex < uint16(len(namespaceURIs)) {
 		switch n.idType {
 		case IDTypeNumeric:
-			return NewExpandedNodeIDNumeric(0, nsu, n.nid)
+			return NewExpandedNodeIDNumeric(0, namespaceURIs[n.namespaceIndex], n.nid)
 		case IDTypeString:
-			return NewExpandedNodeIDString(0, nsu, n.sid)
+			return NewExpandedNodeIDString(0, namespaceURIs[n.namespaceIndex], n.sid)
 		case IDTypeGUID:
-			return NewExpandedNodeIDGUID(0, nsu, n.gid)
+			return NewExpandedNodeIDGUID(0, namespaceURIs[n.namespaceIndex], n.gid)
 		case IDTypeOpaque:
-			return NewExpandedNodeIDOpaque(0, nsu, n.bid)
+			return NewExpandedNodeIDOpaque(0, namespaceURIs[n.namespaceIndex], n.bid)
 		}
 	}
 	return ExpandedNodeID{nodeID: n}

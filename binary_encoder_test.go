@@ -345,6 +345,25 @@ func TestSlice(t *testing.T) {
 	runEncoderTest(t, cases)
 }
 
+func TestSliceVariant(t *testing.T) {
+	variants := []*Variant{
+		NewVariantString("foo"),
+		NewVariantUInt16(255),
+	}
+	cases := []encoderTestCase{
+		{
+			Name: "ReadValueID",
+			In:   variants,
+			Bytes: []byte{
+				0x02, 0x00, 0x00, 0x00, // len
+				0x0c, 0x03, 0x00, 0x00, 0x00, 0x66, 0x6f, 0x6f, // foo
+				0x05, 0xff, 0x00, // 255
+			},
+		},
+	}
+	runEncoderTest(t, cases)
+}
+
 type encoderTestCase struct {
 	Name  string
 	In    interface{}
@@ -362,6 +381,8 @@ func runEncoderTest(t *testing.T, cases []encoderTestCase) {
 				if err := enc.Encode(c.In); err != nil {
 					t.Fatal(err)
 				}
+				// t.Logf("% #x\n", buf.Bytes())
+				// t.Logf("% #x\n", c.Bytes)
 				verify.Values(t, "", buf.Bytes(), c.Bytes)
 			})
 			t.Run("decode", func(t *testing.T) {
