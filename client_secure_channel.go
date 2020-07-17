@@ -15,6 +15,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"math"
 	"net"
 	"net/url"
+	"reflect"
 	"sync"
 	"time"
 
@@ -328,7 +330,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 	}
 
 	if ch.trace {
-		log.Printf("Hello{ProtocolVersion:%d,ReceiveBufferSize:%d,SendBufferSize:%d,MaxMessageSize:%d,MaxChunkCount:%d,EndpointURL:%s}\n", protocolVersion, defaultBufferSize, defaultBufferSize, defaultMaxMessageSize, defaultMaxChunkCount, ch.endpointURL)
+		log.Printf("Hello{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d,\"EndpointURL\":\"%s\"}\n", protocolVersion, defaultBufferSize, defaultBufferSize, defaultMaxMessageSize, defaultMaxChunkCount, ch.endpointURL)
 	}
 
 	_, err = ch.Read(buf)
@@ -372,7 +374,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 			return err
 		}
 		if ch.trace {
-			log.Printf("Ack{ProtocolVersion:%d,ReceiveBufferSize:%d,SendBufferSize:%d,MaxMessageSize:%d,MaxChunkCount:%d}\n", remoteProtocolVersion, ch.sendBufferSize, ch.receiveBufferSize, ch.maxMessageSize, ch.maxChunkCount)
+			log.Printf("Ack{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d}\n", remoteProtocolVersion, ch.sendBufferSize, ch.receiveBufferSize, ch.maxMessageSize, ch.maxChunkCount)
 		}
 
 	case messageTypeError:
@@ -413,6 +415,9 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 
 		case SecurityPolicyURIBasic256Sha256:
 			ch.securityPolicy = new(securityPolicyBasic256Sha256)
+
+		case SecurityPolicyURIAes128Sha256RsaOaep:
+			ch.securityPolicy = new(securityPolicyAes128Sha256RsaOaep)
 
 		default:
 			return BadSecurityPolicyRejected
@@ -456,7 +461,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 
 	var localNonce []byte
 	// if ch.securityMode > MessageSecurityModeNone {
-	localNonce = getNextNonce(ch.securityPolicy.SymEncryptionKeySize())
+	localNonce = getNextNonce(ch.securityPolicy.NonceSize())
 	// } else {
 	// 	localNonce = []byte{}
 	// }
@@ -526,7 +531,9 @@ func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *serviceOpera
 	req := op.Request()
 
 	if ch.trace {
-		log.Println(req)
+		b, _ := json.Marshal(req)
+		log.Printf("%s%s", reflect.TypeOf(req).Elem().Name(), b)
+
 	}
 
 	switch req := req.(type) {
@@ -1375,7 +1382,8 @@ func (ch *clientSecureChannel) readResponse() (ServiceResponse, error) {
 	}
 
 	if ch.trace {
-		log.Println(res)
+		b, _ := json.Marshal(res)
+		log.Printf("%s%s", reflect.TypeOf(res).Elem().Name(), b)
 	}
 
 	return res, nil
@@ -1413,7 +1421,7 @@ func (ch *clientSecureChannel) mapPendingResponses() {
 func (ch *clientSecureChannel) renewToken(ctx context.Context) error {
 	var localNonce []byte
 	// if ch.securityMode > MessageSecurityModeNone {
-	localNonce = getNextNonce(ch.securityPolicy.SymEncryptionKeySize())
+	localNonce = getNextNonce(ch.securityPolicy.NonceSize())
 	// } else {
 	// 	localNonce = []byte{}
 	// }

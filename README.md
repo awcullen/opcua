@@ -1,7 +1,6 @@
 ![robot][1]
 
-# opcua  - [![Godoc](https://godoc.org/github.com/awcullen/opcua?status.svg)](https://pkg.go.dev/mod/github.com/awcullen/opcua)
-
+# opcua - [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua)[![License](http://img.shields.io/badge/license-mit-blue.svg?style=flat-square)](https://raw.githubusercontent.com/awcullen/opcua/master/LICENSE)
 Browse, read, write and subscribe to the live data published by the OPC UA servers on your network.
 
 This package supports OPC UA TCP transport protocol with secure channel and binary encoding.  For more information, visit https://reference.opcfoundation.org/v104/.

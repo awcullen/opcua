@@ -5,7 +5,6 @@ package opcua
 // ServiceRequest is a request for a service.
 type ServiceRequest interface {
 	Header() *RequestHeader
-	//	Encodable
 }
 
 // Header returns the request header.
@@ -16,7 +15,6 @@ func (h *RequestHeader) Header() *RequestHeader {
 // ServiceResponse is a response from a service.
 type ServiceResponse interface {
 	Header() *ResponseHeader
-	//	Encodable
 }
 
 // Header returns the response header.

@@ -14,11 +14,13 @@ import (
 
 // SecurityPolicyURIs
 const (
-	SecurityPolicyURINone           = "http://opcfoundation.org/UA/SecurityPolicy#None"
-	SecurityPolicyURIBasic128Rsa15  = "http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15"
-	SecurityPolicyURIBasic256       = "http://opcfoundation.org/UA/SecurityPolicy#Basic256"
-	SecurityPolicyURIBasic256Sha256 = "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256"
-	SecurityPolicyURIBestAvailable  = ""
+	SecurityPolicyURINone                = "http://opcfoundation.org/UA/SecurityPolicy#None"
+	SecurityPolicyURIBasic128Rsa15       = "http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15"
+	SecurityPolicyURIBasic256            = "http://opcfoundation.org/UA/SecurityPolicy#Basic256"
+	SecurityPolicyURIBasic256Sha256      = "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256"
+	SecurityPolicyURIAes128Sha256RsaOaep = "http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep"
+	SecurityPolicyURIAes256Sha256RsaPss  = "http://opcfoundation.org/UA/SecurityPolicy#Aes256_Sha256_RsaPss"
+	SecurityPolicyURIBestAvailable       = ""
 )
 
 // SecurityPolicy is a mapping of PolicyURI to security settings
@@ -34,6 +36,7 @@ type SecurityPolicy interface {
 	SymSignatureKeySize() int
 	SymEncryptionBlockSize() int
 	SymEncryptionKeySize() int
+	NonceSize() int
 }
 
 // securityPolicyNone ...
@@ -87,6 +90,9 @@ func (p *securityPolicyNone) SymEncryptionBlockSize() int { return 1 }
 // SymEncryptionKeySize ...
 func (p *securityPolicyNone) SymEncryptionKeySize() int { return 0 }
 
+// NonceSize ...
+func (p *securityPolicyNone) NonceSize() int { return 0 }
+
 // securityPolicyBasic128Rsa15 ...
 type securityPolicyBasic128Rsa15 struct {
 }
@@ -135,6 +141,9 @@ func (p *securityPolicyBasic128Rsa15) SymEncryptionBlockSize() int { return 16 }
 
 // SymEncryptionKeySize ...
 func (p *securityPolicyBasic128Rsa15) SymEncryptionKeySize() int { return 16 }
+
+// NonceSize ...
+func (p *securityPolicyBasic128Rsa15) NonceSize() int { return 16 }
 
 // securityPolicyBasic256 ...
 type securityPolicyBasic256 struct {
@@ -185,6 +194,9 @@ func (p *securityPolicyBasic256) SymEncryptionBlockSize() int { return 16 }
 // SymEncryptionKeySize ...
 func (p *securityPolicyBasic256) SymEncryptionKeySize() int { return 32 }
 
+// NonceSize ...
+func (p *securityPolicyBasic256) NonceSize() int { return 32 }
+
 // securityPolicyBasic256Sha256 ...
 type securityPolicyBasic256Sha256 struct {
 }
@@ -233,3 +245,60 @@ func (p *securityPolicyBasic256Sha256) SymEncryptionBlockSize() int { return 16 
 
 // SymEncryptionKeySize ...
 func (p *securityPolicyBasic256Sha256) SymEncryptionKeySize() int { return 32 }
+
+// NonceSize ...
+func (p *securityPolicyBasic256Sha256) NonceSize() int { return 32 }
+
+// securityPolicyAes128Sha256RsaOaep ...
+type securityPolicyAes128Sha256RsaOaep struct {
+}
+
+// PolicyURI ...
+func (p *securityPolicyAes128Sha256RsaOaep) PolicyURI() string {
+	return SecurityPolicyURIAes128Sha256RsaOaep
+}
+
+// RSASign ...
+func (p *securityPolicyAes128Sha256RsaOaep) RSASign(priv *rsa.PrivateKey, plainText []byte) ([]byte, error) {
+	hashed := sha256.Sum256(plainText)
+	return rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, hashed[:])
+}
+
+// RSAVerify ...
+func (p *securityPolicyAes128Sha256RsaOaep) RSAVerify(pub *rsa.PublicKey, plainText, signature []byte) error {
+	hashed := sha256.Sum256(plainText)
+	return rsa.VerifyPKCS1v15(pub, crypto.SHA256, hashed[:], signature)
+}
+
+// RSAEncrypt ...
+func (p *securityPolicyAes128Sha256RsaOaep) RSAEncrypt(pub *rsa.PublicKey, plainText []byte) ([]byte, error) {
+	return rsa.EncryptOAEP(sha1.New(), rand.Reader, pub, plainText, []byte{})
+}
+
+// RSADecrypt ...
+func (p *securityPolicyAes128Sha256RsaOaep) RSADecrypt(priv *rsa.PrivateKey, cipherText []byte) ([]byte, error) {
+	return rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, cipherText, []byte{})
+}
+
+// SymHMACFactory ...
+func (p *securityPolicyAes128Sha256RsaOaep) SymHMACFactory(key []byte) hash.Hash {
+	return hmac.New(sha256.New, key)
+}
+
+// RSAPaddingSize ...
+func (p *securityPolicyAes128Sha256RsaOaep) RSAPaddingSize() int { return 42 }
+
+// SymSignatureSize ...
+func (p *securityPolicyAes128Sha256RsaOaep) SymSignatureSize() int { return 32 }
+
+// SymSignatureKeySize ...
+func (p *securityPolicyAes128Sha256RsaOaep) SymSignatureKeySize() int { return 32 }
+
+// SymEncryptionBlockSize ...
+func (p *securityPolicyAes128Sha256RsaOaep) SymEncryptionBlockSize() int { return 16 }
+
+// SymEncryptionKeySize ...
+func (p *securityPolicyAes128Sha256RsaOaep) SymEncryptionKeySize() int { return 16 }
+
+// NonceSize ...
+func (p *securityPolicyAes128Sha256RsaOaep) NonceSize() int { return 32 }

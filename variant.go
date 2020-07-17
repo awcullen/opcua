@@ -3,7 +3,8 @@
 package opcua
 
 import (
-	"fmt"
+	"encoding/base64"
+	"encoding/json"
 	"reflect"
 	"regexp"
 	"time"
@@ -29,9 +30,14 @@ type ByteString string
 // NilByteString is the nil value.
 var NilByteString = ByteString("")
 
-// String returns ByteString as an array of hex values.
+// String returns ByteString as a base64-encoded string.
 func (b ByteString) String() string {
-	return fmt.Sprintf("[% x]", []byte(b))
+	return base64.StdEncoding.EncodeToString([]byte(b))
+}
+
+// MarshalJSON returns ByteString as a base64-encoded string.
+func (b ByteString) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]byte(b))
 }
 
 // VariantType is the kind of value stored in the Variant.

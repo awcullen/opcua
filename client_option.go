@@ -42,6 +42,22 @@ func WithSecurityPolicyBasic256Sha256() ClientOption {
 	}
 }
 
+// WithSecurityPolicyAes128Sha256RsaOaep selects endpoint with security policy of Aes128Sha256RsaOaep. (default: select most secure endpoint)
+func WithSecurityPolicyAes128Sha256RsaOaep() ClientOption {
+	return func(opts *clientOptions) error {
+		opts.SecurityPolicyURI = SecurityPolicyURIAes128Sha256RsaOaep
+		return nil
+	}
+}
+
+// WithSecurityPolicyAes256Sha256RsaPss selects endpoint with security policy of Aes256Sha256RsaPss. (default: select most secure endpoint)
+func WithSecurityPolicyAes256Sha256RsaPss() ClientOption {
+	return func(opts *clientOptions) error {
+		opts.SecurityPolicyURI = SecurityPolicyURIAes256Sha256RsaPss
+		return nil
+	}
+}
+
 // WithUserNameIdentity sets the user identity to a UserNameIdentity created from a username and password. (default: AnonymousIdentity)
 func WithUserNameIdentity(userName, password string) ClientOption {
 	return func(opts *clientOptions) error {
