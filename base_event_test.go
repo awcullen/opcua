@@ -2,7 +2,6 @@ package opcua_test
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -12,26 +11,21 @@ import (
 )
 
 func TestDeserializeBaseEvent(t *testing.T) {
-	e := &ua.BaseEvent{}
 	f := []*ua.Variant{
-		ua.NewVariantByteArray([]byte("foo")),
+		ua.NewVariantByteString(ua.ByteString("foo")),
 		ua.NewVariantNodeID(ua.NewNodeIDString(1, "bar")),
 		ua.NewVariantString("source"),
 		ua.NewVariantDateTime(time.Now().UTC()),
 		ua.NewVariantLocalizedText(ua.NewLocalizedText("Temperature is high.", "en")),
 		ua.NewVariantUInt16(255),
 	}
-	err := ua.DeserializeEvent(e, f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	e := ua.NewBaseEvent(f)
 	t.Logf("%+v", e)
 }
 
 func TestDeserializeCondition(t *testing.T) {
-	e := &ua.Condition{}
 	f := []*ua.Variant{
-		ua.NewVariantByteArray([]byte("foo")),
+		ua.NewVariantByteString(ua.ByteString("foo")),
 		ua.NewVariantNodeID(ua.NewNodeIDString(1, "bar")),
 		ua.NewVariantString("source"),
 		ua.NewVariantDateTime(time.Now().UTC()),
@@ -42,10 +36,7 @@ func TestDeserializeCondition(t *testing.T) {
 		ua.NewVariantNodeID(ua.NilNodeID),
 		ua.NewVariantBoolean(true),
 	}
-	err := ua.DeserializeEvent(e, f)
-	if err != nil {
-		t.Fatal(err)
-	}
+	e := ua.NewCondition(f)
 	t.Logf("%+v", e)
 }
 
@@ -83,7 +74,7 @@ func TestSubscribeBaseEvent(t *testing.T) {
 				MonitoringMode: ua.MonitoringModeReporting,
 				RequestedParameters: &ua.MonitoringParameters{
 					ClientHandle: 42, QueueSize: 1000, DiscardOldest: true, SamplingInterval: 0.0,
-					Filter: &ua.EventFilter{SelectClauses: ua.GetSelectClauses(reflect.TypeOf(ua.BaseEvent{}))},
+					Filter: &ua.EventFilter{SelectClauses: ua.BaseEventSelectClauses},
 				},
 			},
 		},
@@ -116,8 +107,7 @@ func TestSubscribeBaseEvent(t *testing.T) {
 					case *ua.EventNotificationList:
 						for _, z := range o.Events {
 							if z.ClientHandle == 42 {
-								e := &ua.BaseEvent{}
-								ua.DeserializeEvent(e, z.EventFields)
+								e := ua.NewBaseEvent(z.EventFields)
 								t.Logf("%+v", e)
 								wg.Done()
 								return
@@ -204,8 +194,7 @@ func TestSubscribeAlarm(t *testing.T) {
 				MonitoringMode: ua.MonitoringModeReporting,
 				RequestedParameters: &ua.MonitoringParameters{
 					ClientHandle: 42, QueueSize: 1000, DiscardOldest: true, SamplingInterval: 0.0,
-					// use
-					Filter: &ua.EventFilter{SelectClauses: ua.GetSelectClauses(reflect.TypeOf(ua.AlarmCondition{}))},
+					Filter: &ua.EventFilter{SelectClauses: ua.AlarmConditionSelectClauses},
 				},
 			},
 		},
@@ -238,8 +227,7 @@ func TestSubscribeAlarm(t *testing.T) {
 					case *ua.EventNotificationList:
 						for _, z := range o.Events {
 							if z.ClientHandle == 42 {
-								e := &ua.AlarmCondition{}
-								ua.DeserializeEvent(e, z.EventFields)
+								e := ua.NewAlarmCondition(z.EventFields)
 								t.Logf("%+v", e)
 								wg.Done()
 								return
