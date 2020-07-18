@@ -81,12 +81,6 @@ func TestOpenClientWithSecurity(t *testing.T) {
 		ua.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
 		ua.WithTrustedCertificatesFile("./pki/trusted.pem"),
 		ua.WithUserNameIdentity("root", "secret"),
-		// ua.WithSecurityPolicyBasic128Rsa15(),
-		// ua.WithSecurityPolicyBasic256(),
-		// ua.WithSecurityPolicyBasic256Sha256(),
-		// ua.WithSecurityPolicyAes128Sha256RsaOaep(),
-		ua.WithSecurityPolicyAes256Sha256RsaPss(),
-		ua.WithTrace(),
 	)
 	if err != nil {
 		t.Error(errors.Wrap(err, "Error opening client"))

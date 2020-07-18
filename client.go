@@ -83,18 +83,21 @@ func NewClient(ctx context.Context, endpointURL string, opts ...ClientOption) (c
 	// select first endpoint with matching policy uri.
 	var selectedEndpoint *EndpointDescription
 	for _, e := range orderedEndpoints {
-		if e.SecurityPolicyURI == securityPolicyURI {
+		// filter out unsupported policy uri
+		switch e.SecurityPolicyURI {
+		case SecurityPolicyURINone, SecurityPolicyURIBasic128Rsa15,
+			SecurityPolicyURIBasic256, SecurityPolicyURIBasic256Sha256,
+			SecurityPolicyURIAes128Sha256RsaOaep, SecurityPolicyURIAes256Sha256RsaPss:
+		default:
+			continue
+		}
+		// if policy uri is empty string, select the first endpoint
+		if securityPolicyURI == "" {
 			selectedEndpoint = e
 			break
 		}
-		// if policy uri is empty string, select the first endpoint with supported security policy
-		if securityPolicyURI == "" &&
-			(e.SecurityPolicyURI == SecurityPolicyURINone ||
-				e.SecurityPolicyURI == SecurityPolicyURIBasic128Rsa15 ||
-				e.SecurityPolicyURI == SecurityPolicyURIBasic256 ||
-				e.SecurityPolicyURI == SecurityPolicyURIBasic256Sha256 ||
-				e.SecurityPolicyURI == SecurityPolicyURIAes128Sha256RsaOaep ||
-				e.SecurityPolicyURI == SecurityPolicyURIAes256Sha256RsaPss) {
+		// if policy uri is a match
+		if e.SecurityPolicyURI == securityPolicyURI {
 			selectedEndpoint = e
 			break
 		}
