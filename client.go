@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
 	"sort"
@@ -91,7 +92,9 @@ func NewClient(ctx context.Context, endpointURL string, opts ...ClientOption) (c
 			(e.SecurityPolicyURI == SecurityPolicyURINone ||
 				e.SecurityPolicyURI == SecurityPolicyURIBasic128Rsa15 ||
 				e.SecurityPolicyURI == SecurityPolicyURIBasic256 ||
-				e.SecurityPolicyURI == SecurityPolicyURIBasic256Sha256) {
+				e.SecurityPolicyURI == SecurityPolicyURIBasic256Sha256 ||
+				e.SecurityPolicyURI == SecurityPolicyURIAes128Sha256RsaOaep ||
+				e.SecurityPolicyURI == SecurityPolicyURIAes256Sha256RsaPss) {
 			selectedEndpoint = e
 			break
 		}
@@ -222,7 +225,7 @@ func (ch *Client) open(ctx context.Context) error {
 			return BadApplicationSignatureInvalid
 		}
 
-	case SecurityPolicyURIBasic256Sha256:
+	case SecurityPolicyURIBasic256Sha256, SecurityPolicyURIAes128Sha256RsaOaep:
 		hash := crypto.SHA256.New()
 		hash.Write(localCertificate)
 		hash.Write(localNonce)
@@ -231,6 +234,17 @@ func (ch *Client) open(ctx context.Context) error {
 		if err != nil {
 			return BadApplicationSignatureInvalid
 		}
+
+	case SecurityPolicyURIAes256Sha256RsaPss:
+		hash := crypto.SHA256.New()
+		hash.Write(localCertificate)
+		hash.Write(localNonce)
+		hashed := hash.Sum(nil)
+		err := rsa.VerifyPSS(ch.channel.remotePublicKey, crypto.SHA256, hashed, []byte(createSessionResponse.ServerSignature.Signature), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+		if err != nil {
+			return BadApplicationSignatureInvalid
+		}
+
 	}
 
 	// create client signature
@@ -250,7 +264,7 @@ func (ch *Client) open(ctx context.Context) error {
 			Algorithm: RsaSha1Signature,
 		}
 
-	case SecurityPolicyURIBasic256Sha256:
+	case SecurityPolicyURIBasic256Sha256, SecurityPolicyURIAes128Sha256RsaOaep:
 		hash := crypto.SHA256.New()
 		hash.Write([]byte(ch.remoteEndpoint.ServerCertificate))
 		hash.Write(remoteNonce)
@@ -262,6 +276,20 @@ func (ch *Client) open(ctx context.Context) error {
 		clientSignature = &SignatureData{
 			Signature: ByteString(signature),
 			Algorithm: RsaSha256Signature,
+		}
+
+	case SecurityPolicyURIAes256Sha256RsaPss:
+		hash := crypto.SHA256.New()
+		hash.Write([]byte(ch.remoteEndpoint.ServerCertificate))
+		hash.Write(remoteNonce)
+		hashed := hash.Sum(nil)
+		signature, err := rsa.SignPSS(rand.Reader, ch.channel.localPrivateKey, crypto.SHA256, hashed, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+		if err != nil {
+			return err
+		}
+		clientSignature = &SignatureData{
+			Signature: ByteString(signature),
+			Algorithm: RsaPssSha256Signature,
 		}
 
 	default:
@@ -322,7 +350,7 @@ func (ch *Client) open(ctx context.Context) error {
 			}
 			identityTokenSignature = &SignatureData{}
 
-		case SecurityPolicyURIBasic256, SecurityPolicyURIBasic256Sha256:
+		case SecurityPolicyURIBasic256, SecurityPolicyURIBasic256Sha256, SecurityPolicyURIAes128Sha256RsaOaep:
 			publickey := ch.channel.remotePublicKey
 			if publickey == nil {
 				return BadIdentityTokenRejected
@@ -349,6 +377,37 @@ func (ch *Client) open(ctx context.Context) error {
 			identityToken = &IssuedIdentityToken{
 				TokenData:           ByteString(cipherBytes),
 				EncryptionAlgorithm: RsaOaepKeyWrap,
+				PolicyID:            tokenPolicy.PolicyID,
+			}
+			identityTokenSignature = &SignatureData{}
+
+		case SecurityPolicyURIAes256Sha256RsaPss:
+			publickey := ch.channel.remotePublicKey
+			if publickey == nil {
+				return BadIdentityTokenRejected
+			}
+			plainBuf := buffer.NewPartitionAt(bufferPool)
+			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			binary.Write(plainBuf, binary.LittleEndian, uint32(len(ui.TokenData)+len(remoteNonce)))
+			plainBuf.Write([]byte(ui.TokenData))
+			plainBuf.Write(remoteNonce)
+			plainText := make([]byte, publickey.Size()-66)
+			for plainBuf.Len() > 0 {
+				plainBuf.Read(plainText)
+				cipherText, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, publickey, plainText, []byte{})
+				if err != nil {
+					return err
+				}
+				cipherBuf.Write(cipherText)
+			}
+			cipherBytes := make([]byte, cipherBuf.Len())
+			cipherBuf.Read(cipherBytes)
+			plainBuf.Reset()
+			cipherBuf.Reset()
+
+			identityToken = &IssuedIdentityToken{
+				TokenData:           ByteString(cipherBytes),
+				EncryptionAlgorithm: RsaOaepSha256KeyWrap,
 				PolicyID:            tokenPolicy.PolicyID,
 			}
 			identityTokenSignature = &SignatureData{}
@@ -398,7 +457,7 @@ func (ch *Client) open(ctx context.Context) error {
 				Algorithm: RsaSha1Signature,
 			}
 
-		case SecurityPolicyURIBasic256Sha256:
+		case SecurityPolicyURIBasic256Sha256, SecurityPolicyURIAes128Sha256RsaOaep:
 			hash := crypto.SHA256.New()
 			hash.Write([]byte(ch.remoteEndpoint.ServerCertificate))
 			hash.Write(remoteNonce)
@@ -414,6 +473,24 @@ func (ch *Client) open(ctx context.Context) error {
 			identityTokenSignature = &SignatureData{
 				Signature: ByteString(signature),
 				Algorithm: RsaSha256Signature,
+			}
+
+		case SecurityPolicyURIAes256Sha256RsaPss:
+			hash := crypto.SHA256.New()
+			hash.Write([]byte(ch.remoteEndpoint.ServerCertificate))
+			hash.Write(remoteNonce)
+			hashed := hash.Sum(nil)
+			signature, err := rsa.SignPSS(rand.Reader, ui.Key, crypto.SHA256, hashed, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+			if err != nil {
+				return err
+			}
+			identityToken = &X509IdentityToken{
+				CertificateData: ui.Certificate,
+				PolicyID:        tokenPolicy.PolicyID,
+			}
+			identityTokenSignature = &SignatureData{
+				Signature: ByteString(signature),
+				Algorithm: RsaPssSha256Signature,
 			}
 
 		default:
@@ -476,7 +553,7 @@ func (ch *Client) open(ctx context.Context) error {
 			}
 			identityTokenSignature = &SignatureData{}
 
-		case SecurityPolicyURIBasic256, SecurityPolicyURIBasic256Sha256:
+		case SecurityPolicyURIBasic256, SecurityPolicyURIBasic256Sha256, SecurityPolicyURIAes128Sha256RsaOaep:
 			publickey := ch.channel.remotePublicKey
 			if publickey == nil {
 				return BadIdentityTokenRejected
@@ -505,6 +582,39 @@ func (ch *Client) open(ctx context.Context) error {
 				UserName:            ui.UserName,
 				Password:            ByteString(cipherBytes),
 				EncryptionAlgorithm: RsaOaepKeyWrap,
+				PolicyID:            tokenPolicy.PolicyID,
+			}
+			identityTokenSignature = &SignatureData{}
+
+		case SecurityPolicyURIAes256Sha256RsaPss:
+			publickey := ch.channel.remotePublicKey
+			if publickey == nil {
+				return BadIdentityTokenRejected
+			}
+			plainBuf := buffer.NewPartitionAt(bufferPool)
+			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			binary.Write(plainBuf, binary.LittleEndian, uint32(len(passwordBytes)+len(remoteNonce)))
+			plainBuf.Write(passwordBytes)
+			plainBuf.Write(remoteNonce)
+			plainText := make([]byte, publickey.Size()-66)
+			for plainBuf.Len() > 0 {
+				plainBuf.Read(plainText)
+				// encrypt with remote public key.
+				cipherText, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, publickey, plainText, []byte{})
+				if err != nil {
+					return err
+				}
+				cipherBuf.Write(cipherText)
+			}
+			cipherBytes := make([]byte, cipherBuf.Len())
+			cipherBuf.Read(cipherBytes)
+			plainBuf.Reset()
+			cipherBuf.Reset()
+
+			identityToken = &UserNameIdentityToken{
+				UserName:            ui.UserName,
+				Password:            ByteString(cipherBytes),
+				EncryptionAlgorithm: RsaOaepSha256KeyWrap,
 				PolicyID:            tokenPolicy.PolicyID,
 			}
 			identityTokenSignature = &SignatureData{}

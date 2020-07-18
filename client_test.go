@@ -84,7 +84,8 @@ func TestOpenClientWithSecurity(t *testing.T) {
 		// ua.WithSecurityPolicyBasic128Rsa15(),
 		// ua.WithSecurityPolicyBasic256(),
 		// ua.WithSecurityPolicyBasic256Sha256(),
-		ua.WithSecurityPolicyAes128Sha256RsaOaep(),
+		// ua.WithSecurityPolicyAes128Sha256RsaOaep(),
+		ua.WithSecurityPolicyAes256Sha256RsaPss(),
 		ua.WithTrace(),
 	)
 	if err != nil {

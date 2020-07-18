@@ -302,3 +302,57 @@ func (p *securityPolicyAes128Sha256RsaOaep) SymEncryptionKeySize() int { return 
 
 // NonceSize ...
 func (p *securityPolicyAes128Sha256RsaOaep) NonceSize() int { return 32 }
+
+// securityPolicyAes256Sha256RsaPss ...
+type securityPolicyAes256Sha256RsaPss struct {
+}
+
+// PolicyURI ...
+func (p *securityPolicyAes256Sha256RsaPss) PolicyURI() string {
+	return SecurityPolicyURIAes256Sha256RsaPss
+}
+
+// RSASign ...
+func (p *securityPolicyAes256Sha256RsaPss) RSASign(priv *rsa.PrivateKey, plainText []byte) ([]byte, error) {
+	hashed := sha256.Sum256(plainText)
+	return rsa.SignPSS(rand.Reader, priv, crypto.SHA256, hashed[:], &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+}
+
+// RSAVerify ...
+func (p *securityPolicyAes256Sha256RsaPss) RSAVerify(pub *rsa.PublicKey, plainText, signature []byte) error {
+	hashed := sha256.Sum256(plainText)
+	return rsa.VerifyPSS(pub, crypto.SHA256, hashed[:], signature, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+}
+
+// RSAEncrypt ...
+func (p *securityPolicyAes256Sha256RsaPss) RSAEncrypt(pub *rsa.PublicKey, plainText []byte) ([]byte, error) {
+	return rsa.EncryptOAEP(sha256.New(), rand.Reader, pub, plainText, []byte{})
+}
+
+// RSADecrypt ...
+func (p *securityPolicyAes256Sha256RsaPss) RSADecrypt(priv *rsa.PrivateKey, cipherText []byte) ([]byte, error) {
+	return rsa.DecryptOAEP(sha256.New(), rand.Reader, priv, cipherText, []byte{})
+}
+
+// SymHMACFactory ...
+func (p *securityPolicyAes256Sha256RsaPss) SymHMACFactory(key []byte) hash.Hash {
+	return hmac.New(sha256.New, key)
+}
+
+// RSAPaddingSize ...
+func (p *securityPolicyAes256Sha256RsaPss) RSAPaddingSize() int { return 66 }
+
+// SymSignatureSize ...
+func (p *securityPolicyAes256Sha256RsaPss) SymSignatureSize() int { return 32 }
+
+// SymSignatureKeySize ...
+func (p *securityPolicyAes256Sha256RsaPss) SymSignatureKeySize() int { return 32 }
+
+// SymEncryptionBlockSize ...
+func (p *securityPolicyAes256Sha256RsaPss) SymEncryptionBlockSize() int { return 16 }
+
+// SymEncryptionKeySize ...
+func (p *securityPolicyAes256Sha256RsaPss) SymEncryptionKeySize() int { return 32 }
+
+// NonceSize ...
+func (p *securityPolicyAes256Sha256RsaPss) NonceSize() int { return 32 }

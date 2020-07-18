@@ -419,6 +419,9 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		case SecurityPolicyURIAes128Sha256RsaOaep:
 			ch.securityPolicy = new(securityPolicyAes128Sha256RsaOaep)
 
+		case SecurityPolicyURIAes256Sha256RsaPss:
+			ch.securityPolicy = new(securityPolicyAes256Sha256RsaPss)
+
 		default:
 			return BadSecurityPolicyRejected
 		}
