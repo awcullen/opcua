@@ -654,8 +654,6 @@ func TestReadHistory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping long running test")
 	}
-	t.Logf("Collecting 10 seconds of data...")
-	time.Sleep(10 * time.Second)
 	ctx := context.Background()
 	ch, err := ua.NewClient(
 		ctx,
@@ -670,6 +668,26 @@ func TestReadHistory(t *testing.T) {
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
 
+	t.Logf("Start logging of data...")
+	req := &ua.CallRequest{
+		MethodsToCall: []*ua.CallMethodRequest{{
+			ObjectID:       ua.ParseNodeID("ns=2;s=Demo.History"), // parent node
+			MethodID:       ua.ParseNodeID("ns=2;s=Demo.History.StartLogging"),
+			InputArguments: []*ua.Variant{}},
+		},
+	}
+
+	res, err := ch.Call(ctx, req)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error calling method"))
+		ch.Abort(ctx)
+		return
+	}
+	_ = res
+
+	t.Logf("Collecting 10 seconds of data...")
+	time.Sleep(10 * time.Second)
+
 	t.Log("Reading history for last 10 seconds")
 	var cp ua.ByteString
 	for {
@@ -683,7 +701,7 @@ func TestReadHistory(t *testing.T) {
 			TimestampsToReturn:        ua.TimestampsToReturnBoth,
 			ReleaseContinuationPoints: false,
 			NodesToRead: []*ua.HistoryReadValueID{
-				{NodeID: ua.ParseNodeID("ns=2;s=Demo.Dynamic.Scalar.Double"), ContinuationPoint: cp},
+				{NodeID: ua.ParseNodeID("ns=2;s=Demo.History.DoubleWithHistory"), ContinuationPoint: cp},
 			},
 		}
 
@@ -702,10 +720,12 @@ func TestReadHistory(t *testing.T) {
 				}
 			} else {
 				t.Logf("Error reading values for node '%s'", req2.NodesToRead[0].NodeID)
+				t.Error(errors.Wrap(err, "Error reading values"))
 				break
 			}
 		} else {
 			t.Logf("Error reading values for node '%s'", req2.NodesToRead[0].NodeID)
+			t.Error(errors.Wrap(err, "Error reading values"))
 			break
 		}
 
@@ -726,7 +746,7 @@ func TestReadHistory(t *testing.T) {
 		TimestampsToReturn:        ua.TimestampsToReturnBoth,
 		ReleaseContinuationPoints: false,
 		NodesToRead: []*ua.HistoryReadValueID{
-			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Dynamic.Scalar.Double")},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.History.DoubleWithHistory")},
 		},
 	}
 
@@ -739,16 +759,35 @@ func TestReadHistory(t *testing.T) {
 
 	if res3.Results[0].StatusCode.IsGood() {
 		if historyData, ok := res3.Results[0].HistoryData.(*ua.HistoryData); ok {
-			t.Logf("Found %d value(s) for node '%s':", len(historyData.DataValues), req3.NodesToRead[0].NodeID)
+			t.Logf("Found %d average value(s) for node '%s':", len(historyData.DataValues), req3.NodesToRead[0].NodeID)
 			for _, dv := range historyData.DataValues {
 				t.Logf("Read %v, q: %#X, ts: %s", dv.Value(), uint32(dv.StatusCode()), dv.SourceTimestamp())
 			}
 		} else {
-			t.Logf("Error reading values for node '%s'", req3.NodesToRead[0].NodeID)
+			t.Logf("Error reading average  values for node '%s'", req3.NodesToRead[0].NodeID)
+			t.Error(errors.Wrap(err, "Error reading average values"))
 		}
 	} else {
-		t.Logf("Error reading values for node '%s'", req3.NodesToRead[0].NodeID)
+		t.Logf("Error reading average values for node '%s'", req3.NodesToRead[0].NodeID)
+		t.Error(errors.Wrap(err, "Error reading average values"))
 	}
+
+	t.Logf("Stop logging of data...")
+	req4 := &ua.CallRequest{
+		MethodsToCall: []*ua.CallMethodRequest{{
+			ObjectID:       ua.ParseNodeID("ns=2;s=Demo.History"), // parent node
+			MethodID:       ua.ParseNodeID("ns=2;s=Demo.History.StopLogging"),
+			InputArguments: []*ua.Variant{}},
+		},
+	}
+
+	res4, err := ch.Call(ctx, req4)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error calling method"))
+		ch.Abort(ctx)
+		return
+	}
+	_ = res4
 
 	ch.Close(ctx)
 }

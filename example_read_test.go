@@ -13,10 +13,10 @@ func ExampleClient_Read() {
 
 	ctx := context.Background()
 
-	// open a connection to the OPC UA server at url "opc.tcp://opcua.rocks:4840".
+	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
 	ch, err := ua.NewClient(
 		ctx,
-		"opc.tcp://opcua.rocks:4840",
+		"opc.tcp://localhost:48010",
 		ua.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
@@ -61,7 +61,7 @@ func ExampleClient_Read() {
 
 	// Output:
 	// Server status:
-	//   ProductName: open62541 OPC UA Server
-	//   ManufacturerName: open62541
+	//   ProductName: C++ SDK OPC UA Demo Server
+	//   ManufacturerName: Unified Automation GmbH
 	//   State: Running
 }

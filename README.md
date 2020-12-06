@@ -11,7 +11,7 @@ To connect to your OPC UA server, call NewClient, passing the endpoint URL of th
 
 With the client, you can call any service of the OPC Unified Architecture, see https://reference.opcfoundation.org/v104/Core/docs/Part4/
 
-For example, to connect to the public OPC UA server at opc.tcp://opcua.rocks:4840, and read the server's status: 
+For example, to connect to an OPC UA Demo Server, and read the server's status: 
 
 ```go
 import (
@@ -25,10 +25,11 @@ func ExampleClient_Read() {
 
 	ctx := context.Background()
 
-	// open a connection to the OPC UA server at url "opc.tcp://opcua.rocks:4840".
+	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH. See https://www.unified-automation.com/downloads.html
+	
 	ch, err := ua.NewClient(
 		ctx,
-		"opc.tcp://opcua.rocks:4840",
+		"opc.tcp://localhost:48010",
 		ua.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
@@ -73,8 +74,8 @@ func ExampleClient_Read() {
 
 	// Output:
 	// Server status:
-	//   ProductName: open62541 OPC UA Server
-	//   ManufacturerName: open62541
+	//   ProductName: C++ SDK OPC UA Demo Server
+	//   ManufacturerName: Unified Automation GmbH
 	//   State: Running
 }
 

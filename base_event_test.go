@@ -43,6 +43,7 @@ func TestDeserializeCondition(t *testing.T) {
 // requires UnifiedAutomation UaCPPServer
 func TestSubscribeBaseEvent(t *testing.T) {
 	ctx := context.Background()
+	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
 	ch, err := ua.NewClient(
 		ctx,
 		"opc.tcp://127.0.0.1:48010",
@@ -163,6 +164,7 @@ func TestSubscribeBaseEvent(t *testing.T) {
 // requires UnifiedAutomation UaCPPServer
 func TestSubscribeAlarm(t *testing.T) {
 	ctx := context.Background()
+	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
 	ch, err := ua.NewClient(
 		ctx,
 		"opc.tcp://127.0.0.1:48010",

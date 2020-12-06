@@ -13,10 +13,10 @@ func ExampleClient_Browse() {
 
 	ctx := context.Background()
 
-	// open a connection to the OPC UA server at url "opc.tcp://opcua.rocks:4840".
+	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
 	ch, err := ua.NewClient(
 		ctx,
-		"opc.tcp://opcua.rocks:4840",
+		"opc.tcp://localhost:48010",
 		ua.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
@@ -61,6 +61,7 @@ func ExampleClient_Browse() {
 	// Output:
 	// Browse results of NodeID 'i=85':
 	//  + Server, browseName: 0:Server, nodeClass: Object, nodeId: i=2253
-	//  + Event Object (2s), browseName: 1:Event Object, nodeClass: Object, nodeId: ns=1;i=42
-	//  + Hello World, browseName: 1:hello world, nodeClass: Method, nodeId: ns=1;i=62541
+	//  + Demo, browseName: 2:Demo, nodeClass: Object, nodeId: ns=2;s=Demo
+	//  + BuildingAutomation, browseName: 3:BuildingAutomation, nodeClass: Object, nodeId: ns=3;s=BuildingAutomation
+	//  + DemoUANodeSetXML, browseName: 6:Demo, nodeClass: Object, nodeId: ns=6;s=Demo
 }

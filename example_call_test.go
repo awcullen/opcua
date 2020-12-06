@@ -13,10 +13,10 @@ func ExampleClient_Call() {
 
 	ctx := context.Background()
 
-	// open a connection to the OPC UA server at url "opc.tcp://opcua.rocks:4840".
+	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
 	ch, err := ua.NewClient(
 		ctx,
-		"opc.tcp://opcua.rocks:4840",
+		"opc.tcp://localhost:48010",
 		ua.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
@@ -28,10 +28,11 @@ func ExampleClient_Call() {
 	req := &ua.CallRequest{
 		MethodsToCall: []*ua.CallMethodRequest{
 			{
-				ObjectID: ua.ParseNodeID("i=85"),         // Objects folder
-				MethodID: ua.ParseNodeID("ns=1;i=62541"), // "Hello World" method
+				ObjectID: ua.ParseNodeID("ns=2;s=Demo.Method"),          // parent of "Multiply" method
+				MethodID: ua.ParseNodeID("ns=2;s=Demo.Method.Multiply"), // "Multiply" method
 				InputArguments: []*ua.Variant{
-					ua.NewVariantString("World!"),
+					ua.NewVariantDouble(6.0),
+					ua.NewVariantDouble(7.0),
 				},
 			},
 		},
@@ -48,7 +49,7 @@ func ExampleClient_Call() {
 	// print results
 	fmt.Printf("Call method result:\n")
 	if res.Results[0].StatusCode.IsGood() {
-		fmt.Println(res.Results[0].OutputArguments[0].Value().(string))
+		fmt.Println(res.Results[0].OutputArguments[0].Value().(float64))
 	}
 
 	// close connection
@@ -60,5 +61,5 @@ func ExampleClient_Call() {
 
 	// Output:
 	// Call method result:
-	// Hello World!
+	// 42
 }

@@ -14,10 +14,10 @@ func ExampleClient_Publish() {
 
 	ctx := context.Background()
 
-	// open a connection to the OPC UA server at url "opc.tcp://opcua.rocks:4840".
+	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
 	ch, err := ua.NewClient(
 		ctx,
-		"opc.tcp://opcua.rocks:4840",
+		"opc.tcp://localhost:48010",
 		ua.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
@@ -111,7 +111,6 @@ func ExampleClient_Publish() {
 	}
 
 	// Output:
-	// <the current utc time here>
 	// <the current utc time here>
 	// <the current utc time here>
 	// <the current utc time here>

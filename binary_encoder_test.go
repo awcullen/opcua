@@ -1,6 +1,6 @@
 // Copyright 2020 Converter Systems LLC. All rights reserved.
 
-package opcua
+package opcua_test
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	ua "github.com/awcullen/opcua"
 	uuid "github.com/google/uuid"
 	"github.com/pascaldekloe/goe/verify"
 )
@@ -100,7 +101,7 @@ func TestNodeID(t *testing.T) {
 	cases := []encoderTestCase{
 		{
 			Name: "TwoByte",
-			In:   NewNodeIDNumeric(0, 255),
+			In:   ua.NewNodeIDNumeric(0, 255),
 			Bytes: []byte{
 				// mask
 				0x00,
@@ -110,7 +111,7 @@ func TestNodeID(t *testing.T) {
 		},
 		{
 			Name: "FourByte",
-			In:   NewNodeIDNumeric(2, 65535),
+			In:   ua.NewNodeIDNumeric(2, 65535),
 			Bytes: []byte{
 				// mask
 				0x01,
@@ -122,7 +123,7 @@ func TestNodeID(t *testing.T) {
 		},
 		{
 			Name: "Numeric",
-			In:   NewNodeIDNumeric(10, 4294967295),
+			In:   ua.NewNodeIDNumeric(10, 4294967295),
 			Bytes: []byte{
 				// mask
 				0x02,
@@ -134,7 +135,7 @@ func TestNodeID(t *testing.T) {
 		},
 		{
 			Name: "String",
-			In:   NewNodeIDString(2, "bar"),
+			In:   ua.NewNodeIDString(2, "bar"),
 			Bytes: []byte{
 				// mask
 				0x03,
@@ -147,7 +148,7 @@ func TestNodeID(t *testing.T) {
 		},
 		{
 			Name: "Guid",
-			In:   NewNodeIDGUID(2, uuid.MustParse("AAAABBBB-CCDD-EEFF-0102-0123456789AB")),
+			In:   ua.NewNodeIDGUID(2, uuid.MustParse("AAAABBBB-CCDD-EEFF-0102-0123456789AB")),
 			Bytes: []byte{
 				// mask
 				0x04,
@@ -166,7 +167,7 @@ func TestNodeID(t *testing.T) {
 		},
 		{
 			Name: "Opaque",
-			In:   NewNodeIDOpaque(2, ByteString("\x00\x10\x20\x30\x40\x50\x60\x70")),
+			In:   ua.NewNodeIDOpaque(2, ua.ByteString("\x00\x10\x20\x30\x40\x50\x60\x70")),
 			Bytes: []byte{
 				// mask
 				0x05,
@@ -185,7 +186,7 @@ func TestQualifiedName(t *testing.T) {
 	cases := []encoderTestCase{
 		{
 			Name: "has-both",
-			In:   QualifiedName{NamespaceIndex: 2, Name: "bar"},
+			In:   ua.QualifiedName{NamespaceIndex: 2, Name: "bar"},
 			Bytes: []byte{
 				0x02, 0x00,
 				// name: "bar"
@@ -200,12 +201,12 @@ func TestLocalizedText(t *testing.T) {
 	cases := []encoderTestCase{
 		{
 			Name:  "nothing",
-			In:    LocalizedText{},
+			In:    ua.LocalizedText{},
 			Bytes: []byte{0x00},
 		},
 		{
 			Name: "has-locale",
-			In:   LocalizedText{Locale: "foo"},
+			In:   ua.LocalizedText{Locale: "foo"},
 			Bytes: []byte{
 				0x01,
 				0x03, 0x00, 0x00, 0x00, 0x66, 0x6f, 0x6f,
@@ -213,7 +214,7 @@ func TestLocalizedText(t *testing.T) {
 		},
 		{
 			Name: "has-text",
-			In:   LocalizedText{Text: "bar"},
+			In:   ua.LocalizedText{Text: "bar"},
 			Bytes: []byte{
 				0x02,
 				0x03, 0x00, 0x00, 0x00, 0x62, 0x61, 0x72,
@@ -221,7 +222,7 @@ func TestLocalizedText(t *testing.T) {
 		},
 		{
 			Name: "has-both",
-			In:   LocalizedText{Text: "bar", Locale: "foo"},
+			In:   ua.LocalizedText{Text: "bar", Locale: "foo"},
 			Bytes: []byte{
 				0x03,
 				0x03, 0x00, 0x00, 0x00, 0x66, 0x6f, 0x6f,
@@ -237,7 +238,7 @@ func TestDataValue(t *testing.T) {
 	cases := []encoderTestCase{
 		{
 			Name: "value only",
-			In:   NewDataValueFloat(float32(2.50025), 0, time.Time{}, 0, time.Time{}, 0),
+			In:   ua.NewDataValueFloat(float32(2.50025), 0, time.Time{}, 0, time.Time{}, 0),
 			Bytes: []byte{
 				// EncodingMask
 				0x01,
@@ -248,7 +249,7 @@ func TestDataValue(t *testing.T) {
 		},
 		{
 			Name: "value, source timestamp, server timestamp",
-			In: NewDataValueFloat(float32(2.50017), 0,
+			In: ua.NewDataValueFloat(float32(2.50017), 0,
 				time.Date(2018, time.September, 17, 14, 28, 29, 112000000, time.UTC), 0,
 				time.Date(2018, time.September, 17, 14, 28, 29, 112000000, time.UTC), 0),
 			Bytes: []byte{
@@ -271,7 +272,7 @@ func TestEnum(t *testing.T) {
 	cases := []encoderTestCase{
 		{
 			Name: "Enum",
-			In:   MessageSecurityModeSignAndEncrypt,
+			In:   ua.MessageSecurityModeSignAndEncrypt,
 			Bytes: []byte{
 				// int32
 				0x03, 0x00, 0x00, 0x00,
@@ -283,17 +284,17 @@ func TestEnum(t *testing.T) {
 
 func TestStruct(t *testing.T) {
 	t0, _ := time.Parse(time.RFC3339, "1601-01-01T12:00:00Z")
-	nodesToRead := make([]*ReadValueID, 1)
+	nodesToRead := make([]*ua.ReadValueID, 1)
 	for index := 0; index < len(nodesToRead); index++ {
-		nodesToRead[index] = &ReadValueID{
-			AttributeID: AttributeIDValue,
-			NodeID:      NewNodeIDNumeric(0, 255),
+		nodesToRead[index] = &ua.ReadValueID{
+			AttributeID: ua.AttributeIDValue,
+			NodeID:      ua.NewNodeIDNumeric(0, 255),
 		}
 	}
 	cases := []encoderTestCase{
 		{
 			Name: "ReadRequest",
-			In:   &ReadRequest{RequestHeader: RequestHeader{Timestamp: t0}, NodesToRead: nodesToRead},
+			In:   &ua.ReadRequest{RequestHeader: ua.RequestHeader{Timestamp: t0}, NodesToRead: nodesToRead},
 			Bytes: []byte{
 				0x00, 0x00, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // max age
@@ -304,7 +305,7 @@ func TestStruct(t *testing.T) {
 		},
 		{
 			Name: "CreateSessionRequest",
-			In:   &CreateSessionRequest{RequestHeader: RequestHeader{Timestamp: t0}, ClientDescription: &ApplicationDescription{}},
+			In:   &ua.CreateSessionRequest{RequestHeader: ua.RequestHeader{Timestamp: t0}, ClientDescription: &ua.ApplicationDescription{}},
 			Bytes: []byte{
 				0x00, 0x00, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -315,11 +316,11 @@ func TestStruct(t *testing.T) {
 }
 
 func TestSlice(t *testing.T) {
-	nodesToRead := make([]*ReadValueID, 10)
+	nodesToRead := make([]*ua.ReadValueID, 10)
 	for index := 0; index < len(nodesToRead); index++ {
-		nodesToRead[index] = &ReadValueID{
-			AttributeID: AttributeIDValue,
-			NodeID:      NewNodeIDNumeric(0, 255),
+		nodesToRead[index] = &ua.ReadValueID{
+			AttributeID: ua.AttributeIDValue,
+			NodeID:      ua.NewNodeIDNumeric(0, 255),
 		}
 	}
 	cases := []encoderTestCase{
@@ -346,9 +347,9 @@ func TestSlice(t *testing.T) {
 }
 
 func TestSliceVariant(t *testing.T) {
-	variants := []*Variant{
-		NewVariantString("foo"),
-		NewVariantUInt16(255),
+	variants := []*ua.Variant{
+		ua.NewVariantString("foo"),
+		ua.NewVariantUInt16(255),
 	}
 	cases := []encoderTestCase{
 		{
@@ -377,7 +378,7 @@ func runEncoderTest(t *testing.T, cases []encoderTestCase) {
 			t.Run("encode", func(t *testing.T) {
 				bs := make([]byte, 0, 200)
 				buf := bytes.NewBuffer(bs)
-				enc := NewBinaryEncoder(buf, NewEncodingContext())
+				enc := ua.NewBinaryEncoder(buf, ua.NewEncodingContext())
 				if err := enc.Encode(c.In); err != nil {
 					t.Fatal(err)
 				}
@@ -387,14 +388,14 @@ func runEncoderTest(t *testing.T, cases []encoderTestCase) {
 			})
 			t.Run("decode", func(t *testing.T) {
 				buf := bytes.NewBuffer(c.Bytes)
-				dec := NewBinaryDecoder(buf, NewEncodingContext())
+				dec := ua.NewBinaryDecoder(buf, ua.NewEncodingContext())
 				out := reflect.New(reflect.TypeOf(c.In)).Interface()
 				if err := dec.Decode(out); err != nil {
 					t.Fatal(err)
 				}
 				out = reflect.ValueOf(out).Elem().Interface()
-				t.Logf("%+v\n", c.In)
-				t.Logf("%+v\n", out)
+				// t.Logf("%+v\n", c.In)
+				// t.Logf("%+v\n", out)
 				verify.Values(t, "", out, c.In)
 			})
 		})
