@@ -70,11 +70,11 @@ func ExampleClient_Publish() {
 	}
 
 	// send publish requests to the server for 5 sec
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	cancelCtx, cancelFunc := context.WithTimeout(ctx, 5*time.Second)
 
 	for {
 		// send the publish request to the server. returns response or error
-		res3, err := ch.Publish(ctx, req3)
+		res3, err := ch.Publish(cancelCtx, req3)
 		if err != nil {
 			break
 		}
@@ -101,7 +101,7 @@ func ExampleClient_Publish() {
 	}
 
 	// wait for publish to complete, then clean up timer.
-	cancel()
+	cancelFunc()
 
 	// close connection
 	err = ch.Close(ctx)

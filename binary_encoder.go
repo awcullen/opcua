@@ -28,7 +28,7 @@ func NewBinaryEncoder(w io.Writer, ec EncodingContext) *BinaryEncoder {
 
 // Encode encodes the value using the UA Binary protocol and writes the bytes to the io.writer.
 func (enc *BinaryEncoder) Encode(value interface{}) error {
-	// fmt.Printf("Encode %T\n", value)
+	// first, handle any built-in types.
 	switch val := value.(type) {
 	case bool:
 		return enc.WriteBoolean(val)
@@ -131,12 +131,15 @@ func (enc *BinaryEncoder) Encode(value interface{}) error {
 	case []*DiagnosticInfo:
 		return enc.WriteDiagnosticInfoArray(val)
 	default:
+		// handle enum, struct, and slice values using reflection
 		rv := reflect.ValueOf(value)
+		// dereference any pointers
 		for rv.Kind() == reflect.Ptr {
 			rv = rv.Elem()
 		}
 		switch rv.Kind() {
-		case reflect.Int32: // e.g. enums
+
+		case reflect.Int32: // e.g. enum
 			return enc.WriteInt32((int32)(rv.Int()))
 
 		case reflect.Struct: // e.g. ReadRequest
@@ -145,7 +148,8 @@ func (enc *BinaryEncoder) Encode(value interface{}) error {
 				field := rv.Field(i)
 				switch field.Kind() {
 
-				case reflect.Ptr: // *struct, e.g. *ApplicationDescription, *DataValue
+				case reflect.Ptr: // e.g. *ApplicationDescription, *DataValue
+					// if field is nil, create a new value and encode that.
 					if field.IsNil() {
 						if err := enc.Encode(reflect.New(field.Type().Elem()).Interface()); err != nil {
 							return BadEncodingError
@@ -156,13 +160,12 @@ func (enc *BinaryEncoder) Encode(value interface{}) error {
 						return BadEncodingError
 					}
 
-				case reflect.Interface: // interface{}, e.g. *UserNameIdentityToken
-					// fmt.Printf("Encode interface{}\n")
+				case reflect.Interface: // e.g. *UserNameIdentityToken
 					if err := enc.WriteStructureAsExtensionObject(field.Interface()); err != nil {
 						return BadEncodingError
 					}
 
-				default: // built-in, []built-in, enum, []enum, struct, []struct, []*struct, []interface{}
+				default: // e.g. built-in, []built-in, enum, []enum, struct, []struct, []*struct, []interface{}
 					if err := enc.Encode(field.Interface()); err != nil {
 						return BadEncodingError
 					}
@@ -170,7 +173,7 @@ func (enc *BinaryEncoder) Encode(value interface{}) error {
 			}
 			return nil
 
-		case reflect.Slice: // [] , e.g. []*ReadValueID, []interface{}
+		case reflect.Slice: // e.g. []*ReadValueID, []interface{}
 			len := rv.Len()
 			if err := enc.WriteInt32(int32(len)); err != nil {
 				return BadEncodingError
@@ -191,11 +194,12 @@ func (enc *BinaryEncoder) Encode(value interface{}) error {
 					if elem.IsNil() {
 						return BadEncodingError
 					}
+					// encode concrete value as ExtensionObject.
 					if err := enc.WriteStructureAsExtensionObject(elem.Interface()); err != nil {
 						return BadEncodingError
 					}
 
-				default: // built-in, struct, enum
+				default: // e.g. built-in, struct, enum
 					if err := enc.Encode(elem.Interface()); err != nil {
 						return BadEncodingError
 					}
@@ -607,7 +611,6 @@ func (enc *BinaryEncoder) WriteLocalizedText(value LocalizedText) error {
 
 // WriteStructureAsExtensionObject writes an structure as an ExtensionObject
 func (enc *BinaryEncoder) WriteStructureAsExtensionObject(value interface{}) error {
-	// fmt.Printf("Encoder writing StructureAsExtensionObject\n")
 	if value == nil {
 		if err := enc.WriteUInt16(0); err != nil {
 			return err

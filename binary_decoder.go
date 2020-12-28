@@ -27,7 +27,7 @@ func NewBinaryDecoder(r io.Reader, ec EncodingContext) *BinaryDecoder {
 
 // Decode decodes a value.
 func (dec *BinaryDecoder) Decode(value interface{}) error {
-	// fmt.Printf("Decode %T\n", value)
+	// first, handle any built-in types.
 	switch val := value.(type) {
 	case *bool:
 		return dec.ReadBoolean(val)
@@ -130,16 +130,18 @@ func (dec *BinaryDecoder) Decode(value interface{}) error {
 	case *[]*DiagnosticInfo:
 		return dec.ReadDiagnosticInfoArray(val)
 	default:
+		// handle enum, struct, and slice values using reflection
 		rv := reflect.ValueOf(value).Elem()
+		// dereference any pointers
 		for rv.Kind() == reflect.Ptr {
+			// if value is nil, create a new value and decode that.
 			if rv.IsNil() {
 				rv.Set(reflect.New(rv.Type().Elem()))
-				// fmt.Printf("new %s \n", rv.String())
 			}
 			rv = rv.Elem()
 		}
 		switch rv.Kind() {
-		case reflect.Int32: // e.g. enums
+		case reflect.Int32: // e.g. enum
 			var v int32
 			if err := dec.ReadInt32(&v); err != nil {
 				return BadDecodingError
@@ -147,96 +149,26 @@ func (dec *BinaryDecoder) Decode(value interface{}) error {
 			rv.SetInt(int64(v))
 			return nil
 
-		case reflect.Interface: // e.g. interface{}
-			// fmt.Printf("interface \n")
-			var v interface{}
-			if err := dec.ReadObject(&v); err != nil {
-				return BadDecodingError
-			}
-			// fmt.Printf("interface read %+v \n", v)
-			if v != nil {
-				rv.Set(reflect.ValueOf(v))
-			}
-			return nil
-
-		// case reflect.Ptr: // e.g. *ReadRequest
-		// 	fmt.Printf("Ptr struct \n")
-		// 	var v = reflect.New(rv.Type().Elem()).Interface()
-		// 	if err := dec.Decode(&v); err != nil {
-		// 		return BadDecodingError
-		// 	}
-		// 	fmt.Printf("Ptr struct read %+v \n", v)
-		// 	rv.Set(reflect.ValueOf(v))
-		// 	return nil
-
-		case reflect.Struct: // e.g. RequestHeader
+		case reflect.Struct: // e.g. ReadResponse
 			typ := rv.Type()
 			for i := 0; i < typ.NumField(); i++ {
 				field := rv.Field(i)
-				// fmt.Printf("Decode field: %s\n", typ.Field(i).Name)
 				switch field.Kind() {
 
 				case reflect.Ptr: // e.g. *ApplicationDescription
-					if field.IsNil() {
-						field.Set(reflect.New(field.Type().Elem()))
-						// fmt.Printf("new %s \n", field.String())
-					}
+					field.Set(reflect.New(field.Type().Elem()))
 					if err := dec.Decode(field.Addr().Interface()); err != nil {
 						return BadDecodingError
 					}
 
-					// 		case reflect.Interface: // e.g. interface{}
-					// 			if field.IsNil() {
-					// 				if err := enc.WriteExtensionObject(&NilExtensionObject); err != nil {
-					// 					return BadEncodingError
-					// 				}
-					// 				continue
-					// 			}
-					// 			id, ok := findBinaryEncodingIDForType(field.Elem().Type())
-					// 			if !ok {
-					// 				return BadEncodingError
-					// 			}
-					// 			if err := enc.WriteNodeID(id.ToNodeID(enc.ec.NamespaceURIs())); err != nil {
-					// 				return BadEncodingError
-					// 			}
-					// 			if err := enc.WriteByte(0x01); err != nil {
-					// 				return BadEncodingError
-					// 			}
-					// 			// cast writer to BufferAt to access superpowers
-					// 			if buf, ok := enc.w.(buffer.BufferAt); ok {
-					// 				mark := buf.Len() // mark where length is written
-					// 				bs := make([]byte, 4)
-					// 				if _, err := buf.Write(bs); err != nil {
-					// 					return BadEncodingError
-					// 				}
-					// 				start := buf.Len() // mark where encoding starts
-					// 				if err := enc.Encode(field.Interface()); err != nil {
-					// 					return BadEncodingError
-					// 				}
-					// 				end := buf.Len() // mark where encoding ends
-					// 				binary.LittleEndian.PutUint32(bs, uint32(end-start))
-					// 				// write actual length at mark
-					// 				if _, err := buf.WriteAt(bs, mark); err != nil {
-					// 					return BadEncodingError
-					// 				}
-					// 				continue
-					// 			}
-					// 			// if BufferAt interface not available
-					// 			buf2 := buffer.NewPartitionAt(bufferPool)
-					// 			enc2 := NewBinaryEncoder(buf2, enc.ec)
-					// 			if err := enc2.Encode(field.Interface()); err != nil {
-					// 				buf2.Reset()
-					// 				return BadEncodingError
-					// 			}
-					// 			enc.WriteInt32(int32(buf2.Len()))
-					// 			buf3 := bytesPool.Get().([]byte)
-					// 			if _, err := io.CopyBuffer(enc.w, buf2, buf3); err != nil {
-					// 				bytesPool.Put(buf3)
-					// 				buf2.Reset()
-					// 				return BadEncodingError
-					// 			}
-					// 			bytesPool.Put(buf3)
-					// 			buf2.Reset()
+				case reflect.Interface: // e.g. interface{}
+					var v interface{}
+					if err := dec.ReadObject(&v); err != nil {
+						return BadDecodingError
+					}
+					if v != nil {
+						field.Set(reflect.ValueOf(v))
+					}
 
 				default:
 					if err := dec.Decode(field.Addr().Interface()); err != nil {
@@ -251,28 +183,40 @@ func (dec *BinaryDecoder) Decode(value interface{}) error {
 			if err := dec.ReadInt32(&num); err != nil {
 				return BadDecodingError
 			}
-			// fmt.Printf("Decode slice: %s\n", rv.Type().String())
 			if num < 0 {
-				// fmt.Printf("Setting zero: %s\n", rv.Type().String())
 				rv.Set(reflect.Zero(rv.Type()))
 				return nil
 			}
 			len := int(num)
-			// fmt.Printf("Making slice: %s\n", rv.Type().String())
-			slc := reflect.MakeSlice(rv.Type(), len, len)
+			val := reflect.MakeSlice(rv.Type(), len, len)
 			elemType := rv.Type().Elem()
-			isPtr := elemType.Kind() == reflect.Ptr
+
 			for i := 0; i < len; i++ {
-				elem := slc.Index(i)
-				if isPtr {
-					// fmt.Printf("New elem: %s\n", elemType.String())
+				elem := val.Index(i)
+				switch elem.Kind() {
+
+				case reflect.Ptr: // e.g. *ReadValueID
 					elem.Set(reflect.New(elemType.Elem()))
-				}
-				if err := dec.Decode(elem.Addr().Interface()); err != nil {
-					return BadDecodingError
+					if err := dec.Decode(elem.Addr().Interface()); err != nil {
+						return BadDecodingError
+					}
+
+				case reflect.Interface: // e.g. interface{}
+					var v interface{}
+					if err := dec.ReadObject(&v); err != nil {
+						return BadDecodingError
+					}
+					if v != nil {
+						elem.Set(reflect.ValueOf(v))
+					}
+
+				default: // e.g. built-in, struct, enum
+					if err := dec.Decode(elem.Addr().Interface()); err != nil {
+						return BadDecodingError
+					}
 				}
 			}
-			rv.Set(slc)
+			rv.Set(val)
 			return nil
 
 		default:
@@ -1707,30 +1651,6 @@ func (dec *BinaryDecoder) ReadLocalizedTextArray(value *[]LocalizedText) error {
 	}
 	return nil
 }
-
-// ReadStructureArray reads a structure array.
-// func (dec *BinaryDecoder) ReadStructureArray(value interface{}) error {
-// 	rValue := reflect.ValueOf(value).Elem()
-// 	var num int32
-// 	if err := dec.ReadInt32(&num); err != nil {
-// 		return BadDecodingError
-// 	}
-// 	if num < 0 {
-// 		rValue.Set(reflect.Zero(rValue.Type()))
-// 		return nil
-// 	}
-// 	len := int(num)
-// 	slc := reflect.MakeSlice(rValue.Type(), len, len)
-// 	elemType := rValue.Type().Elem().Elem()
-// 	for i := 0; i < len; i++ {
-// 		val := reflect.New(elemType)
-// 		obj := val.Interface().(Encodable)
-// 		obj.Decode(dec)
-// 		slc.Index(i).Set(val)
-// 	}
-// 	rValue.Set(slc)
-// 	return nil
-// }
 
 // ReadObjectArray reads a object array.
 func (dec *BinaryDecoder) ReadObjectArray(value *[]interface{}) error {

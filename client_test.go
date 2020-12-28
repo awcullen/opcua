@@ -535,8 +535,6 @@ func TestSubscribe(t *testing.T) {
 						for _, z := range o.MonitoredItems {
 							if z.ClientHandle == 42 {
 								t.Logf(" + CurrentTime: %s", z.Value.Value())
-								wg.Done()
-								return
 							}
 						}
 					}
@@ -552,10 +550,10 @@ func TestSubscribe(t *testing.T) {
 		}
 	}
 
-	ctx, cancelFunc := context.WithTimeout(ctx, 10*time.Second)
+	cancelCtx, cancelFunc := context.WithTimeout(ctx, 5*time.Second)
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go pubFunc(ctx, wg, ch)
+	go pubFunc(cancelCtx, wg, ch)
 	wg.Wait()
 	cancelFunc()
 	ch.Close(ctx)
