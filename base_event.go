@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
@@ -17,32 +17,34 @@ type BaseEvent struct {
 }
 
 // NewBaseEvent ...
-func NewBaseEvent(eventFields []*Variant) *BaseEvent {
-	e := &BaseEvent{}
-	for i, f := range eventFields {
-		if f.IsNil() {
-			continue
-		}
-		switch i {
-		case 0:
-			e.EventID = f.Value().(ByteString)
-		case 1:
-			e.EventType = f.Value().(NodeID)
-		case 2:
-			e.SourceName = f.Value().(string)
-		case 3:
-			e.Time = f.Value().(time.Time)
-		case 4:
-			e.Message = f.Value().(LocalizedText)
-		case 5:
-			e.Severity = f.Value().(uint16)
-		}
+func NewBaseEvent(eventFields []Variant) *BaseEvent {
+	ret := &BaseEvent{}
+	if len(eventFields) < 6 {
+		return ret
 	}
-	return e
+	if v, ok := eventFields[0].(ByteString); ok {
+		ret.EventID = v
+	}
+	if v, ok := eventFields[1].(NodeID); ok {
+		ret.EventType = v
+	}
+	if v, ok := eventFields[2].(string); ok {
+		ret.SourceName = v
+	}
+	if v, ok := eventFields[3].(time.Time); ok {
+		ret.Time = v
+	}
+	if v, ok := eventFields[4].(LocalizedText); ok {
+		ret.Message = v
+	}
+	if v, ok := eventFields[5].(uint16); ok {
+		ret.Severity = v
+	}
+	return ret
 }
 
 // BaseEventSelectClauses ...
-var BaseEventSelectClauses []*SimpleAttributeOperand = []*SimpleAttributeOperand{
+var BaseEventSelectClauses []SimpleAttributeOperand = []SimpleAttributeOperand{
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("EventId"), AttributeID: AttributeIDValue},
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("EventType"), AttributeID: AttributeIDValue},
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("SourceName"), AttributeID: AttributeIDValue},

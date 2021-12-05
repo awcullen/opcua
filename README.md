@@ -7,30 +7,31 @@ This package supports OPC UA TCP transport protocol with secure channel and bina
 
 
 ## Usage
-To connect to your OPC UA server, call NewClient, passing the endpoint URL of the server and various security options. NewClient returns a connected client or an error.
+To connect to your OPC UA server, call client.Dial, passing the endpoint URL of the server and various security options. Dial returns a connected client or an error.
 
-With the client, you can call any service of the OPC Unified Architecture, see https://reference.opcfoundation.org/v104/Core/docs/Part4/
+With this client, you can call any service of the OPC Unified Architecture, see https://reference.opcfoundation.org/v104/Core/docs/Part4/
 
-For example, to connect to an OPC UA Demo Server, and read the server's status: 
+For example, to connect to an OPC UA Demo Server available , and read the server's status: 
 
 ```go
 import (
 	"context"
 	"fmt"
 
-	ua "github.com/awcullen/opcua"
+	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/client"
 )
 
-func ExampleClient_Read() {
+func ExampleClient_ReadMe() {
 
 	ctx := context.Background()
 
-	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH. See https://www.unified-automation.com/downloads.html
-	
-	ch, err := ua.NewClient(
+	// open a connection to the on-line OPC UA C++ Demo Server, sponsored by One-Way Automation Inc.
+	// See http://www.opcuaserver.com/
+	ch, err := client.Dial(
 		ctx,
-		"opc.tcp://localhost:48010",
-		ua.WithInsecureSkipVerify(), // skips verification of server certificate
+		"opc.tcp://opcuaserver.com:48010",
+		client.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
 		fmt.Printf("Error opening client connection. %s\n", err.Error())
@@ -38,11 +39,11 @@ func ExampleClient_Read() {
 	}
 
 	// prepare read request
-	req := &ua.ReadRequest{
-		NodesToRead: []*ua.ReadValueID{
+	req := &opcua.ReadRequest{
+		NodesToRead: []opcua.ReadValueID{
 			{
-				NodeID:      ua.VariableIDServerServerStatus,
-				AttributeID: ua.AttributeIDValue,
+				NodeID:      opcua.VariableIDServerServerStatus,
+				AttributeID: opcua.AttributeIDValue,
 			},
 		},
 	}
@@ -56,13 +57,13 @@ func ExampleClient_Read() {
 	}
 
 	// print results
-	if serverStatus, ok := res.Results[0].Value().(*ua.ServerStatusDataType); ok {
+	if serverStatus, ok := res.Results[0].Value().(opcua.ServerStatusDataType); ok {
 		fmt.Printf("Server status:\n")
 		fmt.Printf("  ProductName: %s\n", serverStatus.BuildInfo.ProductName)
 		fmt.Printf("  ManufacturerName: %s\n", serverStatus.BuildInfo.ManufacturerName)
 		fmt.Printf("  State: %s\n", serverStatus.State)
 	} else {
-		fmt.Printf("Error reading ServerStatus. %s\n", res.Results[0].StatusCode())
+		fmt.Printf("Error reading ServerStatus.\n")
 	}
 
 	// close connection
@@ -78,6 +79,7 @@ func ExampleClient_Read() {
 	//   ManufacturerName: Unified Automation GmbH
 	//   State: Running
 }
+
 
 ```
  [1]: robot6.jpg

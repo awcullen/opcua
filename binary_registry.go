@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
@@ -27,8 +27,8 @@ func RegisterBinaryEncodingID(typ reflect.Type, id ExpandedNodeID) {
 
 }
 
-// findBinaryEncodingIDForType finds the BinaryEncodingID given the type.
-func findBinaryEncodingIDForType(typ reflect.Type) (ExpandedNodeID, bool) {
+// FindBinaryEncodingIDForType finds the BinaryEncodingID given the type.
+func FindBinaryEncodingIDForType(typ reflect.Type) (ExpandedNodeID, bool) {
 	if val, ok := binaryEncodingIDs.Load(typ); ok {
 		if id, ok := val.(ExpandedNodeID); ok {
 			return id, ok
@@ -37,8 +37,8 @@ func findBinaryEncodingIDForType(typ reflect.Type) (ExpandedNodeID, bool) {
 	return NilExpandedNodeID, false
 }
 
-// findTypeForBinaryEncodingID finds the Type given the BinaryEncodingID.
-func findTypeForBinaryEncodingID(id ExpandedNodeID) (reflect.Type, bool) {
+// FindTypeForBinaryEncodingID finds the Type given the BinaryEncodingID.
+func FindTypeForBinaryEncodingID(id ExpandedNodeID) (reflect.Type, bool) {
 	if val, ok := binaryEncodingTypes.Load(id); ok {
 		if typ, ok := val.(reflect.Type); ok {
 			return typ, ok

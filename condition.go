@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
@@ -8,55 +8,59 @@ import (
 
 // Condition structure.
 type Condition struct {
-	EventID        ByteString
-	EventType      NodeID
-	SourceName     string
-	Time           time.Time
-	Message        LocalizedText
-	Severity       uint16
-	ConditionID    NodeID
-	ConditionName  string
-	BranchID       NodeID
-	Retain         bool
-	AckedState     bool
-	ConfirmedState bool
+	EventID       ByteString
+	EventType     NodeID
+	SourceName    string
+	Time          time.Time
+	Message       LocalizedText
+	Severity      uint16
+	ConditionID   NodeID
+	ConditionName string
+	BranchID      NodeID
+	Retain        bool
 }
 
 // NewCondition ...
-func NewCondition(eventFields []*Variant) *Condition {
-	e := &Condition{}
-	for i, f := range eventFields {
-		if f.IsNil() {
-			continue
-		}
-		switch i {
-		case 0:
-			e.EventID = f.Value().(ByteString)
-		case 1:
-			e.EventType = f.Value().(NodeID)
-		case 2:
-			e.SourceName = f.Value().(string)
-		case 3:
-			e.Time = f.Value().(time.Time)
-		case 4:
-			e.Message = f.Value().(LocalizedText)
-		case 5:
-			e.Severity = f.Value().(uint16)
-		case 6:
-			e.ConditionID = f.Value().(NodeID)
-		case 7:
-			e.ConditionName = f.Value().(string)
-		case 8:
-			e.BranchID = f.Value().(NodeID)
-		case 9:
-			e.Retain = f.Value().(bool)
-		}
+func NewCondition(eventFields []Variant) *Condition {
+	ret := &Condition{}
+	if len(eventFields) < 10 {
+		return ret
 	}
-	return e
+	if v, ok := eventFields[0].(ByteString); ok {
+		ret.EventID = v
+	}
+	if v, ok := eventFields[1].(NodeID); ok {
+		ret.EventType = v
+	}
+	if v, ok := eventFields[2].(string); ok {
+		ret.SourceName = v
+	}
+	if v, ok := eventFields[3].(time.Time); ok {
+		ret.Time = v
+	}
+	if v, ok := eventFields[4].(LocalizedText); ok {
+		ret.Message = v
+	}
+	if v, ok := eventFields[5].(uint16); ok {
+		ret.Severity = v
+	}
+	if v, ok := eventFields[6].(NodeID); ok {
+		ret.ConditionID = v
+	}
+	if v, ok := eventFields[7].(string); ok {
+		ret.ConditionName = v
+	}
+	if v, ok := eventFields[8].(NodeID); ok {
+		ret.BranchID = v
+	}
+	if v, ok := eventFields[9].(bool); ok {
+		ret.Retain = v
+	}
+	return ret
 }
 
 // ConditionSelectClauses ...
-var ConditionSelectClauses []*SimpleAttributeOperand = []*SimpleAttributeOperand{
+var ConditionSelectClauses []SimpleAttributeOperand = []SimpleAttributeOperand{
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("EventId"), AttributeID: AttributeIDValue},
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("EventType"), AttributeID: AttributeIDValue},
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("SourceName"), AttributeID: AttributeIDValue},

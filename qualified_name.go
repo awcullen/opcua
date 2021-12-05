@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
@@ -18,9 +18,6 @@ type QualifiedName struct {
 func NewQualifiedName(ns uint16, text string) QualifiedName {
 	return QualifiedName{ns, text}
 }
-
-// NilQualifiedName is the nil value.
-var NilQualifiedName = QualifiedName{}
 
 // ParseQualifiedName returns a QualifiedName from a string, e.g. ParseQualifiedName("2:Demo")
 func ParseQualifiedName(s string) QualifiedName {
@@ -51,4 +48,8 @@ func ParseBrowsePath(s string) []QualifiedName {
 // String returns a string representation, e.g. "2:Demo"
 func (a QualifiedName) String() string {
 	return fmt.Sprintf("%d:%s", a.NamespaceIndex, a.Name)
+}
+
+func (a QualifiedName) MarshalText() ([]byte, error) {
+	return []byte(a.String()), nil
 }

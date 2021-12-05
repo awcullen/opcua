@@ -12,94 +12,108 @@ import (
 )
 
 // NodeID identifies a Node.
-type NodeID struct {
-	namespaceIndex uint16
-	idType         IDType
-	nid            uint32
-	sid            string
-	gid            uuid.UUID
-	bid            ByteString
+type NodeID interface {
+	nodeID()
 }
 
-// NewNodeIDNumeric constructs a new NodeID of numeric type.
-func NewNodeIDNumeric(namespaceIndex uint16, identifier uint32) NodeID {
-	return NodeID{namespaceIndex, IDTypeNumeric, identifier, "", uuid.Nil, ""}
+// NodeIDNumeric is a NodeID of numeric type.
+type NodeIDNumeric struct {
+	NamespaceIndex uint16
+	ID             uint32
 }
 
-// NewNodeIDString constructs a new NodeID of string type.
-func NewNodeIDString(namespaceIndex uint16, identifier string) NodeID {
-	return NodeID{namespaceIndex, IDTypeString, 0, identifier, uuid.Nil, ""}
+// NewNodeIDNumeric makes a NodeID of numeric type.
+func NewNodeIDNumeric(ns uint16, id uint32) NodeIDNumeric {
+	return NodeIDNumeric{ns, id}
 }
 
-// NewNodeIDGUID constructs a new NodeID of GUID type.
-func NewNodeIDGUID(namespaceIndex uint16, identifier uuid.UUID) NodeID {
-	return NodeID{namespaceIndex, IDTypeGUID, 0, "", identifier, ""}
-}
+func (n NodeIDNumeric) nodeID() {}
 
-// NewNodeIDOpaque constructs a new NodeID of opaque type.
-func NewNodeIDOpaque(namespaceIndex uint16, identifier ByteString) NodeID {
-	return NodeID{namespaceIndex, IDTypeOpaque, 0, "", uuid.Nil, identifier}
-}
-
-// NamespaceIndex returns the namespace index.
-func (n NodeID) NamespaceIndex() uint16 {
-	return n.namespaceIndex
-}
-
-// IDType returns the identifier type.
-func (n NodeID) IDType() IDType {
-	return n.idType
-}
-
-// Identifier returns the identifier.
-func (n NodeID) Identifier() interface{} {
-	switch n.idType {
-	case IDTypeNumeric:
-		return n.nid
-	case IDTypeString:
-		return n.sid
-	case IDTypeGUID:
-		return n.gid
-	case IDTypeOpaque:
-		return n.bid
+// String returns a string representation, e.g. "i=85"
+func (n NodeIDNumeric) String() string {
+	if n.NamespaceIndex == 0 {
+		return fmt.Sprintf("i=%d", n.ID)
 	}
-	return nil
+	return fmt.Sprintf("ns=%d;i=%d", n.NamespaceIndex, n.ID)
 }
 
-// NilNodeID is the nil value.
-var NilNodeID = NodeID{0, 0, 0, "", uuid.Nil, ""}
-
-// IsNil returns true if the nodeId is nil
-func (n NodeID) IsNil() bool {
-	if n.namespaceIndex > 0 {
-		return false
-	}
-	switch n.idType {
-	case IDTypeNumeric:
-		return n.nid == 0
-	case IDTypeString:
-		return len(n.sid) == 0
-	case IDTypeGUID:
-		return n.gid == uuid.Nil
-	case IDTypeOpaque:
-		return len(n.bid) == 0
-	}
-	return false
+func (n NodeIDNumeric) MarshalText() ([]byte, error) {
+	return []byte(n.String()), nil
 }
 
-// IsValid returns true if the nodeId is valid
-func (n NodeID) IsValid() bool {
-	switch n.idType {
-	case IDTypeNumeric:
-		return n.nid != 0
-	case IDTypeString:
-		return len(n.sid) <= 4096 && len(n.sid) > 0
-	case IDTypeGUID:
-		return n.gid != uuid.Nil
-	case IDTypeOpaque:
-		return len(n.bid) <= 4096 && len(n.bid) > 0
+// NodeIDString is a NodeID of string type.
+type NodeIDString struct {
+	NamespaceIndex uint16
+	ID             string
+}
+
+// NewNodeIDString makes a NodeID of string type.
+func NewNodeIDString(ns uint16, id string) NodeIDString {
+	return NodeIDString{ns, id}
+}
+
+func (n NodeIDString) nodeID() {}
+
+// String returns a string representation, e.g. "ns=2;s=Demo.Static.Scalar.Float"
+func (n NodeIDString) String() string {
+	if n.NamespaceIndex == 0 {
+		return fmt.Sprintf("s=%s", n.ID)
 	}
-	return false
+	return fmt.Sprintf("ns=%d;s=%s", n.NamespaceIndex, n.ID)
+}
+
+func (n NodeIDString) MarshalText() ([]byte, error) {
+	return []byte(n.String()), nil
+}
+
+// NodeIDGUID is a NodeID of GUID type.
+type NodeIDGUID struct {
+	NamespaceIndex uint16
+	ID             uuid.UUID
+}
+
+// NewNodeIDGUID makes a NodeID of GUID type.
+func NewNodeIDGUID(ns uint16, id uuid.UUID) NodeIDGUID {
+	return NodeIDGUID{ns, id}
+}
+
+func (n NodeIDGUID) nodeID() {}
+
+// String returns a string representation, e.g. "ns=2;g=5ce9dbce-5d79-434c-9ac3-1cfba9a6e92c"
+func (n NodeIDGUID) String() string {
+	if n.NamespaceIndex == 0 {
+		return fmt.Sprintf("g=%s", n.ID)
+	}
+	return fmt.Sprintf("ns=%d;g=%s", n.NamespaceIndex, n.ID)
+}
+
+func (n NodeIDGUID) MarshalText() ([]byte, error) {
+	return []byte(n.String()), nil
+}
+
+// NodeIDOpaque is a new NodeID of opaque type.
+type NodeIDOpaque struct {
+	NamespaceIndex uint16
+	ID             ByteString
+}
+
+// NewNodeIDOpaque makes a NodeID of opaque type.
+func NewNodeIDOpaque(ns uint16, id ByteString) NodeIDOpaque {
+	return NodeIDOpaque{ns, id}
+}
+
+func (n NodeIDOpaque) nodeID() {}
+
+// String returns a string representation, e.g. "ns=2;b=YWJjZA=="
+func (n NodeIDOpaque) String() string {
+	if n.NamespaceIndex == 0 {
+		return fmt.Sprintf("b=%s", base64.StdEncoding.EncodeToString([]byte(n.ID)))
+	}
+	return fmt.Sprintf("ns=%d;b=%s", n.NamespaceIndex, base64.StdEncoding.EncodeToString([]byte(n.ID)))
+}
+
+func (n NodeIDOpaque) MarshalText() ([]byte, error) {
+	return []byte(n.String()), nil
 }
 
 // ParseNodeID returns a NodeID from a string representation.
@@ -113,11 +127,11 @@ func ParseNodeID(s string) NodeID {
 	if strings.HasPrefix(s, "ns=") {
 		var pos = strings.Index(s, ";")
 		if pos == -1 {
-			return NilNodeID
+			return nil
 		}
 		ns, err = strconv.ParseUint(s[3:pos], 10, 16)
 		if err != nil {
-			return NilNodeID
+			return nil
 		}
 		s = s[pos+1:]
 	}
@@ -125,72 +139,56 @@ func ParseNodeID(s string) NodeID {
 	case strings.HasPrefix(s, "i="):
 		var id, err = strconv.ParseUint(s[2:], 10, 32)
 		if err != nil {
-			return NilNodeID
+			return nil
 		}
-		return NewNodeIDNumeric(uint16(ns), uint32(id))
+		if id == 0 && ns == 0 {
+			return nil
+		}
+		return NodeIDNumeric{uint16(ns), uint32(id)}
 	case strings.HasPrefix(s, "s="):
-		return NewNodeIDString(uint16(ns), s[2:])
+		return NodeIDString{uint16(ns), s[2:]}
 	case strings.HasPrefix(s, "g="):
 		var id, err = uuid.Parse(s[2:])
 		if err != nil {
-			return NilNodeID
+			return nil
 		}
-		return NewNodeIDGUID(uint16(ns), id)
+		return NodeIDGUID{uint16(ns), id}
 	case strings.HasPrefix(s, "b="):
 		var id, err = base64.StdEncoding.DecodeString(s[2:])
 		if err != nil {
-			return NilNodeID
+			return nil
 		}
-		return NewNodeIDOpaque(uint16(ns), ByteString(id))
+		return NodeIDOpaque{uint16(ns), ByteString(id)}
 	}
-	return NilNodeID
-}
-
-// String returns a string representation of the NodeID, e.g. "ns=2;s=Demo"
-func (n NodeID) String() string {
-	if n.namespaceIndex > 0 {
-		switch n.idType {
-		case IDTypeNumeric:
-			return fmt.Sprintf("ns=%d;i=%d", n.namespaceIndex, n.nid)
-		case IDTypeString:
-			return fmt.Sprintf("ns=%d;s=%s", n.namespaceIndex, n.sid)
-		case IDTypeGUID:
-			return fmt.Sprintf("ns=%d;g=%s", n.namespaceIndex, n.gid)
-		case IDTypeOpaque:
-			return fmt.Sprintf("ns=%d;b=%s", n.namespaceIndex, base64.StdEncoding.EncodeToString([]byte(n.bid)))
-		default:
-			return ""
-		}
-	}
-	switch n.idType {
-	case IDTypeNumeric:
-		return fmt.Sprintf("i=%d", n.nid)
-	case IDTypeString:
-		return fmt.Sprintf("s=%s", n.sid)
-	case IDTypeGUID:
-		return fmt.Sprintf("g=%s", n.gid)
-	case IDTypeOpaque:
-		return fmt.Sprintf("b=%s", base64.StdEncoding.EncodeToString([]byte(n.bid)))
-	default:
-		return ""
-	}
+	return nil
 }
 
 // ToExpandedNodeID converts the NodeID to an ExpandedNodeID.
 // Note: When creating a reference, and the target NodeID is a local node,
 // use: NewExpandedNodeID(nodeId)
-func (n NodeID) ToExpandedNodeID(namespaceURIs []string) ExpandedNodeID {
-	if n.namespaceIndex > 0 && n.namespaceIndex < uint16(len(namespaceURIs)) {
-		switch n.idType {
-		case IDTypeNumeric:
-			return NewExpandedNodeIDNumeric(0, namespaceURIs[n.namespaceIndex], n.nid)
-		case IDTypeString:
-			return NewExpandedNodeIDString(0, namespaceURIs[n.namespaceIndex], n.sid)
-		case IDTypeGUID:
-			return NewExpandedNodeIDGUID(0, namespaceURIs[n.namespaceIndex], n.gid)
-		case IDTypeOpaque:
-			return NewExpandedNodeIDOpaque(0, namespaceURIs[n.namespaceIndex], n.bid)
+func ToExpandedNodeID(n NodeID, namespaceURIs []string) ExpandedNodeID {
+	switch n2 := n.(type) {
+	case NodeIDNumeric:
+		if n2.NamespaceIndex > 0 && n2.NamespaceIndex < uint16(len(namespaceURIs)) {
+			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], n}
 		}
+		return ExpandedNodeID{NodeID: n}
+	case NodeIDString:
+		if n2.NamespaceIndex > 0 && n2.NamespaceIndex < uint16(len(namespaceURIs)) {
+			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], n}
+		}
+		return ExpandedNodeID{NodeID: n}
+	case NodeIDGUID:
+		if n2.NamespaceIndex > 0 && n2.NamespaceIndex < uint16(len(namespaceURIs)) {
+			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], n}
+		}
+		return ExpandedNodeID{NodeID: n}
+	case NodeIDOpaque:
+		if n2.NamespaceIndex > 0 && n2.NamespaceIndex < uint16(len(namespaceURIs)) {
+			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], n}
+		}
+		return ExpandedNodeID{NodeID: n}
+	default:
+		return NilExpandedNodeID
 	}
-	return ExpandedNodeID{nodeID: n}
 }

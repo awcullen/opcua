@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
@@ -19,5 +19,12 @@ func NewLocalizedText(text, locale string) LocalizedText {
 
 // String returns the string representation, e.g. "text (locale)"
 func (a LocalizedText) String() string {
+	if a.Locale == "" {
+		return a.Text
+	}
 	return fmt.Sprintf("%s (%s)", a.Text, a.Locale)
+}
+
+func (a LocalizedText) MarshalText() ([]byte, error) {
+	return []byte(a.String()), nil
 }

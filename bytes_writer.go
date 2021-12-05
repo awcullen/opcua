@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
@@ -15,8 +15,7 @@ type Writer struct {
 // NewWriter returns a new Writer writing to b.
 func NewWriter(b []byte) *Writer { return &Writer{b, 0} }
 
-// Len returns the number of bytes of the written portion of the
-// slice.
+// Len returns the number of bytes of the written portion of the slice.
 func (w *Writer) Len() int {
 	return int(w.i)
 }

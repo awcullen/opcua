@@ -944,7 +944,7 @@
     <opc:Field Name="NoOfFields" TypeName="opc:Int32" />
     <opc:Field Name="Fields" TypeName="tns:EnumField" LengthField="NoOfFields" />
   </opc:StructuredType>
-
+  <!--   
   <opc:StructuredType Name="Node" BaseType="ua:ExtensionObject">
     <opc:Field Name="NodeId" TypeName="ua:NodeId" />
     <opc:Field Name="NodeClass" TypeName="tns:NodeClass" />
@@ -1164,7 +1164,7 @@
     <opc:Field Name="IsInverse" TypeName="opc:Boolean" />
     <opc:Field Name="TargetId" TypeName="ua:ExpandedNodeId" />
   </opc:StructuredType>
-
+ -->
   <opc:StructuredType Name="Argument" BaseType="ua:ExtensionObject">
     <opc:Field Name="Name" TypeName="opc:String" />
     <opc:Field Name="DataType" TypeName="ua:NodeId" />

@@ -6,55 +6,58 @@ import (
 	"testing"
 	"time"
 
-	ua "github.com/awcullen/opcua"
+	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/client"
 	"github.com/pkg/errors"
 )
 
 func TestDeserializeBaseEvent(t *testing.T) {
-	f := []*ua.Variant{
-		ua.NewVariantByteString(ua.ByteString("foo")),
-		ua.NewVariantNodeID(ua.NewNodeIDString(1, "bar")),
-		ua.NewVariantString("source"),
-		ua.NewVariantDateTime(time.Now().UTC()),
-		ua.NewVariantLocalizedText(ua.NewLocalizedText("Temperature is high.", "en")),
-		ua.NewVariantUInt16(255),
+	f := []opcua.Variant{
+		opcua.ByteString("foo"),
+		opcua.NewNodeIDString(1, "bar"),
+		"source",
+		time.Now().UTC(),
+		opcua.NewLocalizedText("Temperature is high.", "en"),
+		uint16(255),
 	}
-	e := ua.NewBaseEvent(f)
+	e := opcua.NewBaseEvent(f)
 	t.Logf("%+v", e)
 }
 
 func TestDeserializeCondition(t *testing.T) {
-	f := []*ua.Variant{
-		ua.NewVariantByteString(ua.ByteString("foo")),
-		ua.NewVariantNodeID(ua.NewNodeIDString(1, "bar")),
-		ua.NewVariantString("source"),
-		ua.NewVariantDateTime(time.Now().UTC()),
-		ua.NewVariantLocalizedText(ua.NewLocalizedText("Temperature is high.", "en")),
-		ua.NewVariantUInt16(255),
-		ua.NewVariantNodeID(ua.NewNodeIDNumeric(1, 45)),
-		ua.NewVariantString("ConditionName"),
-		ua.NewVariantNodeID(ua.NilNodeID),
-		ua.NewVariantBoolean(true),
+	f := []opcua.Variant{
+		opcua.ByteString("foo"),
+		opcua.NewNodeIDString(1, "bar"),
+		"source",
+		time.Now().UTC(),
+		opcua.NewLocalizedText("Temperature is high.", "en"),
+		uint16(255),
+		opcua.NewNodeIDNumeric(1, 45),
+		"ConditionName",
+		nil,
+		true,
 	}
-	e := ua.NewCondition(f)
+	e := opcua.NewCondition(f)
 	t.Logf("%+v", e)
 }
 
 // requires UnifiedAutomation UaCPPServer
 func TestSubscribeBaseEvent(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancelFunc()
+
 	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
-	ch, err := ua.NewClient(
+	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://127.0.0.1:48010",
-		ua.WithTrustedCertificatesFile("./pki/trusted.pem"),
+		client.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
 		t.Error(errors.Wrap(err, "Error opening client"))
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &ua.CreateSubscriptionRequest{
+	req := &opcua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
 		RequestedMaxKeepAliveCount:  30,
 		RequestedLifetimeCount:      30 * 3,
@@ -66,16 +69,16 @@ func TestSubscribeBaseEvent(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	req2 := &ua.CreateMonitoredItemsRequest{
+	req2 := &opcua.CreateMonitoredItemsRequest{
 		SubscriptionID:     res.SubscriptionID,
-		TimestampsToReturn: ua.TimestampsToReturnBoth,
-		ItemsToCreate: []*ua.MonitoredItemCreateRequest{
+		TimestampsToReturn: opcua.TimestampsToReturnBoth,
+		ItemsToCreate: []opcua.MonitoredItemCreateRequest{
 			{
-				ItemToMonitor:  &ua.ReadValueID{AttributeID: ua.AttributeIDEventNotifier, NodeID: ua.ObjectIDServer},
-				MonitoringMode: ua.MonitoringModeReporting,
-				RequestedParameters: &ua.MonitoringParameters{
+				ItemToMonitor:  opcua.ReadValueID{AttributeID: opcua.AttributeIDEventNotifier, NodeID: opcua.ObjectIDServer},
+				MonitoringMode: opcua.MonitoringModeReporting,
+				RequestedParameters: opcua.MonitoringParameters{
 					ClientHandle: 42, QueueSize: 1000, DiscardOldest: true, SamplingInterval: 0.0,
-					Filter: &ua.EventFilter{SelectClauses: ua.BaseEventSelectClauses},
+					Filter: opcua.EventFilter{SelectClauses: opcua.BaseEventSelectClauses},
 				},
 			},
 		},
@@ -86,14 +89,18 @@ func TestSubscribeBaseEvent(t *testing.T) {
 	}
 	_ = res2
 
-	pubFunc := func(ctx context.Context, wg *sync.WaitGroup, ch *ua.Client) {
-		req := &ua.PublishRequest{
-			RequestHeader:                ua.RequestHeader{TimeoutHint: 60000},
-			SubscriptionAcknowledgements: []*ua.SubscriptionAcknowledgement{},
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		req := &opcua.PublishRequest{
+			RequestHeader:                opcua.RequestHeader{TimeoutHint: 60000},
+			SubscriptionAcknowledgements: []opcua.SubscriptionAcknowledgement{},
 		}
 		for {
 			select {
 			case <-ctx.Done():
+				t.Error(errors.Wrap(err, "Error timeout"))
 				wg.Done()
 				return
 			default:
@@ -103,12 +110,12 @@ func TestSubscribeBaseEvent(t *testing.T) {
 					return
 				}
 				// loop thru all the notifications.
-				for _, n := range res.NotificationMessage.NotificationData {
-					switch o := n.(type) {
-					case *ua.EventNotificationList:
-						for _, z := range o.Events {
+				for _, data := range res.NotificationMessage.NotificationData {
+					switch body := data.(type) {
+					case opcua.EventNotificationList:
+						for _, z := range body.Events {
 							if z.ClientHandle == 42 {
-								e := ua.NewBaseEvent(z.EventFields)
+								e := opcua.NewBaseEvent(z.EventFields)
 								t.Logf("%+v", e)
 								wg.Done()
 								return
@@ -117,25 +124,19 @@ func TestSubscribeBaseEvent(t *testing.T) {
 					}
 				}
 
-				req = &ua.PublishRequest{
-					RequestHeader: ua.RequestHeader{TimeoutHint: 60000},
-					SubscriptionAcknowledgements: []*ua.SubscriptionAcknowledgement{
+				req = &opcua.PublishRequest{
+					RequestHeader: opcua.RequestHeader{TimeoutHint: 60000},
+					SubscriptionAcknowledgements: []opcua.SubscriptionAcknowledgement{
 						{SequenceNumber: res.NotificationMessage.SequenceNumber, SubscriptionID: res.SubscriptionID},
 					},
 				}
 			}
 		}
-	}
+	}()
 
-	ctx, cancelFunc := context.WithTimeout(ctx, 60*time.Second)
-	defer cancelFunc()
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go pubFunc(ctx, wg, ch)
-
-	req3 := &ua.WriteRequest{
-		NodesToWrite: []*ua.WriteValue{
-			{AttributeID: ua.AttributeIDValue, NodeID: ua.ParseNodeID("ns=2;s=Demo.Events.Trigger_BaseEvent"), Value: ua.NewDataValueBoolean(true, 0, time.Time{}, 0, time.Time{}, 0)},
+	req3 := &opcua.WriteRequest{
+		NodesToWrite: []opcua.WriteValue{
+			{AttributeID: opcua.AttributeIDValue, NodeID: opcua.ParseNodeID("ns=2;s=Demo.Events.Trigger_BaseEvent"), Value: opcua.DataValue{true, 0, time.Time{}, 0, time.Time{}, 0}},
 		},
 	}
 	_, err = ch.Write(ctx, req3)
@@ -144,9 +145,9 @@ func TestSubscribeBaseEvent(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	req4 := &ua.WriteRequest{
-		NodesToWrite: []*ua.WriteValue{
-			{AttributeID: ua.AttributeIDValue, NodeID: ua.ParseNodeID("ns=2;s=Demo.Events.Trigger_BaseEvent"), Value: ua.NewDataValueBoolean(false, 0, time.Time{}, 0, time.Time{}, 0)},
+	req4 := &opcua.WriteRequest{
+		NodesToWrite: []opcua.WriteValue{
+			{AttributeID: opcua.AttributeIDValue, NodeID: opcua.ParseNodeID("ns=2;s=Demo.Events.Trigger_BaseEvent"), Value: opcua.DataValue{false, 0, time.Time{}, 0, time.Time{}, 0}},
 		},
 	}
 	_, err = ch.Write(ctx, req4)
@@ -163,19 +164,21 @@ func TestSubscribeBaseEvent(t *testing.T) {
 
 // requires UnifiedAutomation UaCPPServer
 func TestSubscribeAlarm(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancelFunc := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancelFunc()
+
 	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
-	ch, err := ua.NewClient(
+	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://127.0.0.1:48010",
-		ua.WithTrustedCertificatesFile("./pki/trusted.pem"),
+		client.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
 		t.Error(errors.Wrap(err, "Error opening client"))
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &ua.CreateSubscriptionRequest{
+	req := &opcua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
 		RequestedMaxKeepAliveCount:  30,
 		RequestedLifetimeCount:      30 * 3,
@@ -187,16 +190,16 @@ func TestSubscribeAlarm(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	req2 := &ua.CreateMonitoredItemsRequest{
+	req2 := &opcua.CreateMonitoredItemsRequest{
 		SubscriptionID:     res.SubscriptionID,
-		TimestampsToReturn: ua.TimestampsToReturnBoth,
-		ItemsToCreate: []*ua.MonitoredItemCreateRequest{
+		TimestampsToReturn: opcua.TimestampsToReturnBoth,
+		ItemsToCreate: []opcua.MonitoredItemCreateRequest{
 			{
-				ItemToMonitor:  &ua.ReadValueID{AttributeID: ua.AttributeIDEventNotifier, NodeID: ua.ObjectIDServer},
-				MonitoringMode: ua.MonitoringModeReporting,
-				RequestedParameters: &ua.MonitoringParameters{
+				ItemToMonitor:  opcua.ReadValueID{AttributeID: opcua.AttributeIDEventNotifier, NodeID: opcua.ObjectIDServer},
+				MonitoringMode: opcua.MonitoringModeReporting,
+				RequestedParameters: opcua.MonitoringParameters{
 					ClientHandle: 42, QueueSize: 1000, DiscardOldest: true, SamplingInterval: 0.0,
-					Filter: &ua.EventFilter{SelectClauses: ua.AlarmConditionSelectClauses},
+					Filter: opcua.EventFilter{SelectClauses: opcua.AlarmConditionSelectClauses},
 				},
 			},
 		},
@@ -207,14 +210,18 @@ func TestSubscribeAlarm(t *testing.T) {
 	}
 	_ = res2
 
-	pubFunc := func(ctx context.Context, wg *sync.WaitGroup, ch *ua.Client) {
-		req := &ua.PublishRequest{
-			RequestHeader:                ua.RequestHeader{TimeoutHint: 60000},
-			SubscriptionAcknowledgements: []*ua.SubscriptionAcknowledgement{},
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		req := &opcua.PublishRequest{
+			RequestHeader:                opcua.RequestHeader{TimeoutHint: 60000},
+			SubscriptionAcknowledgements: []opcua.SubscriptionAcknowledgement{},
 		}
 		for {
 			select {
 			case <-ctx.Done():
+				t.Error(errors.Wrap(err, "Error timeout"))
 				wg.Done()
 				return
 			default:
@@ -224,12 +231,12 @@ func TestSubscribeAlarm(t *testing.T) {
 					return
 				}
 				// loop thru all the notifications.
-				for _, n := range res.NotificationMessage.NotificationData {
-					switch o := n.(type) {
-					case *ua.EventNotificationList:
-						for _, z := range o.Events {
+				for _, data := range res.NotificationMessage.NotificationData {
+					switch body := data.(type) {
+					case opcua.EventNotificationList:
+						for _, z := range body.Events {
 							if z.ClientHandle == 42 {
-								e := ua.NewAlarmCondition(z.EventFields)
+								e := opcua.NewAlarmCondition(z.EventFields)
 								t.Logf("%+v", e)
 								wg.Done()
 								return
@@ -238,25 +245,19 @@ func TestSubscribeAlarm(t *testing.T) {
 					}
 				}
 
-				req = &ua.PublishRequest{
-					RequestHeader: ua.RequestHeader{TimeoutHint: 60000},
-					SubscriptionAcknowledgements: []*ua.SubscriptionAcknowledgement{
+				req = &opcua.PublishRequest{
+					RequestHeader: opcua.RequestHeader{TimeoutHint: 60000},
+					SubscriptionAcknowledgements: []opcua.SubscriptionAcknowledgement{
 						{SequenceNumber: res.NotificationMessage.SequenceNumber, SubscriptionID: res.SubscriptionID},
 					},
 				}
 			}
 		}
-	}
+	}()
 
-	ctx, cancelFunc := context.WithTimeout(ctx, 60*time.Second)
-	defer cancelFunc()
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	go pubFunc(ctx, wg, ch)
-
-	req3 := &ua.WriteRequest{
-		NodesToWrite: []*ua.WriteValue{
-			{AttributeID: ua.AttributeIDValue, NodeID: ua.ParseNodeID("ns=2;s=AlarmsNoNodes.OffNormalAlarmTrigger"), Value: ua.NewDataValueBoolean(true, 0, time.Time{}, 0, time.Time{}, 0)},
+	req3 := &opcua.WriteRequest{
+		NodesToWrite: []opcua.WriteValue{
+			{AttributeID: opcua.AttributeIDValue, NodeID: opcua.ParseNodeID("ns=2;s=AlarmsNoNodes.OffNormalAlarmTrigger"), Value: opcua.DataValue{true, 0, time.Time{}, 0, time.Time{}, 0}},
 		},
 	}
 	_, err = ch.Write(ctx, req3)
@@ -265,9 +266,9 @@ func TestSubscribeAlarm(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	req4 := &ua.WriteRequest{
-		NodesToWrite: []*ua.WriteValue{
-			{AttributeID: ua.AttributeIDValue, NodeID: ua.ParseNodeID("ns=2;s=AlarmsNoNodes.OffNormalAlarmTrigger"), Value: ua.NewDataValueBoolean(false, 0, time.Time{}, 0, time.Time{}, 0)},
+	req4 := &opcua.WriteRequest{
+		NodesToWrite: []opcua.WriteValue{
+			{AttributeID: opcua.AttributeIDValue, NodeID: opcua.ParseNodeID("ns=2;s=AlarmsNoNodes.OffNormalAlarmTrigger"), Value: opcua.DataValue{false, 0, time.Time{}, 0, time.Time{}, 0}},
 		},
 	}
 	_, err = ch.Write(ctx, req4)

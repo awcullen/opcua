@@ -10,5 +10,6 @@ debug
 vendor/
 __debug_bin
 pki/
+pkiusers/
 *.exe
 .vscode/

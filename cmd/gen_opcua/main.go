@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 // gen_opcua is a tool to generate the standard types, nodeids, and status codes from the schema provided by the OPC Foundation.
 package main
@@ -33,18 +33,18 @@ var (
 		"Double":          "float64",
 		"String":          "string",
 		"DateTime":        "time.Time",
-		"Guid":            "uuid.UUID",
+		"GUID":            "uuid.UUID",
 		"ByteString":      "ByteString",
 		"XmlElement":      "XmlElement",
-		"NodeId":          "NodeID",
-		"ExpandedNodeId":  "ExpandedNodeID",
+		"NodeID":          "NodeID",
+		"ExpandedNodeID":  "ExpandedNodeID",
 		"StatusCode":      "StatusCode",
 		"QualifiedName":   "QualifiedName",
 		"LocalizedText":   "LocalizedText",
-		"ExtensionObject": "interface{}",
-		"DataValue":       "*DataValue",
-		"Variant":         "*Variant",
-		"DiagnosticInfo":  "*DiagnosticInfo",
+		"ExtensionObject": "ExtensionObject",
+		"DataValue":       "DataValue",
+		"Variant":         "Variant",
+		"DiagnosticInfo":  "DiagnosticInfo",
 	}
 
 	goCaseReplacer = strings.NewReplacer(
@@ -88,7 +88,7 @@ func main() {
 		log.Fatalf("Failed to read type definitions: %s", err)
 	}
 	enums := makeEnums(dict)
-	structs := makeStructs(dict)
+	structs := makeStructs(dict, enums)
 	writeEnums(enums, path.Join(out, "enums.generated.go"))
 	writeStructs(structs, path.Join(out, "structs.generated.go"))
 }
@@ -109,9 +109,9 @@ func readStatusCodes(filename string) ([]statusCode, error) {
 	if err != nil {
 		log.Fatalf("Error parsing %s: %v", filename, err)
 	}
-	statusCodes := make([]statusCode, 0, len(rows))
+	statusCodes := make([]statusCode, len(rows))
 	for i := range rows {
-		statusCodes = append(statusCodes, statusCode{Name: goCaseReplacer.Replace(rows[i][0]), Value: rows[i][1], Description: rows[i][2]})
+		statusCodes[i] = statusCode{Name: goCaseReplacer.Replace(rows[i][0]), Value: rows[i][1], Description: rows[i][2]}
 	}
 	return statusCodes, nil
 }
@@ -143,9 +143,9 @@ func readNodeIDs(filename string) ([]nodeID, error) {
 	if err != nil {
 		log.Fatalf("Error parsing %s: %v", filename, err)
 	}
-	nodeIDs := make([]nodeID, 0, len(rows))
+	nodeIDs := make([]nodeID, len(rows))
 	for i := range rows {
-		nodeIDs = append(nodeIDs, nodeID{Name: goCaseReplacer.Replace(rows[i][2] + "ID" + rows[i][0]), Value: rows[i][1]})
+		nodeIDs[i] = nodeID{Name: goCaseReplacer.Replace(rows[i][2] + "ID" + rows[i][0]), Value: rows[i][1]}
 	}
 	return nodeIDs, nil
 }
@@ -186,34 +186,41 @@ func writeStructs(structs []*structType, filename string) {
 	}
 }
 
-func makeField(sf *structuredField, enums []*enumeratedType) *structField {
+func makeField(sf *structuredField, enums []*enumType) *structField {
 	t := strings.TrimPrefix(sf.Type, "ua:")
 	t = strings.TrimPrefix(t, "tns:")
 	t = strings.TrimPrefix(t, "opc:")
-	a := ""
-	if len(sf.LengthField) > 0 {
-		a = "[]"
-	}
+	t = goCaseReplacer.Replace(t)
 
 	// Is built-in?
-	if t, found := builtInTypeMap[t]; found {
-		return &structField{
-			Name: goCaseReplacer.Replace(sf.Name),
-			Type: a + t,
+	if t2, found := builtInTypeMap[t]; found {
+		if len(sf.LengthField) > 0 {
+			return &structField{
+				Name:    goCaseReplacer.Replace(sf.Name),
+				Type:    t2,
+				IsSlice: true,
+			}
+		} else {
+			return &structField{
+				Name: goCaseReplacer.Replace(sf.Name),
+				Type: t2,
+			}
 		}
 	}
 
 	// Is embedded?
 	if t == "RequestHeader" {
 		return &structField{
-			Name: "RequestHeader",
-			Type: "",
+			Name:       "RequestHeader",
+			Type:       "RequestHeader",
+			IsEmbedded: true,
 		}
 	}
 	if t == "ResponseHeader" {
 		return &structField{
-			Name: "ResponseHeader",
-			Type: "",
+			Name:       "ResponseHeader",
+			Type:       "ResponseHeader",
+			IsEmbedded: true,
 		}
 	}
 
@@ -226,17 +233,36 @@ func makeField(sf *structuredField, enums []*enumeratedType) *structField {
 		}
 	}
 	if isEnum {
-		return &structField{
-			Name: goCaseReplacer.Replace(sf.Name),
-			Type: a + goCaseReplacer.Replace(t),
+		if len(sf.LengthField) > 0 {
+			return &structField{
+				Name:    goCaseReplacer.Replace(sf.Name),
+				Type:    t,
+				IsSlice: true,
+				IsEnum:  true,
+			}
+		} else {
+			return &structField{
+				Name:   goCaseReplacer.Replace(sf.Name),
+				Type:   t,
+				IsEnum: true,
+			}
 		}
 	}
 
 	// structs
-	return &structField{
-		Name: goCaseReplacer.Replace(sf.Name),
-		Type: a + "*" + goCaseReplacer.Replace(t),
+	if len(sf.LengthField) > 0 {
+		return &structField{
+			Name:    goCaseReplacer.Replace(sf.Name),
+			Type:    t,
+			IsSlice: true,
+		}
+	} else {
+		return &structField{
+			Name: goCaseReplacer.Replace(sf.Name),
+			Type: t,
+		}
 	}
+
 }
 
 type enumType struct {
@@ -251,13 +277,13 @@ type enumValue struct {
 }
 
 func makeEnums(dict *typeDictionary) []*enumType {
-	enums := make([]*enumType, 0, len(dict.EnumeratedTypes))
-	for _, et := range dict.EnumeratedTypes {
-		values := make([]*enumValue, 0, len(et.Values))
-		for _, ev := range et.Values {
-			values = append(values, &enumValue{Name: goCaseReplacer.Replace(ev.Name), Value: ev.Value})
+	enums := make([]*enumType, len(dict.EnumeratedTypes))
+	for i, et := range dict.EnumeratedTypes {
+		values := make([]*enumValue, len(et.Values))
+		for j, ev := range et.Values {
+			values[j] = &enumValue{Name: goCaseReplacer.Replace(ev.Name), Value: ev.Value}
 		}
-		enums = append(enums, &enumType{Name: goCaseReplacer.Replace(et.Name), Type: "int32", Values: values})
+		enums[i] = &enumType{Name: goCaseReplacer.Replace(et.Name), Type: "int32", Values: values}
 	}
 	return enums
 }
@@ -269,12 +295,14 @@ type structType struct {
 }
 
 type structField struct {
-	Name    string
-	Type    string
-	IsSlice bool
+	Name       string
+	Type       string
+	IsEmbedded bool
+	IsSlice    bool
+	IsEnum     bool
 }
 
-func makeStructs(dict *typeDictionary) []*structType {
+func makeStructs(dict *typeDictionary, enums []*enumType) []*structType {
 	structs := make([]*structType, 0, len(dict.StructuredTypes))
 	for _, st := range dict.StructuredTypes {
 		if len(st.BaseType) > 0 {
@@ -288,7 +316,7 @@ func makeStructs(dict *typeDictionary) []*structType {
 					}
 				}
 				if !skip {
-					fields = append(fields, makeField(sf, dict.EnumeratedTypes))
+					fields = append(fields, makeField(sf, enums))
 				}
 			}
 			structs = append(structs, &structType{Name: goCaseReplacer.Replace(st.Name), Fields: fields})
@@ -345,7 +373,7 @@ func readTypes(filename string) (*typeDictionary, error) {
 	return d, nil
 }
 
-var tmplStatus = `// Copyright 2020 Converter Systems LLC. All rights reserved.
+var tmplStatus = `// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 // Code generated by go generate; DO NOT EDIT.
 
@@ -373,7 +401,7 @@ func (c StatusCode) Error() string {
 }
 `
 
-var tmplEnum = `// Copyright 2020 Converter Systems LLC. All rights reserved.
+var tmplEnum = `// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 // Code generated by go generate; DO NOT EDIT.
 
@@ -403,7 +431,7 @@ func (v {{$e.Name}}) String() string {
 {{end}}
 `
 
-var tmplStruct = `// Copyright 2020 Converter Systems LLC. All rights reserved.
+var tmplStruct = `// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 // Code generated by go generate; DO NOT EDIT.
 
@@ -419,19 +447,28 @@ import (
 // {{$s.Name}} structure.
 type {{$s.Name}} struct {
 	{{- range $j, $f := $s.Fields}}
-	{{$f.Name}}	{{if $f.IsSlice}}[]{{end}}{{$f.Type}}
+	{{- if $f.IsEmbedded}}
+	{{$f.Type}}
+	{{- else}}
+	{{- if $f.IsSlice}}
+	{{$f.Name}}	[]{{$f.Type}}
+	{{- else}}
+	{{$f.Name}}	{{$f.Type}}
+	{{- end}}
+	{{- end}}
 	{{- end}}
 }
+
 {{end}}
 
 func init() {
 	{{- range $i, $s := .}}
-		RegisterBinaryEncodingID(reflect.TypeOf({{$s.Name}}{}), NewExpandedNodeID(ObjectID{{$s.Name}}EncodingDefaultBinary))
+		RegisterBinaryEncodingID(reflect.TypeOf((*{{$s.Name}})(nil)).Elem(), NewExpandedNodeID(ObjectID{{$s.Name}}EncodingDefaultBinary))
 	{{- end}}
 }
 `
 
-var tmplNodeIDs = `// Copyright 2020 Converter Systems LLC. All rights reserved.
+var tmplNodeIDs = `// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 // Code generated by go generate; DO NOT EDIT.
 

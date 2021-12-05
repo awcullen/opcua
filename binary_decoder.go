@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
@@ -7,10 +7,16 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"sync"
 	"time"
 	"unsafe"
 
-	uuid "github.com/google/uuid"
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
+)
+
+var (
+	typeToDecoderMap sync.Map
 )
 
 // BinaryDecoder decodes the UA binary protocol.
@@ -25,205 +31,307 @@ func NewBinaryDecoder(r io.Reader, ec EncodingContext) *BinaryDecoder {
 	return &BinaryDecoder{r, ec, [8]byte{}}
 }
 
-// Decode decodes a value.
-func (dec *BinaryDecoder) Decode(value interface{}) error {
-	// first, handle any built-in types.
-	switch val := value.(type) {
-	case *bool:
-		return dec.ReadBoolean(val)
-	case *int8:
-		return dec.ReadSByte(val)
-	case *uint8:
-		return dec.ReadByte(val)
-	case *int16:
-		return dec.ReadInt16(val)
-	case *uint16:
-		return dec.ReadUInt16(val)
-	case *int32:
-		return dec.ReadInt32(val)
-	case *uint32:
-		return dec.ReadUInt32(val)
-	case *int64:
-		return dec.ReadInt64(val)
-	case *uint64:
-		return dec.ReadUInt64(val)
-	case *float32:
-		return dec.ReadFloat(val)
-	case *float64:
-		return dec.ReadDouble(val)
-	case *string:
-		return dec.ReadString(val)
-	case *time.Time:
-		return dec.ReadDateTime(val)
-	case *uuid.UUID:
-		return dec.ReadGUID(val)
-	case *ByteString:
-		return dec.ReadByteString(val)
-	case *XMLElement:
-		return dec.ReadXMLElement(val)
-	case *NodeID:
-		return dec.ReadNodeID(val)
-	case *ExpandedNodeID:
-		return dec.ReadExpandedNodeID(val)
-	case *StatusCode:
-		return dec.ReadStatusCode(val)
-	case *QualifiedName:
-		return dec.ReadQualifiedName(val)
-	case *LocalizedText:
-		return dec.ReadLocalizedText(val)
-	case **ExtensionObject:
-		return dec.ReadExtensionObject(val)
-	case **DataValue:
-		return dec.ReadDataValue(val)
-	case **Variant:
-		return dec.ReadVariant(val)
-	case **DiagnosticInfo:
-		return dec.ReadDiagnosticInfo(val)
-	case *[]bool:
-		return dec.ReadBooleanArray(val)
-	case *[]int8:
-		return dec.ReadSByteArray(val)
-	case *[]uint8:
-		return dec.ReadByteArray(val)
-	case *[]int16:
-		return dec.ReadInt16Array(val)
-	case *[]uint16:
-		return dec.ReadUInt16Array(val)
-	case *[]int32:
-		return dec.ReadInt32Array(val)
-	case *[]uint32:
-		return dec.ReadUInt32Array(val)
-	case *[]int64:
-		return dec.ReadInt64Array(val)
-	case *[]uint64:
-		return dec.ReadUInt64Array(val)
-	case *[]float32:
-		return dec.ReadFloatArray(val)
-	case *[]float64:
-		return dec.ReadDoubleArray(val)
-	case *[]string:
-		return dec.ReadStringArray(val)
-	case *[]time.Time:
-		return dec.ReadDateTimeArray(val)
-	case *[]uuid.UUID:
-		return dec.ReadGUIDArray(val)
-	case *[]ByteString:
-		return dec.ReadByteStringArray(val)
-	case *[]XMLElement:
-		return dec.ReadXMLElementArray(val)
-	case *[]NodeID:
-		return dec.ReadNodeIDArray(val)
-	case *[]ExpandedNodeID:
-		return dec.ReadExpandedNodeIDArray(val)
-	case *[]StatusCode:
-		return dec.ReadStatusCodeArray(val)
-	case *[]QualifiedName:
-		return dec.ReadQualifiedNameArray(val)
-	case *[]LocalizedText:
-		return dec.ReadLocalizedTextArray(val)
-	case *[]*ExtensionObject:
-		return dec.ReadExtensionObjectArray(val)
-	case *[]*DataValue:
-		return dec.ReadDataValueArray(val)
-	case *[]*Variant:
-		return dec.ReadVariantArray(val)
-	case *[]*DiagnosticInfo:
-		return dec.ReadDiagnosticInfoArray(val)
-	default:
-		// handle enum, struct, and slice values using reflection
-		rv := reflect.ValueOf(value).Elem()
-		// dereference any pointers
-		for rv.Kind() == reflect.Ptr {
-			// if value is nil, create a new value and decode that.
-			if rv.IsNil() {
-				rv.Set(reflect.New(rv.Type().Elem()))
-			}
-			rv = rv.Elem()
-		}
-		switch rv.Kind() {
-		case reflect.Int32: // e.g. enum
-			var v int32
-			if err := dec.ReadInt32(&v); err != nil {
-				return BadDecodingError
-			}
-			rv.SetInt(int64(v))
-			return nil
+type decoderFunc func(*BinaryDecoder, unsafe.Pointer) error
 
-		case reflect.Struct: // e.g. ReadResponse
-			typ := rv.Type()
-			for i := 0; i < typ.NumField(); i++ {
-				field := rv.Field(i)
-				switch field.Kind() {
-
-				case reflect.Ptr: // e.g. *ApplicationDescription
-					field.Set(reflect.New(field.Type().Elem()))
-					if err := dec.Decode(field.Addr().Interface()); err != nil {
-						return BadDecodingError
-					}
-
-				case reflect.Interface: // e.g. interface{}
-					var v interface{}
-					if err := dec.ReadObject(&v); err != nil {
-						return BadDecodingError
-					}
-					if v != nil {
-						field.Set(reflect.ValueOf(v))
-					}
-
-				default:
-					if err := dec.Decode(field.Addr().Interface()); err != nil {
-						return BadDecodingError
-					}
-				}
-			} // end for
-			return nil
-
-		case reflect.Slice: // e.g. []*ReadValueID , []interface{}
-			var num int32
-			if err := dec.ReadInt32(&num); err != nil {
-				return BadDecodingError
-			}
-			if num < 0 {
-				rv.Set(reflect.Zero(rv.Type()))
-				return nil
-			}
-			len := int(num)
-			val := reflect.MakeSlice(rv.Type(), len, len)
-			elemType := rv.Type().Elem()
-
-			for i := 0; i < len; i++ {
-				elem := val.Index(i)
-				switch elem.Kind() {
-
-				case reflect.Ptr: // e.g. *ReadValueID
-					elem.Set(reflect.New(elemType.Elem()))
-					if err := dec.Decode(elem.Addr().Interface()); err != nil {
-						return BadDecodingError
-					}
-
-				case reflect.Interface: // e.g. interface{}
-					var v interface{}
-					if err := dec.ReadObject(&v); err != nil {
-						return BadDecodingError
-					}
-					if v != nil {
-						elem.Set(reflect.ValueOf(v))
-					}
-
-				default: // e.g. built-in, struct, enum
-					if err := dec.Decode(elem.Addr().Interface()); err != nil {
-						return BadDecodingError
-					}
-				}
-			}
-			rv.Set(val)
-			return nil
-
-		default:
-			return BadDecodingError
-
-		}
+// Decode decodes the value using the UA Binary protocol.
+func (dec *BinaryDecoder) Decode(v interface{}) error {
+	typ := reflect.TypeOf(v)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
 	}
+	ptr := ((*interfaceHeader)(unsafe.Pointer(&v))).ptr
+
+	// try to retrieve decoder from cache.
+	if f, ok := typeToDecoderMap.Load(typ); ok {
+
+		// if found, call it.
+		if err := f.(decoderFunc)(dec, ptr); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	f, err := getDecoder(typ)
+	if err != nil {
+		return err
+	}
+	typeToDecoderMap.Store(typ, f)
+
+	// call the decoder
+	if err := f(dec, ptr); err != nil {
+		return err
+	}
+	return nil
+}
+
+func getDecoder(typ reflect.Type) (decoderFunc, error) {
+	switch typ.Kind() {
+	case reflect.Struct:
+		switch typ {
+		case typeDateTime:
+			return getDateTimeDecoder()
+		case typeGUID:
+			return getGUIDDecoder()
+		case typeExpandedNodeID:
+			return getExpandedNodeIDDecoder()
+		case typeQualifiedName:
+			return getQualifiedNameDecoder()
+		case typeLocalizedText:
+			return getLocalizedTextDecoder()
+		case typeDataValue:
+			return getDataValueDecoder()
+		case typeDiagnosticInfo:
+			return getDiagnosticInfoDecoder()
+		default:
+			return getStructDecoder(typ)
+		}
+	case reflect.Slice:
+		elemTyp := typ.Elem()
+		switch elemTyp.Kind() {
+		case reflect.Uint8:
+			return getByteArrayDecoder()
+		default:
+			return getSliceDecoder(typ)
+		}
+	case reflect.Ptr:
+		typ = typ.Elem()
+		return getStructPtrDecoder(typ)
+	case reflect.Interface:
+		switch typ {
+		case typeNodeID:
+			return getNodeIDDecoder()
+		case typeExtensionObject:
+			return getExtensionObjectDecoder()
+		case typeVariant:
+			return getVariantDecoder()
+		}
+	case reflect.Bool:
+		return getBooleanDecoder()
+	case reflect.Int8:
+		return getSByteDecoder()
+	case reflect.Uint8:
+		return getByteDecoder()
+	case reflect.Int16:
+		return getInt16Decoder()
+	case reflect.Uint16:
+		return getUInt16Decoder()
+	case reflect.Int32:
+		return getInt32Decoder()
+	case reflect.Uint32:
+		return getUInt32Decoder()
+	case reflect.Int64:
+		return getInt64Decoder()
+	case reflect.Uint64:
+		return getUInt64Decoder()
+	case reflect.Float32:
+		return getFloatDecoder()
+	case reflect.Float64:
+		return getDoubleDecoder()
+	case reflect.String:
+		return getStringDecoder()
+	}
+	return nil, errors.Errorf("unsupported type: %s\n", typ)
+}
+
+func getStructDecoder(typ reflect.Type) (decoderFunc, error) {
+	decoders := []decoderFunc{}
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		dec, err := getDecoder(field.Type)
+		if err != nil {
+			return nil, err
+		}
+		offset := field.Offset
+		decoders = append(decoders, func(buf *BinaryDecoder, p unsafe.Pointer) error {
+			return dec(buf, unsafe.Add(p, offset))
+		})
+	}
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		for _, dec := range decoders {
+			if err := dec(buf, p); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, nil
+}
+func getStructPtrDecoder(typ reflect.Type) (decoderFunc, error) {
+	decoders := []decoderFunc{}
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		dec, err := getDecoder(field.Type)
+		if err != nil {
+			return nil, err
+		}
+		offset := field.Offset
+		decoders = append(decoders, func(buf *BinaryDecoder, p unsafe.Pointer) error {
+			return dec(buf, unsafe.Add(p, offset))
+		})
+	}
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		p2 := unsafe.Pointer(*(**struct{})(p))
+		if p2 == nilPtr {
+			v := reflect.New(typ)
+			reflect.NewAt(v.Type(), p).Elem().Set(v)
+			p2 = unsafe.Pointer(*(**struct{})(p))
+		}
+		for _, dec := range decoders {
+			if err := dec(buf, p2); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, nil
+}
+
+func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
+	elem := typ.Elem()
+	elemSize := elem.Size()
+	elemDecoder, err := getDecoder(elem)
+	if err != nil {
+		return nil, err
+	}
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		hdr := (*sliceHeader)(p)
+		var l int32
+		if err := buf.ReadInt32(&l); err != nil {
+			return err
+		}
+		len := int(l)
+		if l <= 0 {
+			hdr.data = nil
+			hdr.len = 0
+			hdr.cap = 0
+			return nil
+		}
+		val := reflect.MakeSlice(typ, len, len)
+		p2 := unsafe.Pointer(val.Pointer())
+		hdr.data = p2
+		hdr.len = len
+		hdr.cap = len
+		for i := 0; i < len; i++ {
+			if err := elemDecoder(buf, p2); err != nil {
+				return err
+			}
+			p2 = unsafe.Add(p2, elemSize)
+		}
+		return nil
+	}, nil
+}
+func getBooleanDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadBoolean((*bool)(p))
+	}, nil
+}
+func getSByteDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadSByte((*int8)(p))
+	}, nil
+}
+func getByteDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadByte((*uint8)(p))
+	}, nil
+}
+func getInt16Decoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadInt16((*int16)(p))
+	}, nil
+}
+func getUInt16Decoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadUInt16((*uint16)(p))
+	}, nil
+}
+func getInt32Decoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadInt32((*int32)(p))
+	}, nil
+}
+func getUInt32Decoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadUInt32((*uint32)(p))
+	}, nil
+}
+func getInt64Decoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadInt64((*int64)(p))
+	}, nil
+}
+func getUInt64Decoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadUInt64((*uint64)(p))
+	}, nil
+}
+func getFloatDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadFloat((*float32)(p))
+	}, nil
+}
+func getDoubleDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadDouble((*float64)(p))
+	}, nil
+}
+func getStringDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadString((*string)(p))
+	}, nil
+}
+func getNodeIDDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadNodeID((*NodeID)(p))
+	}, nil
+}
+func getExpandedNodeIDDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadExpandedNodeID((*ExpandedNodeID)(p))
+	}, nil
+}
+func getDateTimeDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadDateTime((*time.Time)(p))
+	}, nil
+}
+func getGUIDDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadGUID((*uuid.UUID)(p))
+	}, nil
+}
+func getQualifiedNameDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadQualifiedName((*QualifiedName)(p))
+	}, nil
+}
+func getLocalizedTextDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadLocalizedText((*LocalizedText)(p))
+	}, nil
+}
+func getExtensionObjectDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadExtensionObject((*ExtensionObject)(p))
+	}, nil
+}
+func getVariantDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadVariant((*Variant)(p))
+	}, nil
+}
+func getDataValueDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadDataValue((*DataValue)(p))
+	}, nil
+}
+func getDiagnosticInfoDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadDiagnosticInfo((*DiagnosticInfo)(p))
+	}, nil
+}
+func getByteArrayDecoder() (decoderFunc, error) {
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		return buf.ReadByteArray((*[]uint8)(p))
+	}, nil
 }
 
 // ReadBoolean reads a bool.
@@ -327,15 +435,15 @@ func (dec *BinaryDecoder) ReadDouble(value *float64) error {
 
 // ReadString reads a string.
 func (dec *BinaryDecoder) ReadString(value *string) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = ""
 		return nil
 	}
-	bs := make([]byte, num)
+	bs := make([]byte, n)
 	if _, err := io.ReadFull(dec.r, bs); err != nil {
 		return BadDecodingError
 	}
@@ -366,32 +474,33 @@ func (dec *BinaryDecoder) ReadGUID(value *uuid.UUID) error {
 	if _, err := io.ReadFull(dec.r, dec.bs[:8]); err != nil {
 		return BadDecodingError
 	}
-	value[0] = dec.bs[3]
-	value[1] = dec.bs[2]
-	value[2] = dec.bs[1]
-	value[3] = dec.bs[0]
-	value[4] = dec.bs[5]
-	value[5] = dec.bs[4]
-	value[6] = dec.bs[7]
-	value[7] = dec.bs[6]
-
-	if _, err := io.ReadFull(dec.r, value[8:]); err != nil {
+	v := uuid.UUID{}
+	v[0] = dec.bs[3]
+	v[1] = dec.bs[2]
+	v[2] = dec.bs[1]
+	v[3] = dec.bs[0]
+	v[4] = dec.bs[5]
+	v[5] = dec.bs[4]
+	v[6] = dec.bs[7]
+	v[7] = dec.bs[6]
+	if _, err := io.ReadFull(dec.r, v[8:]); err != nil {
 		return BadDecodingError
 	}
+	*value = v
 	return nil
 }
 
 // ReadByteString reads a ByteString.
 func (dec *BinaryDecoder) ReadByteString(value *ByteString) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num <= 0 {
+	if n <= 0 {
 		*value = ""
 		return nil
 	}
-	bs := make([]byte, num)
+	bs := make([]byte, n)
 	if _, err := io.ReadFull(dec.r, bs); err != nil {
 		return BadDecodingError
 	}
@@ -399,7 +508,7 @@ func (dec *BinaryDecoder) ReadByteString(value *ByteString) error {
 	return nil
 }
 
-// ReadXMLElement reads a XmlElement.
+// ReadXMLElement reads a XMLElement.
 func (dec *BinaryDecoder) ReadXMLElement(value *XMLElement) error {
 	var s string
 	if err := dec.ReadString(&s); err != nil {
@@ -421,15 +530,19 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 		if err := dec.ReadByte(&id); err != nil {
 			return BadDecodingError
 		}
+		if id == 0 {
+			*value = nil
+			return nil
+		}
 		*value = NewNodeIDNumeric(uint16(0), uint32(id))
 		return nil
 
 	case 0x01:
 		var ns byte
+		var id uint16
 		if err := dec.ReadByte(&ns); err != nil {
 			return BadDecodingError
 		}
-		var id uint16
 		if err := dec.ReadUInt16(&id); err != nil {
 			return BadDecodingError
 		}
@@ -438,10 +551,10 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 
 	case 0x02:
 		var ns uint16
+		var id uint32
 		if err := dec.ReadUInt16(&ns); err != nil {
 			return BadDecodingError
 		}
-		var id uint32
 		if err := dec.ReadUInt32(&id); err != nil {
 			return BadDecodingError
 		}
@@ -450,10 +563,10 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 
 	case 0x03:
 		var ns uint16
+		var id string
 		if err := dec.ReadUInt16(&ns); err != nil {
 			return BadDecodingError
 		}
-		var id string
 		if err := dec.ReadString(&id); err != nil {
 			return BadDecodingError
 		}
@@ -462,10 +575,10 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 
 	case 0x04:
 		var ns uint16
+		var id uuid.UUID
 		if err := dec.ReadUInt16(&ns); err != nil {
 			return BadDecodingError
 		}
-		var id uuid.UUID
 		if err := dec.ReadGUID(&id); err != nil {
 			return BadDecodingError
 		}
@@ -474,10 +587,10 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 
 	case 0x05:
 		var ns uint16
+		var id ByteString
 		if err := dec.ReadUInt16(&ns); err != nil {
 			return BadDecodingError
 		}
-		var id ByteString
 		if err := dec.ReadByteString(&id); err != nil {
 			return BadDecodingError
 		}
@@ -489,7 +602,6 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 	}
 }
 
-// ReadExpandedNodeID reads an ExpandedNodeID.
 func (dec *BinaryDecoder) ReadExpandedNodeID(value *ExpandedNodeID) error {
 	var (
 		n   NodeID
@@ -506,7 +618,11 @@ func (dec *BinaryDecoder) ReadExpandedNodeID(value *ExpandedNodeID) error {
 		if err := dec.ReadByte(&id); err != nil {
 			return BadDecodingError
 		}
-		n = NewNodeIDNumeric(uint16(0), uint32(id))
+		if id == 0 {
+			n = nil
+		} else {
+			n = NewNodeIDNumeric(uint16(0), uint32(id))
+		}
 	case 0x01:
 		var ns byte
 		if err := dec.ReadByte(&ns); err != nil {
@@ -593,11 +709,13 @@ func (dec *BinaryDecoder) ReadStatusCode(value *StatusCode) error {
 
 // ReadQualifiedName reads a QualifiedName.
 func (dec *BinaryDecoder) ReadQualifiedName(value *QualifiedName) error {
-	var ns uint16
+	var (
+		ns   uint16
+		name string
+	)
 	if err := dec.ReadUInt16(&ns); err != nil {
 		return BadDecodingError
 	}
-	var name string
 	if err := dec.ReadString(&name); err != nil {
 		return BadDecodingError
 	}
@@ -610,8 +728,8 @@ func (dec *BinaryDecoder) ReadLocalizedText(value *LocalizedText) error {
 	var (
 		text   string
 		locale string
-		b      byte
 	)
+	var b byte
 	if err := dec.ReadByte(&b); err != nil {
 		return BadDecodingError
 	}
@@ -629,8 +747,8 @@ func (dec *BinaryDecoder) ReadLocalizedText(value *LocalizedText) error {
 	return nil
 }
 
-// ReadObject reads an object.
-func (dec *BinaryDecoder) ReadObject(value *interface{}) error {
+// ReadExtensionObject reads an Extensionobject.
+func (dec *BinaryDecoder) ReadExtensionObject(value *ExtensionObject) error {
 	var nodeID NodeID
 	if err := dec.ReadNodeID(&nodeID); err != nil {
 		return BadDecodingError
@@ -641,72 +759,35 @@ func (dec *BinaryDecoder) ReadObject(value *interface{}) error {
 	}
 	switch b {
 	case 0x00:
-		*value = nil
 		return nil
 	case 0x01:
-		id := nodeID.ToExpandedNodeID(dec.ec.NamespaceURIs())
+		id := ToExpandedNodeID(nodeID, dec.ec.NamespaceURIs())
 		// lookup type
-		typ, ok := findTypeForBinaryEncodingID(id)
+		typ, ok := FindTypeForBinaryEncodingID(id)
 		if ok {
 			var unused int32
 			if err := dec.ReadInt32(&unused); err != nil {
 				return BadDecodingError
 			}
-			obj := reflect.New(typ).Interface()
+			obj := reflect.New(typ).Elem().Interface() // TODO: decide if ptr or struct
 			if err := dec.Decode(obj); err != nil {
 				return BadDecodingError
 			}
 			*value = obj
 			return nil
 		}
-		var body ByteString
-		if err := dec.ReadByteString(&body); err != nil {
+		var body []byte
+		err := dec.ReadByteArray(&body)
+		if err != nil {
 			return BadDecodingError
 		}
-		*value = NewExtensionObjectByteString(body, id)
 		return nil
 	case 0x02:
-		id := nodeID.ToExpandedNodeID(dec.ec.NamespaceURIs())
 		var body XMLElement
-		if err := dec.ReadXMLElement(&body); err != nil {
+		err := dec.ReadXMLElement(&body)
+		if err != nil {
 			return BadDecodingError
 		}
-		*value = NewExtensionObjectXMLElement(body, id)
-		return nil
-	default:
-		return BadDecodingError
-	}
-}
-
-// ReadExtensionObject reads an Extensionobject.
-func (dec *BinaryDecoder) ReadExtensionObject(value **ExtensionObject) error {
-	var nodeID NodeID
-	if err := dec.ReadNodeID(&nodeID); err != nil {
-		return BadDecodingError
-	}
-	var b byte
-	if err := dec.ReadByte(&b); err != nil {
-		return BadDecodingError
-	}
-	switch b {
-	case 0x00:
-		*value = &NilExtensionObject
-		return nil
-	case 0x01:
-		id := nodeID.ToExpandedNodeID(dec.ec.NamespaceURIs())
-		var body ByteString
-		if err := dec.ReadByteString(&body); err != nil {
-			return BadDecodingError
-		}
-		*value = NewExtensionObjectByteString(body, id)
-		return nil
-	case 0x02:
-		id := nodeID.ToExpandedNodeID(dec.ec.NamespaceURIs())
-		var body XMLElement
-		if err := dec.ReadXMLElement(&body); err != nil {
-			return BadDecodingError
-		}
-		*value = NewExtensionObjectXMLElement(body, id)
 		return nil
 	default:
 		return BadDecodingError
@@ -714,33 +795,33 @@ func (dec *BinaryDecoder) ReadExtensionObject(value **ExtensionObject) error {
 }
 
 // ReadDataValue reads a DataValue.
-func (dec *BinaryDecoder) ReadDataValue(value **DataValue) error {
+func (dec *BinaryDecoder) ReadDataValue(value *DataValue) error {
 	var (
-		v                 *Variant
+		v                 Variant
 		statusCode        StatusCode
 		sourceTimestamp   time.Time
 		sourcePicoseconds uint16
 		serverTimestamp   time.Time
 		serverPicoseconds uint16
-		b                 byte
+		err               error
 	)
+	var b byte
 	if err := dec.ReadByte(&b); err != nil {
 		return BadDecodingError
 	}
 	if (b & 1) != 0 {
 		if err := dec.ReadVariant(&v); err != nil {
-			return BadDecodingError
+			// return BadDecodingError
+			statusCode = BadDataTypeIDUnknown
 		}
-	} else {
-		v = &NilVariant
 	}
-	if (b & 2) != 0 {
+	if (b&2) != 0 && statusCode == 0 {
 		if err := dec.ReadStatusCode(&statusCode); err != nil {
 			return BadDecodingError
 		}
 	}
 	if (b & 4) != 0 {
-		if err := dec.ReadDateTime(&sourceTimestamp); err != nil {
+		if err = dec.ReadDateTime(&sourceTimestamp); err != nil {
 			return BadDecodingError
 		}
 	}
@@ -750,22 +831,21 @@ func (dec *BinaryDecoder) ReadDataValue(value **DataValue) error {
 		}
 	}
 	if (b & 8) != 0 {
-		if err := dec.ReadDateTime(&serverTimestamp); err != nil {
+		if err = dec.ReadDateTime(&serverTimestamp); err != nil {
 			return BadDecodingError
 		}
 	}
-
 	if (b & 32) != 0 {
 		if err := dec.ReadUInt16(&serverPicoseconds); err != nil {
 			return BadDecodingError
 		}
 	}
-	*value = &DataValue{v, statusCode, sourceTimestamp, sourcePicoseconds, serverTimestamp, serverPicoseconds}
+	*value = DataValue{v, statusCode, sourceTimestamp, sourcePicoseconds, serverTimestamp, serverPicoseconds}
 	return nil
 }
 
 // ReadVariant reads a Variant.
-func (dec *BinaryDecoder) ReadVariant(value **Variant) error {
+func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
 	var b byte
 	if err := dec.ReadByte(&b); err != nil {
 		return BadDecodingError
@@ -773,208 +853,208 @@ func (dec *BinaryDecoder) ReadVariant(value **Variant) error {
 
 	if (b & 0x80) == 0 {
 		switch b & 0x3F {
-		case 0:
-			*value = &NilVariant
+		case VariantTypeNull:
+			*value = nil
 			return nil
 
-		case 1:
+		case VariantTypeBoolean:
 			var v bool
 			if err := dec.ReadBoolean(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeBoolean, []int32{}}
+			*value = v
 			return nil
 
-		case 2:
+		case VariantTypeSByte:
 			var v int8
 			if err := dec.ReadSByte(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeSByte, []int32{}}
+			*value = v
 			return nil
 
-		case 3:
+		case VariantTypeByte:
 			var v byte
 			if err := dec.ReadByte(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeByte, []int32{}}
+			*value = v
 			return nil
 
-		case 4:
+		case VariantTypeInt16:
 			var v int16
 			if err := dec.ReadInt16(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeInt16, []int32{}}
+			*value = v
 			return nil
 
-		case 5:
+		case VariantTypeUInt16:
 			var v uint16
 			if err := dec.ReadUInt16(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeUInt16, []int32{}}
+			*value = v
 			return nil
 
-		case 6:
+		case VariantTypeInt32:
 			var v int32
 			if err := dec.ReadInt32(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeInt32, []int32{}}
+			*value = v
 			return nil
 
-		case 7:
+		case VariantTypeUInt32:
 			var v uint32
 			if err := dec.ReadUInt32(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeUInt32, []int32{}}
+			*value = v
 			return nil
 
-		case 8:
+		case VariantTypeInt64:
 			var v int64
 			if err := dec.ReadInt64(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeInt64, []int32{}}
+			*value = v
 			return nil
 
-		case 9:
+		case VariantTypeUInt64:
 			var v uint64
 			if err := dec.ReadUInt64(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeUInt64, []int32{}}
+			*value = v
 			return nil
 
-		case 10:
+		case VariantTypeFloat:
 			var v float32
 			if err := dec.ReadFloat(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeFloat, []int32{}}
+			*value = v
 			return nil
 
-		case 11:
+		case VariantTypeDouble:
 			var v float64
 			if err := dec.ReadDouble(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeDouble, []int32{}}
+			*value = v
 			return nil
 
-		case 12:
+		case VariantTypeString:
 			var v string
 			if err := dec.ReadString(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeString, []int32{}}
+			*value = v
 			return nil
 
-		case 13:
+		case VariantTypeDateTime:
 			var v time.Time
 			if err := dec.ReadDateTime(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeDateTime, []int32{}}
+			*value = v
 			return nil
 
-		case 14:
+		case VariantTypeGUID:
 			var v uuid.UUID
 			if err := dec.ReadGUID(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeGUID, []int32{}}
+			*value = v
 			return nil
 
-		case 15:
+		case VariantTypeByteString:
 			var v ByteString
 			if err := dec.ReadByteString(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeByteString, []int32{}}
+			*value = v
 			return nil
 
-		case 16:
+		case VariantTypeXMLElement:
 			var v XMLElement
 			if err := dec.ReadXMLElement(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeXMLElement, []int32{}}
+			*value = v
 			return nil
 
-		case 17:
+		case VariantTypeNodeID:
 			var v NodeID
 			if err := dec.ReadNodeID(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeNodeID, []int32{}}
+			*value = v
 			return nil
 
-		case 18:
+		case VariantTypeExpandedNodeID:
 			var v ExpandedNodeID
 			if err := dec.ReadExpandedNodeID(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeExpandedNodeID, []int32{}}
+			*value = v
 			return nil
 
-		case 19:
+		case VariantTypeStatusCode:
 			var v StatusCode
 			if err := dec.ReadStatusCode(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeStatusCode, []int32{}}
+			*value = v
 			return nil
 
-		case 20:
+		case VariantTypeQualifiedName:
 			var v QualifiedName
 			if err := dec.ReadQualifiedName(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeQualifiedName, []int32{}}
+			*value = v
 			return nil
 
-		case 21:
+		case VariantTypeLocalizedText:
 			var v LocalizedText
 			if err := dec.ReadLocalizedText(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeLocalizedText, []int32{}}
+			*value = v
 			return nil
 
-		case 22:
-			var v interface{}
-			if err := dec.ReadObject(&v); err != nil {
-				return BadDecodingError
+		case VariantTypeExtensionObject:
+			var v ExtensionObject
+			if err := dec.ReadExtensionObject(&v); err != nil {
+				return err
 			}
-			*value = &Variant{v, VariantTypeExtensionObject, []int32{}}
+			*value = v
 			return nil
 
-		case 23:
-			var v *DataValue
+		case VariantTypeDataValue:
+			var v DataValue
 			if err := dec.ReadDataValue(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeDataValue, []int32{}}
+			*value = v
 			return nil
 
-		case 24:
-			var v *Variant
+		case VariantTypeVariant:
+			var v Variant
 			if err := dec.ReadVariant(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeVariant, []int32{}}
+			*value = v
 			return nil
 
-		case 25:
-			var v *DiagnosticInfo
+		case VariantTypeDiagnosticInfo:
+			var v DiagnosticInfo
 			if err := dec.ReadDiagnosticInfo(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeDiagnosticInfo, []int32{}}
+			*value = v
 			return nil
 
 		default:
@@ -984,208 +1064,208 @@ func (dec *BinaryDecoder) ReadVariant(value **Variant) error {
 
 	if (b & 0x40) == 0 {
 		switch b & 0x3F {
-		case 0:
-			*value = &NilVariant
+		case VariantTypeNull:
+			*value = nil
 			return nil
 
-		case 1:
+		case VariantTypeBoolean:
 			var v []bool
 			if err := dec.ReadBooleanArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeBoolean, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 2:
+		case VariantTypeSByte:
 			var v []int8
 			if err := dec.ReadSByteArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeSByte, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 3:
+		case VariantTypeByte:
 			var v []byte
 			if err := dec.ReadByteArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeByte, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 4:
+		case VariantTypeInt16:
 			var v []int16
 			if err := dec.ReadInt16Array(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeInt16, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 5:
+		case VariantTypeUInt16:
 			var v []uint16
 			if err := dec.ReadUInt16Array(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeUInt16, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 6:
+		case VariantTypeInt32:
 			var v []int32
 			if err := dec.ReadInt32Array(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeInt32, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 7:
+		case VariantTypeUInt32:
 			var v []uint32
 			if err := dec.ReadUInt32Array(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeUInt32, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 8:
+		case VariantTypeInt64:
 			var v []int64
 			if err := dec.ReadInt64Array(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeInt64, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 9:
+		case VariantTypeUInt64:
 			var v []uint64
 			if err := dec.ReadUInt64Array(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeUInt64, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 10:
+		case VariantTypeFloat:
 			var v []float32
 			if err := dec.ReadFloatArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeFloat, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 11:
+		case VariantTypeDouble:
 			var v []float64
 			if err := dec.ReadDoubleArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeDouble, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 12:
+		case VariantTypeString:
 			var v []string
 			if err := dec.ReadStringArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeString, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 13:
+		case VariantTypeDateTime:
 			var v []time.Time
 			if err := dec.ReadDateTimeArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeDateTime, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 14:
+		case VariantTypeGUID:
 			var v []uuid.UUID
 			if err := dec.ReadGUIDArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeGUID, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 15:
+		case VariantTypeByteString:
 			var v []ByteString
 			if err := dec.ReadByteStringArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeByteString, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 16:
+		case VariantTypeXMLElement:
 			var v []XMLElement
 			if err := dec.ReadXMLElementArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeXMLElement, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 17:
+		case VariantTypeNodeID:
 			var v []NodeID
 			if err := dec.ReadNodeIDArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeNodeID, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 18:
+		case VariantTypeExpandedNodeID:
 			var v []ExpandedNodeID
 			if err := dec.ReadExpandedNodeIDArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeExpandedNodeID, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 19:
+		case VariantTypeStatusCode:
 			var v []StatusCode
 			if err := dec.ReadStatusCodeArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeStatusCode, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 20:
+		case VariantTypeQualifiedName:
 			var v []QualifiedName
 			if err := dec.ReadQualifiedNameArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeQualifiedName, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 21:
+		case VariantTypeLocalizedText:
 			var v []LocalizedText
 			if err := dec.ReadLocalizedTextArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeLocalizedText, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 22:
-			var v []interface{}
-			if err := dec.ReadObjectArray(&v); err != nil {
+		case VariantTypeExtensionObject:
+			var v []ExtensionObject
+			if err := dec.ReadExtensionObjectArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeExtensionObject, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 23:
-			var v []*DataValue
+		case VariantTypeDataValue:
+			var v []DataValue
 			if err := dec.ReadDataValueArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeDataValue, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 24:
-			var v []*Variant
+		case VariantTypeVariant:
+			var v []Variant
 			if err := dec.ReadVariantArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeVariant, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
-		case 25:
-			var v []*DiagnosticInfo
+		case VariantTypeDiagnosticInfo:
+			var v []DiagnosticInfo
 			if err := dec.ReadDiagnosticInfoArray(&v); err != nil {
 				return BadDecodingError
 			}
-			*value = &Variant{v, VariantTypeDiagnosticInfo, []int32{int32(len(v))}}
+			*value = v
 			return nil
 
 		default:
@@ -1198,551 +1278,545 @@ func (dec *BinaryDecoder) ReadVariant(value **Variant) error {
 }
 
 // ReadDiagnosticInfo reads a DiagnosticInfo.
-func (dec *BinaryDecoder) ReadDiagnosticInfo(value **DiagnosticInfo) error {
-
-	var symbolicID int32 = -1
-	var namespaceURI int32 = -1
-	var locale int32 = -1
-	var localizedText int32 = -1
-	var additionalInfo string
-	var innerStatusCode StatusCode
-	var innerDiagnosticInfo *DiagnosticInfo
-
+func (dec *BinaryDecoder) ReadDiagnosticInfo(value *DiagnosticInfo) error {
+	result := DiagnosticInfo{}
 	var b byte
 	if err := dec.ReadByte(&b); err != nil {
 		return BadDecodingError
 	}
 	if (b & 1) != 0 {
-		if err := dec.ReadInt32(&symbolicID); err != nil {
+		if err := dec.ReadInt32(result.SymbolicID); err != nil {
 			return BadDecodingError
 		}
 	}
 	if (b & 2) != 0 {
-		if err := dec.ReadInt32(&namespaceURI); err != nil {
+		if err := dec.ReadInt32(result.NamespaceURI); err != nil {
 			return BadDecodingError
 		}
 	}
 	if (b & 8) != 0 {
-		if err := dec.ReadInt32(&locale); err != nil {
+		if err := dec.ReadInt32(result.Locale); err != nil {
 			return BadDecodingError
 		}
 	}
 	if (b & 4) != 0 {
-		if err := dec.ReadInt32(&localizedText); err != nil {
+		if err := dec.ReadInt32(result.LocalizedText); err != nil {
 			return BadDecodingError
 		}
 	}
 	if (b & 16) != 0 {
-		if err := dec.ReadString(&additionalInfo); err != nil {
+		if err := dec.ReadString(result.AdditionalInfo); err != nil {
 			return BadDecodingError
 		}
 	}
 	if (b & 32) != 0 {
-		if err := dec.ReadStatusCode(&innerStatusCode); err != nil {
+		if err := dec.ReadStatusCode(result.InnerStatusCode); err != nil {
 			return BadDecodingError
 		}
 	}
 	if (b & 64) != 0 {
-		if err := dec.ReadDiagnosticInfo(&innerDiagnosticInfo); err != nil {
+		if err := dec.ReadDiagnosticInfo(result.InnerDiagnosticInfo); err != nil {
 			return BadDecodingError
 		}
 	}
-
-	*value = NewDiagnosticInfo(namespaceURI, symbolicID, locale, localizedText, additionalInfo, innerStatusCode, innerDiagnosticInfo)
+	*value = result
 	return nil
 }
 
 // ReadBooleanArray reads a bool array.
 func (dec *BinaryDecoder) ReadBooleanArray(value *[]bool) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]bool, num)
-	for i := range *value {
-		if err := dec.ReadBoolean(&(*value)[i]); err != nil {
+	temp := make([]bool, n)
+	for i := range temp {
+		if err := dec.ReadBoolean(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadSByteArray reads a int8 array.
 func (dec *BinaryDecoder) ReadSByteArray(value *[]int8) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]int8, num)
-	for i := range *value {
-		if err := dec.ReadSByte(&(*value)[i]); err != nil {
+	temp := make([]int8, n)
+	for i := range temp {
+		if err := dec.ReadSByte(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadByteArray reads a byte array.
 func (dec *BinaryDecoder) ReadByteArray(value *[]byte) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]byte, num)
-	if _, err := io.ReadFull(dec.r, *value); err != nil {
-		return BadDecodingError
+	temp := make([]byte, n)
+	if _, err := io.ReadFull(dec.r, temp); err != nil {
+		return err
 	}
+	*value = temp
 	return nil
 }
 
 // ReadInt16Array reads a int16 array.
 func (dec *BinaryDecoder) ReadInt16Array(value *[]int16) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]int16, num)
-	for i := range *value {
-		if err := dec.ReadInt16(&(*value)[i]); err != nil {
+	temp := make([]int16, n)
+	for i := range temp {
+		if err := dec.ReadInt16(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
-
 }
 
 // ReadUInt16Array reads a uint16 array.
 func (dec *BinaryDecoder) ReadUInt16Array(value *[]uint16) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]uint16, num)
-	for i := range *value {
-		if err := dec.ReadUInt16(&(*value)[i]); err != nil {
+	temp := make([]uint16, n)
+	for i := range temp {
+		if err := dec.ReadUInt16(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadInt32Array reads a int32 array.
 func (dec *BinaryDecoder) ReadInt32Array(value *[]int32) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]int32, num)
-	for i := range *value {
-		if err := dec.ReadInt32(&(*value)[i]); err != nil {
+	temp := make([]int32, n)
+	for i := range temp {
+		if err := dec.ReadInt32(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadUInt32Array reads a uint32 array.
 func (dec *BinaryDecoder) ReadUInt32Array(value *[]uint32) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]uint32, num)
-	for i := range *value {
-		if err := dec.ReadUInt32(&(*value)[i]); err != nil {
+	temp := make([]uint32, n)
+	for i := range temp {
+		if err := dec.ReadUInt32(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadInt64Array reads a int64 array.
 func (dec *BinaryDecoder) ReadInt64Array(value *[]int64) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]int64, num)
-	for i := range *value {
-		if err := dec.ReadInt64(&(*value)[i]); err != nil {
+	temp := make([]int64, n)
+	for i := range temp {
+		if err := dec.ReadInt64(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadUInt64Array reads a uint64 array.
 func (dec *BinaryDecoder) ReadUInt64Array(value *[]uint64) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]uint64, num)
-	for i := range *value {
-		if err := dec.ReadUInt64(&(*value)[i]); err != nil {
+	temp := make([]uint64, n)
+	for i := range temp {
+		if err := dec.ReadUInt64(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
-
 }
 
 // ReadFloatArray reads a float32 array.
 func (dec *BinaryDecoder) ReadFloatArray(value *[]float32) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]float32, num)
-	for i := range *value {
-		if err := dec.ReadFloat(&(*value)[i]); err != nil {
+	temp := make([]float32, n)
+	for i := range temp {
+		if err := dec.ReadFloat(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
-
 }
 
 // ReadDoubleArray reads a float64 array.
 func (dec *BinaryDecoder) ReadDoubleArray(value *[]float64) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]float64, num)
-	for i := range *value {
-		if err := dec.ReadDouble(&(*value)[i]); err != nil {
+	temp := make([]float64, n)
+	for i := range temp {
+		if err := dec.ReadDouble(&temp[i]); err != nil {
 			return err
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadStringArray reads a string array.
 func (dec *BinaryDecoder) ReadStringArray(value *[]string) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]string, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadString(&(*value)[i]); err != nil {
+	temp := make([]string, n)
+	for i := range temp {
+		if err := dec.ReadString(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadDateTimeArray reads a Time array.
 func (dec *BinaryDecoder) ReadDateTimeArray(value *[]time.Time) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]time.Time, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadDateTime(&(*value)[i]); err != nil {
+	temp := make([]time.Time, n)
+	for i := range temp {
+		if err := dec.ReadDateTime(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadGUIDArray reads a UUID array.
 func (dec *BinaryDecoder) ReadGUIDArray(value *[]uuid.UUID) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]uuid.UUID, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadGUID(&(*value)[i]); err != nil {
+	temp := make([]uuid.UUID, n)
+	for i := range temp {
+		if err := dec.ReadGUID(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadByteStringArray reads a ByteString array.
 func (dec *BinaryDecoder) ReadByteStringArray(value *[]ByteString) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]ByteString, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadByteString(&(*value)[i]); err != nil {
+	temp := make([]ByteString, n)
+	for i := 0; i < len(temp); i++ {
+		if err := dec.ReadByteString(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
-// ReadXMLElementArray reads a XmlElement array.
+// ReadXMLElementArray reads a XMLElement array.
 func (dec *BinaryDecoder) ReadXMLElementArray(value *[]XMLElement) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]XMLElement, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadXMLElement(&(*value)[i]); err != nil {
+	temp := make([]XMLElement, n)
+	for i := 0; i < len(temp); i++ {
+		if err := dec.ReadXMLElement(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadNodeIDArray reads a NodeID array.
 func (dec *BinaryDecoder) ReadNodeIDArray(value *[]NodeID) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]NodeID, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadNodeID(&(*value)[i]); err != nil {
+	temp := make([]NodeID, n)
+	for i := range temp {
+		if err := dec.ReadNodeID(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadExpandedNodeIDArray reads a ExpandedNodeID array.
 func (dec *BinaryDecoder) ReadExpandedNodeIDArray(value *[]ExpandedNodeID) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]ExpandedNodeID, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadExpandedNodeID(&(*value)[i]); err != nil {
+	temp := make([]ExpandedNodeID, n)
+	for i := range temp {
+		if err := dec.ReadExpandedNodeID(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadStatusCodeArray reads a StatusCode array.
 func (dec *BinaryDecoder) ReadStatusCodeArray(value *[]StatusCode) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]StatusCode, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadStatusCode(&(*value)[i]); err != nil {
+	temp := make([]StatusCode, n)
+	for i := range temp {
+		if err := dec.ReadStatusCode(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadQualifiedNameArray reads a QualifiedName array.
 func (dec *BinaryDecoder) ReadQualifiedNameArray(value *[]QualifiedName) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]QualifiedName, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadQualifiedName(&(*value)[i]); err != nil {
+	temp := make([]QualifiedName, n)
+	for i := range temp {
+		if err := dec.ReadQualifiedName(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadLocalizedTextArray reads a LocalizedText array.
 func (dec *BinaryDecoder) ReadLocalizedTextArray(value *[]LocalizedText) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]LocalizedText, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadLocalizedText(&(*value)[i]); err != nil {
+	temp := make([]LocalizedText, n)
+	for i := range temp {
+		if err := dec.ReadLocalizedText(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
-	return nil
-}
-
-// ReadObjectArray reads a object array.
-func (dec *BinaryDecoder) ReadObjectArray(value *[]interface{}) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
-		return BadDecodingError
-	}
-	if num < 0 {
-		*value = nil
-		return nil
-	}
-	*value = make([]interface{}, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadObject(&(*value)[i]); err != nil {
-			return BadDecodingError
-		}
-	}
+	*value = temp
 	return nil
 }
 
 // ReadExtensionObjectArray reads a ExtensionObject array.
-func (dec *BinaryDecoder) ReadExtensionObjectArray(value *[]*ExtensionObject) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+func (dec *BinaryDecoder) ReadExtensionObjectArray(value *[]ExtensionObject) error {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]*ExtensionObject, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadExtensionObject(&(*value)[i]); err != nil {
+	temp := make([]ExtensionObject, n)
+	for i := range temp {
+		if err := dec.ReadExtensionObject(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadDataValueArray reads a DataValue array.
-func (dec *BinaryDecoder) ReadDataValueArray(value *[]*DataValue) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+func (dec *BinaryDecoder) ReadDataValueArray(value *[]DataValue) error {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]*DataValue, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadDataValue(&(*value)[i]); err != nil {
+	temp := make([]DataValue, n)
+	for i := 0; i < len(temp); i++ {
+		if err := dec.ReadDataValue(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadVariantArray reads a Variant array.
-func (dec *BinaryDecoder) ReadVariantArray(value *[]*Variant) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+func (dec *BinaryDecoder) ReadVariantArray(value *[]Variant) error {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]*Variant, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadVariant(&(*value)[i]); err != nil {
+	temp := make([]Variant, n)
+	for i := 0; i < len(temp); i++ {
+		if err := dec.ReadVariant(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }
 
 // ReadDiagnosticInfoArray reads a DiagnosticInfo array.
-func (dec *BinaryDecoder) ReadDiagnosticInfoArray(value *[]*DiagnosticInfo) error {
-	var num int32
-	if err := dec.ReadInt32(&num); err != nil {
+func (dec *BinaryDecoder) ReadDiagnosticInfoArray(value *[]DiagnosticInfo) error {
+	var n int32
+	if err := dec.ReadInt32(&n); err != nil {
 		return BadDecodingError
 	}
-	if num < 0 {
+	if n < 0 {
 		*value = nil
 		return nil
 	}
-	*value = make([]*DiagnosticInfo, num)
-	for i := 0; i < int(num); i++ {
-		if err := dec.ReadDiagnosticInfo(&(*value)[i]); err != nil {
+	temp := make([]DiagnosticInfo, n)
+	for i := 0; i < len(temp); i++ {
+		if err := dec.ReadDiagnosticInfo(&temp[i]); err != nil {
 			return BadDecodingError
 		}
 	}
+	*value = temp
 	return nil
 }

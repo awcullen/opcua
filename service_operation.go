@@ -1,24 +1,24 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
-// serviceOperation holds a request and response channel.
-type serviceOperation struct {
+// ServiceOperation holds a request and response channel.
+type ServiceOperation struct {
 	request    ServiceRequest
 	responseCh chan ServiceResponse
 }
 
-// newServiceOperation constructs a new ServiceOperation
-func newServiceOperation(request ServiceRequest, responseCh chan ServiceResponse) *serviceOperation {
-	return &serviceOperation{request, responseCh}
+// NewServiceOperation constructs a new ServiceOperation
+func NewServiceOperation(request ServiceRequest, responseCh chan ServiceResponse) *ServiceOperation {
+	return &ServiceOperation{request, responseCh}
 }
 
 // Request returns the request that started the operation.
-func (o *serviceOperation) Request() ServiceRequest {
+func (o *ServiceOperation) Request() ServiceRequest {
 	return o.request
 }
 
 // ResponseCh returns a channel that produces the response.
-func (o *serviceOperation) ResponseCh() chan ServiceResponse {
+func (o *ServiceOperation) ResponseCh() chan ServiceResponse {
 	return o.responseCh
 }

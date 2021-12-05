@@ -1,4 +1,4 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua
 
@@ -23,44 +23,52 @@ type AcknowledgeableCondition struct {
 }
 
 // NewAcknowledgeableCondition ...
-func NewAcknowledgeableCondition(eventFields []*Variant) *AcknowledgeableCondition {
-	e := &AcknowledgeableCondition{}
-	for i, f := range eventFields {
-		if f.IsNil() {
-			continue
-		}
-		switch i {
-		case 0:
-			e.EventID = f.Value().(ByteString)
-		case 1:
-			e.EventType = f.Value().(NodeID)
-		case 2:
-			e.SourceName = f.Value().(string)
-		case 3:
-			e.Time = f.Value().(time.Time)
-		case 4:
-			e.Message = f.Value().(LocalizedText)
-		case 5:
-			e.Severity = f.Value().(uint16)
-		case 6:
-			e.ConditionID = f.Value().(NodeID)
-		case 7:
-			e.ConditionName = f.Value().(string)
-		case 8:
-			e.BranchID = f.Value().(NodeID)
-		case 9:
-			e.Retain = f.Value().(bool)
-		case 10:
-			e.AckedState = f.Value().(bool)
-		case 11:
-			e.ConfirmedState = f.Value().(bool)
-		}
+func NewAcknowledgeableCondition(eventFields []Variant) *AcknowledgeableCondition {
+	ret := &AcknowledgeableCondition{}
+	if len(eventFields) < 12 {
+		return ret
 	}
-	return e
+	if v, ok := eventFields[0].(ByteString); ok {
+		ret.EventID = v
+	}
+	if v, ok := eventFields[1].(NodeID); ok {
+		ret.EventType = v
+	}
+	if v, ok := eventFields[2].(string); ok {
+		ret.SourceName = v
+	}
+	if v, ok := eventFields[3].(time.Time); ok {
+		ret.Time = v
+	}
+	if v, ok := eventFields[4].(LocalizedText); ok {
+		ret.Message = v
+	}
+	if v, ok := eventFields[5].(uint16); ok {
+		ret.Severity = v
+	}
+	if v, ok := eventFields[6].(NodeID); ok {
+		ret.ConditionID = v
+	}
+	if v, ok := eventFields[7].(string); ok {
+		ret.ConditionName = v
+	}
+	if v, ok := eventFields[8].(NodeID); ok {
+		ret.BranchID = v
+	}
+	if v, ok := eventFields[9].(bool); ok {
+		ret.Retain = v
+	}
+	if v, ok := eventFields[10].(bool); ok {
+		ret.AckedState = v
+	}
+	if v, ok := eventFields[11].(bool); ok {
+		ret.ConfirmedState = v
+	}
+	return ret
 }
 
 // AcknowledgeableConditionSelectClauses ...
-var AcknowledgeableConditionSelectClauses []*SimpleAttributeOperand = []*SimpleAttributeOperand{
+var AcknowledgeableConditionSelectClauses []SimpleAttributeOperand = []SimpleAttributeOperand{
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("EventId"), AttributeID: AttributeIDValue},
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("EventType"), AttributeID: AttributeIDValue},
 	{TypeDefinitionID: ObjectTypeIDBaseEventType, BrowsePath: ParseBrowsePath("SourceName"), AttributeID: AttributeIDValue},

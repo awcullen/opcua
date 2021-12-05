@@ -6,77 +6,21 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	uuid "github.com/google/uuid"
 )
 
 // ExpandedNodeID identifies a remote Node.
 type ExpandedNodeID struct {
-	serverIndex  uint32
-	namespaceURI string
-	nodeID       NodeID
+	ServerIndex  uint32
+	NamespaceURI string
+	NodeID       NodeID
 }
 
-// NewExpandedNodeID casts an ExpandedNodeID from a NodeID.
 func NewExpandedNodeID(nodeID NodeID) ExpandedNodeID {
 	return ExpandedNodeID{0, "", nodeID}
 }
 
-// NewExpandedNodeIDNumeric constructs a new ExpandedNodeID of numeric type.
-func NewExpandedNodeIDNumeric(serverIndex uint32, namespaceURI string, identifier uint32) ExpandedNodeID {
-	return ExpandedNodeID{serverIndex, namespaceURI, NewNodeIDNumeric(0, identifier)}
-}
-
-// NewExpandedNodeIDString constructs a new ExpandedNodeID of string type.
-func NewExpandedNodeIDString(serverIndex uint32, namespaceURI string, identifier string) ExpandedNodeID {
-	return ExpandedNodeID{serverIndex, namespaceURI, NewNodeIDString(0, identifier)}
-}
-
-// NewExpandedNodeIDGUID constructs a new ExpandedNodeID of GUID type.
-func NewExpandedNodeIDGUID(serverIndex uint32, namespaceURI string, identifier uuid.UUID) ExpandedNodeID {
-	return ExpandedNodeID{serverIndex, namespaceURI, NewNodeIDGUID(0, identifier)}
-}
-
-// NewExpandedNodeIDOpaque constructs a new ExpandedNodeID of opaque type.
-func NewExpandedNodeIDOpaque(serverIndex uint32, namespaceURI string, identifier ByteString) ExpandedNodeID {
-	return ExpandedNodeID{serverIndex, namespaceURI, NewNodeIDOpaque(0, identifier)}
-}
-
-// ServerIndex returns the index in the servers table.
-func (n ExpandedNodeID) ServerIndex() uint32 {
-	return n.serverIndex
-}
-
-// NamespaceURI returns the namespace uri.
-func (n ExpandedNodeID) NamespaceURI() string {
-	return n.namespaceURI
-}
-
-// NamespaceIndex returns the namespace index.
-func (n ExpandedNodeID) NamespaceIndex() uint16 {
-	return n.nodeID.NamespaceIndex()
-}
-
-// IDType returns the id type.
-func (n ExpandedNodeID) IDType() IDType {
-	return n.nodeID.IDType()
-}
-
-// Identifier returns the identifier.
-func (n ExpandedNodeID) Identifier() interface{} {
-	return n.nodeID.Identifier()
-}
-
 // NilExpandedNodeID is the nil value.
-var NilExpandedNodeID = ExpandedNodeID{0, "", NilNodeID}
-
-// IsNil returns true if the nodeId is nil
-func (n ExpandedNodeID) IsNil() bool {
-	if n.namespaceURI != "" {
-		return false
-	}
-	return n.nodeID.IsNil()
-}
+var NilExpandedNodeID = ExpandedNodeID{0, "", nil}
 
 // ParseExpandedNodeID returns a NodeID from a string representation.
 //   - ParseExpandedNodeID("i=85") // integer, assumes nsu=http://opcfoundation.org/UA/
@@ -116,47 +60,54 @@ func ParseExpandedNodeID(s string) ExpandedNodeID {
 // String returns a string representation of the ExpandedNodeID, e.g. "nsu=http://www.unifiedautomation.com/DemoServer/;s=Demo"
 func (n ExpandedNodeID) String() string {
 	b := new(strings.Builder)
-
-	if n.serverIndex > 0 {
-		fmt.Fprintf(b, "svr=%d;", n.serverIndex)
+	if n.ServerIndex > 0 {
+		fmt.Fprintf(b, "svr=%d;", n.ServerIndex)
 	}
-
-	if len(n.namespaceURI) > 0 {
-		fmt.Fprintf(b, "nsu=%s;", n.namespaceURI)
+	if len(n.NamespaceURI) > 0 {
+		fmt.Fprintf(b, "nsu=%s;", n.NamespaceURI)
 	}
-
-	b.WriteString(n.nodeID.String())
-
+	switch n2 := n.NodeID.(type) {
+	case NodeIDNumeric:
+		b.WriteString(n2.String())
+	case NodeIDString:
+		b.WriteString(n2.String())
+	case NodeIDGUID:
+		b.WriteString(n2.String())
+	case NodeIDOpaque:
+		b.WriteString(n2.String())
+	default:
+		b.WriteString("i=0")
+	}
 	return b.String()
 }
 
 // ToNodeID converts ExpandedNodeID to NodeID by looking up the NamespaceURI and replacing it with the index.
-func (n ExpandedNodeID) ToNodeID(namespaceURIs []string) NodeID {
-	if n.namespaceURI == "" {
-		return n.nodeID
+func ToNodeID(n ExpandedNodeID, namespaceURIs []string) NodeID {
+	if n.NamespaceURI == "" {
+		return n.NodeID
 	}
 	ns := uint16(0)
 	flag := false
 	for i, uri := range namespaceURIs {
-		if uri == n.namespaceURI {
+		if uri == n.NamespaceURI {
 			ns = uint16(i)
 			flag = true
 			break
 		}
 	}
 	if !flag {
-		return NilNodeID
+		return nil
 	}
-	switch n.nodeID.idType {
-	case IDTypeNumeric:
-		return NewNodeIDNumeric(ns, n.nodeID.nid)
-	case IDTypeString:
-		return NewNodeIDString(ns, n.nodeID.sid)
-	case IDTypeGUID:
-		return NewNodeIDGUID(ns, n.nodeID.gid)
-	case IDTypeOpaque:
-		return NewNodeIDOpaque(ns, n.nodeID.bid)
+	switch n2 := n.NodeID.(type) {
+	case NodeIDNumeric:
+		return NodeIDNumeric{ns, n2.ID}
+	case NodeIDString:
+		return NodeIDString{ns, n2.ID}
+	case NodeIDGUID:
+		return NodeIDGUID{ns, n2.ID}
+	case NodeIDOpaque:
+		return NodeIDOpaque{ns, n2.ID}
 	default:
-		return NilNodeID
+		return nil
 	}
 }

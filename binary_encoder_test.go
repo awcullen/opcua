@@ -1,88 +1,170 @@
-// Copyright 2020 Converter Systems LLC. All rights reserved.
+// Copyright 2021 Converter Systems LLC. All rights reserved.
 
 package opcua_test
 
 import (
 	"bytes"
-	"reflect"
 	"testing"
 	"time"
 
-	ua "github.com/awcullen/opcua"
-	uuid "github.com/google/uuid"
-	"github.com/pascaldekloe/goe/verify"
+	"github.com/awcullen/opcua"
+	"github.com/google/uuid"
+	"gotest.tools/assert"
 )
 
 func TestBoolean(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    bool
+		bytes []byte
+	}{
 		{
-			Name: "Boolean",
-			In:   true,
-			Bytes: []byte{
+			true,
+			[]byte{
 				0x01,
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteBoolean(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out bool
+		if err := dec.ReadBoolean(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestInt32(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    int32
+		bytes []byte
+	}{
 		{
-			Name: "Int32",
-			In:   int32(1_000_000_000),
-			Bytes: []byte{
+			1_000_000_000,
+			[]byte{
 				0x00, 0xCA, 0x9A, 0x3B,
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteInt32(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out int32
+		if err := dec.ReadInt32(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestFloat(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    float32
+		bytes []byte
+	}{
 		{
-			Name: "Single",
-			In:   float32(-6.5),
-			Bytes: []byte{
+			-6.5,
+			[]byte{
 				0x00, 0x00, 0xD0, 0xC0,
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteFloat(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out float32
+		if err := dec.ReadFloat(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestString(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    string
+		bytes []byte
+	}{
 		{
-			Name: "String",
-			In:   "水Boy",
-			Bytes: []byte{
+			"水Boy",
+			[]byte{
 				0x06, 0x00, 0x00, 0x00, 0xE6, 0xB0, 0xB4, 0x42, 0x6F, 0x79,
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteString(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out string
+		if err := dec.ReadString(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestTime(t *testing.T) {
-	t1, _ := time.Parse(time.RFC3339, "2020-07-04T12:00:00Z")
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    time.Time
+		bytes []byte
+	}{
 		{
-			Name:  "DateTime",
-			In:    t1,
-			Bytes: []byte{0x00, 0xa0, 0xa5, 0xa4, 0xfa, 0x51, 0xd6, 0x01},
+			time.Date(2020, time.July, 04, 12, 0, 0, 0, time.UTC),
+			[]byte{
+				0x00, 0xa0, 0xa5, 0xa4, 0xfa, 0x51, 0xd6, 0x01,
+			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteDateTime(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out time.Time
+		if err := dec.ReadDateTime(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestGUID(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    uuid.UUID
+		bytes []byte
+	}{
 		{
-			Name: "spec",
-			In:   uuid.MustParse("72962B91-FA75-4AE6-8D28-B404DC7DAF63"),
-			Bytes: []byte{
+			uuid.MustParse("72962B91-FA75-4AE6-8D28-B404DC7DAF63"),
+			[]byte{
 				// data1 (inverse order)
 				0x91, 0x2b, 0x96, 0x72,
 				// data2 (inverse order)
@@ -94,15 +176,31 @@ func TestGUID(t *testing.T) {
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteGUID(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out uuid.UUID
+		if err := dec.ReadGUID(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestNodeID(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    opcua.NodeID
+		bytes []byte
+	}{
 		{
-			Name: "TwoByte",
-			In:   ua.NewNodeIDNumeric(0, 255),
-			Bytes: []byte{
+			opcua.NewNodeIDNumeric(0, 255),
+			[]byte{
 				// mask
 				0x00,
 				// id
@@ -110,9 +208,8 @@ func TestNodeID(t *testing.T) {
 			},
 		},
 		{
-			Name: "FourByte",
-			In:   ua.NewNodeIDNumeric(2, 65535),
-			Bytes: []byte{
+			opcua.NewNodeIDNumeric(2, 65535),
+			[]byte{
 				// mask
 				0x01,
 				// namespace
@@ -122,9 +219,8 @@ func TestNodeID(t *testing.T) {
 			},
 		},
 		{
-			Name: "Numeric",
-			In:   ua.NewNodeIDNumeric(10, 4294967295),
-			Bytes: []byte{
+			opcua.NewNodeIDNumeric(10, 4294967295),
+			[]byte{
 				// mask
 				0x02,
 				// namespace
@@ -134,9 +230,8 @@ func TestNodeID(t *testing.T) {
 			},
 		},
 		{
-			Name: "String",
-			In:   ua.NewNodeIDString(2, "bar"),
-			Bytes: []byte{
+			opcua.NewNodeIDString(2, "bar"),
+			[]byte{
 				// mask
 				0x03,
 				// namespace
@@ -147,9 +242,8 @@ func TestNodeID(t *testing.T) {
 			},
 		},
 		{
-			Name: "Guid",
-			In:   ua.NewNodeIDGUID(2, uuid.MustParse("AAAABBBB-CCDD-EEFF-0102-0123456789AB")),
-			Bytes: []byte{
+			opcua.NewNodeIDGUID(2, uuid.MustParse("AAAABBBB-CCDD-EEFF-0102-0123456789AB")),
+			[]byte{
 				// mask
 				0x04,
 				// namespace
@@ -166,9 +260,8 @@ func TestNodeID(t *testing.T) {
 			},
 		},
 		{
-			Name: "Opaque",
-			In:   ua.NewNodeIDOpaque(2, ua.ByteString("\x00\x10\x20\x30\x40\x50\x60\x70")),
-			Bytes: []byte{
+			opcua.NewNodeIDOpaque(2, opcua.ByteString("\x00\x10\x20\x30\x40\x50\x60\x70")),
+			[]byte{
 				// mask
 				0x05,
 				// namespace
@@ -179,51 +272,80 @@ func TestNodeID(t *testing.T) {
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteNodeID(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out opcua.NodeID
+		if err := dec.ReadNodeID(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestQualifiedName(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    opcua.QualifiedName
+		bytes []byte
+	}{
 		{
-			Name: "has-both",
-			In:   ua.QualifiedName{NamespaceIndex: 2, Name: "bar"},
-			Bytes: []byte{
+			opcua.QualifiedName{NamespaceIndex: 2, Name: "bar"},
+			[]byte{
 				0x02, 0x00,
 				// name: "bar"
 				0x03, 0x00, 0x00, 0x00, 0x62, 0x61, 0x72,
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteQualifiedName(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out opcua.QualifiedName
+		if err := dec.ReadQualifiedName(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestLocalizedText(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    opcua.LocalizedText
+		bytes []byte
+	}{
 		{
-			Name:  "nothing",
-			In:    ua.LocalizedText{},
-			Bytes: []byte{0x00},
+			opcua.LocalizedText{},
+			[]byte{0x00},
 		},
 		{
-			Name: "has-locale",
-			In:   ua.LocalizedText{Locale: "foo"},
-			Bytes: []byte{
+			opcua.LocalizedText{Locale: "foo"},
+			[]byte{
 				0x01,
 				0x03, 0x00, 0x00, 0x00, 0x66, 0x6f, 0x6f,
 			},
 		},
 		{
-			Name: "has-text",
-			In:   ua.LocalizedText{Text: "bar"},
-			Bytes: []byte{
+			opcua.LocalizedText{Text: "bar"},
+			[]byte{
 				0x02,
 				0x03, 0x00, 0x00, 0x00, 0x62, 0x61, 0x72,
 			},
 		},
 		{
-			Name: "has-both",
-			In:   ua.LocalizedText{Text: "bar", Locale: "foo"},
-			Bytes: []byte{
+			opcua.LocalizedText{Text: "bar", Locale: "foo"},
+			[]byte{
 				0x03,
 				0x03, 0x00, 0x00, 0x00, 0x66, 0x6f, 0x6f,
 				// second String: "bar"
@@ -231,15 +353,31 @@ func TestLocalizedText(t *testing.T) {
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteLocalizedText(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out opcua.LocalizedText
+		if err := dec.ReadLocalizedText(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestDataValue(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    opcua.DataValue
+		bytes []byte
+	}{
 		{
-			Name: "value only",
-			In:   ua.NewDataValueFloat(float32(2.50025), 0, time.Time{}, 0, time.Time{}, 0),
-			Bytes: []byte{
+			opcua.DataValue{float32(2.50025), 0, time.Time{}, 0, time.Time{}, 0},
+			[]byte{
 				// EncodingMask
 				0x01,
 				// Value
@@ -248,11 +386,10 @@ func TestDataValue(t *testing.T) {
 			},
 		},
 		{
-			Name: "value, source timestamp, server timestamp",
-			In: ua.NewDataValueFloat(float32(2.50017), 0,
+			opcua.DataValue{float32(2.50017), 0,
 				time.Date(2018, time.September, 17, 14, 28, 29, 112000000, time.UTC), 0,
-				time.Date(2018, time.September, 17, 14, 28, 29, 112000000, time.UTC), 0),
-			Bytes: []byte{
+				time.Date(2018, time.September, 17, 14, 28, 29, 112000000, time.UTC), 0},
+			[]byte{
 				// EncodingMask
 				0x0d,
 				// Value
@@ -265,37 +402,69 @@ func TestDataValue(t *testing.T) {
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteDataValue(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out opcua.DataValue
+		if err := dec.ReadDataValue(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestEnum(t *testing.T) {
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    opcua.MessageSecurityMode
+		bytes []byte
+	}{
 		{
-			Name: "Enum",
-			In:   ua.MessageSecurityModeSignAndEncrypt,
-			Bytes: []byte{
-				// int32
+			opcua.MessageSecurityModeSignAndEncrypt,
+			[]byte{
 				0x03, 0x00, 0x00, 0x00,
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.Encode(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out opcua.MessageSecurityMode
+		if err := dec.Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestStruct(t *testing.T) {
-	t0, _ := time.Parse(time.RFC3339, "1601-01-01T12:00:00Z")
-	nodesToRead := make([]*ua.ReadValueID, 1)
-	for index := 0; index < len(nodesToRead); index++ {
-		nodesToRead[index] = &ua.ReadValueID{
-			AttributeID: ua.AttributeIDValue,
-			NodeID:      ua.NewNodeIDNumeric(0, 255),
-		}
-	}
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    interface{}
+		out   interface{}
+		bytes []byte
+	}{
 		{
-			Name: "ReadRequest",
-			In:   &ua.ReadRequest{RequestHeader: ua.RequestHeader{Timestamp: t0}, NodesToRead: nodesToRead},
-			Bytes: []byte{
+			&opcua.RequestHeader{Timestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC)},
+			&opcua.RequestHeader{},
+			[]byte{
+				0x00, 0x00, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			},
+		},
+		{
+			&opcua.ReadRequest{RequestHeader: opcua.RequestHeader{Timestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC)}, NodesToRead: []opcua.ReadValueID{{AttributeID: opcua.AttributeIDValue, NodeID: opcua.NewNodeIDNumeric(0, 255)}}},
+			&opcua.ReadRequest{},
+			[]byte{
 				0x00, 0x00, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // max age
 				0x00, 0x00, 0x00, 0x00, // timestamps
@@ -304,100 +473,193 @@ func TestStruct(t *testing.T) {
 			},
 		},
 		{
-			Name: "CreateSessionRequest",
-			In:   &ua.CreateSessionRequest{RequestHeader: ua.RequestHeader{Timestamp: t0}, ClientDescription: &ua.ApplicationDescription{}},
-			Bytes: []byte{
+			&opcua.PublishResponse{
+				ResponseHeader:           opcua.ResponseHeader{Timestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), RequestHandle: 1000085},
+				SubscriptionID:           1296242973,
+				AvailableSequenceNumbers: []uint32{4},
+				MoreNotifications:        false,
+				NotificationMessage: opcua.NotificationMessage{
+					SequenceNumber: 4,
+					PublishTime:    time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC),
+					NotificationData: []opcua.ExtensionObject{
+						opcua.DataChangeNotification{
+							MonitoredItems: []opcua.MonitoredItemNotification{
+								{ClientHandle: 9, Value: opcua.DataValue{time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), 0, time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), 0, time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), 0}},
+							},
+						},
+					},
+				},
+				Results: []opcua.StatusCode{0},
+			},
+			&opcua.PublishResponse{},
+			[]byte{
+				0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x95, 0x42, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, // header
+				0x1d, 0x19, 0x43, 0x4d, // sub id
+				0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, // array of available seq id
+				0x00,                   // more
+				0x04, 0x00, 0x00, 0x00, // seq num
+				0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, // pub time
+				0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x2b, 0x03, 0x01, 0x26, 0x00, 0x00, 0x00, 0x01, 0x00,
+				0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x0d, 0x0d, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00,
+				0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00,
+				0xff, 0xff, 0xff, 0xff, // diag infos
+				0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // results
+				0xff, 0xff, 0xff, 0xff, // diag infos
+			},
+		},
+		{
+			&opcua.CreateSessionRequest{RequestHeader: opcua.RequestHeader{Timestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC)}, ClientDescription: opcua.ApplicationDescription{}},
+			&opcua.CreateSessionRequest{},
+			[]byte{
 				0x00, 0x00, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+				0xff, 0xff, 0xff, 0xff,
+				0xff, 0xff, 0xff, 0xff,
+				0xff, 0xff, 0xff, 0xff,
+				0xff, 0xff, 0xff, 0xff,
+				0xff, 0xff, 0xff, 0xff,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00,
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.Encode(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		if err := dec.Decode(c.out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, c.out, c.in)
+	}
 }
 
-func TestSlice(t *testing.T) {
-	nodesToRead := make([]*ua.ReadValueID, 10)
-	for index := 0; index < len(nodesToRead); index++ {
-		nodesToRead[index] = &ua.ReadValueID{
-			AttributeID: ua.AttributeIDValue,
-			NodeID:      ua.NewNodeIDNumeric(0, 255),
-		}
-	}
-	cases := []encoderTestCase{
+func TestSliceBoolean(t *testing.T) {
+	cases := []struct {
+		in    []bool
+		bytes []byte
+	}{
 		{
-			Name: "ReadValueID",
-			In:   nodesToRead,
-			Bytes: []byte{
-				// int32
+			[]bool{true, false, true, false, true, false, true, false, true, false},
+			[]byte{
+				// int32 len
 				0x0a, 0x00, 0x00, 0x00,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
-				0x00, 0xff, 0x0d, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,
+				0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00,
 			},
 		},
 	}
-	runEncoderTest(t, cases)
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteBooleanArray(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out []bool
+		if err := dec.ReadBooleanArray(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
 }
 
 func TestSliceVariant(t *testing.T) {
-	variants := []*ua.Variant{
-		ua.NewVariantString("foo"),
-		ua.NewVariantUInt16(255),
-	}
-	cases := []encoderTestCase{
+	cases := []struct {
+		in    []opcua.Variant
+		bytes []byte
+	}{
 		{
-			Name: "ReadValueID",
-			In:   variants,
-			Bytes: []byte{
-				0x02, 0x00, 0x00, 0x00, // len
-				0x0c, 0x03, 0x00, 0x00, 0x00, 0x66, 0x6f, 0x6f, // foo
-				0x05, 0xff, 0x00, // 255
+			[]opcua.Variant{
+				true,
+				"foo",
+				uint16(255),
+				float32(-6.5),
+				opcua.NewNodeIDNumeric(0, 1),
+				opcua.RequestHeader{Timestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC)},
+				[]opcua.ExtensionObject{
+					opcua.RequestHeader{Timestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC)},
+				},
+				[]opcua.Variant{
+					true,
+					"foo",
+				},
+			},
+			[]byte{
+				0x08, 0x00, 0x00, 0x00, // len
+				0x01, 0x01, // bool
+				0x0c, 0x03, 0x00, 0x00, 0x00, 0x66, 0x6f, 0x6f, // string
+				0x05, 0xff, 0x00, // uint16
+				0x0a, 0x00, 0x00, 0xD0, 0xC0, // float
+				0x11, 0x00, 0x01, // nodeid
+				0x16, 0x01, 0x00, 0x87, 0x01, 0x01, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // ext obj
+				0x96, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x87, 0x01, 0x01, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe0, 0x34, 0x95, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // [] ext obj
+				0x98, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x0c, 0x03, 0x00, 0x00, 0x00, 0x66, 0x6f, 0x6f, // [] variant
 			},
 		},
 	}
-	runEncoderTest(t, cases)
-}
-
-type encoderTestCase struct {
-	Name  string
-	In    interface{}
-	Bytes []byte
-}
-
-func runEncoderTest(t *testing.T, cases []encoderTestCase) {
-	t.Helper()
 	for _, c := range cases {
-		t.Run(c.Name, func(t *testing.T) {
-			t.Run("encode", func(t *testing.T) {
-				bs := make([]byte, 0, 200)
-				buf := bytes.NewBuffer(bs)
-				enc := ua.NewBinaryEncoder(buf, ua.NewEncodingContext())
-				if err := enc.Encode(c.In); err != nil {
-					t.Fatal(err)
-				}
-				// t.Logf("% #x\n", buf.Bytes())
-				// t.Logf("% #x\n", c.Bytes)
-				verify.Values(t, "", buf.Bytes(), c.Bytes)
-			})
-			t.Run("decode", func(t *testing.T) {
-				buf := bytes.NewBuffer(c.Bytes)
-				dec := ua.NewBinaryDecoder(buf, ua.NewEncodingContext())
-				out := reflect.New(reflect.TypeOf(c.In)).Interface()
-				if err := dec.Decode(out); err != nil {
-					t.Fatal(err)
-				}
-				out = reflect.ValueOf(out).Elem().Interface()
-				// t.Logf("%+v\n", c.In)
-				// t.Logf("%+v\n", out)
-				verify.Values(t, "", out, c.In)
-			})
-		})
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteVariantArray(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out []opcua.Variant
+		if err := dec.ReadVariantArray(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
+	}
+}
+
+func TestSliceNodeID(t *testing.T) {
+	cases := []struct {
+		in    []opcua.NodeID
+		bytes []byte
+	}{
+		{
+			[]opcua.NodeID{
+				opcua.NewNodeIDNumeric(0, 255),
+				opcua.NewNodeIDNumeric(2, 65535),
+				opcua.NewNodeIDNumeric(10, 4294967295),
+				opcua.NewNodeIDString(2, "bar"),
+				opcua.NewNodeIDGUID(2, uuid.MustParse("AAAABBBB-CCDD-EEFF-0102-0123456789AB")),
+				opcua.NewNodeIDOpaque(2, opcua.ByteString("\x00\x10\x20\x30\x40\x50\x60\x70")),
+			},
+			[]byte{
+				0x06, 0x00, 0x00, 0x00, // len
+				0x00, 0xff, // two-byte
+				0x01, 0x02, 0xff, 0xff, // four-byte
+				0x02, 0x0a, 0x00, 0xff, 0xff, 0xff, 0xff, // numeric
+				0x03, 0x02, 0x00, 0x03, 0x00, 0x00, 0x00, 0x62, 0x61, 0x72, // string
+				0x04, 0x02, 0x00, 0xbb, 0xbb, 0xaa, 0xaa, 0xdd, 0xcc, 0xff, 0xee, 0x01, 0x02, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, // guid
+				0x05, 0x02, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, // bytes
+			},
+		},
+	}
+	for _, c := range cases {
+		buf := &bytes.Buffer{}
+		enc := opcua.NewBinaryEncoder(buf, opcua.NewEncodingContext())
+		if err := enc.WriteNodeIDArray(c.in); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, buf.Bytes(), c.bytes)
+
+		dec := opcua.NewBinaryDecoder(buf, opcua.NewEncodingContext())
+		var out []opcua.NodeID
+		if err := dec.ReadNodeIDArray(&out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, out, c.in)
 	}
 }
