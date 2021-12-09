@@ -1,4 +1,6 @@
-package testserver
+// Copyright 2021 Converter Systems LLC. All rights reserved.
+
+package main
 
 const nodeset = `
 <UANodeSet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:uax="http://opcfoundation.org/UA/2008/02/Types.xsd" xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd" xmlns:xsd="http://www.w3.org/2001/XMLSchema">

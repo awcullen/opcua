@@ -48,10 +48,14 @@ func ExampleClient_CreateSubscription() {
 		TimestampsToReturn: opcua.TimestampsToReturnBoth,
 		ItemsToCreate: []opcua.MonitoredItemCreateRequest{
 			{
-				ItemToMonitor:  opcua.ReadValueID{NodeID: opcua.VariableIDServerServerStatusCurrentTime, AttributeID: opcua.AttributeIDValue},
+				ItemToMonitor:  opcua.ReadValueID{
+					NodeID: opcua.VariableIDServerServerStatusCurrentTime, 
+					AttributeID: opcua.AttributeIDValue,
+				},
 				MonitoringMode: opcua.MonitoringModeReporting,
 				// specify a unique ClientHandle. The ClientHandle is returned in the PublishResponse
-				RequestedParameters: opcua.MonitoringParameters{ClientHandle: 42, QueueSize: 1, DiscardOldest: true, SamplingInterval: 1000.0},
+				RequestedParameters: opcua.MonitoringParameters{
+					ClientHandle: 42, QueueSize: 1, DiscardOldest: true, SamplingInterval: 1000.0},
 			},
 		},
 	}

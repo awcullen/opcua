@@ -29,7 +29,7 @@ func (ch *clientSecureChannel) GetEndpoints(ctx context.Context, request *opcua.
 	return response.(*opcua.GetEndpointsResponse), nil
 }
 
-// FindServers returns the Servers known to a Server or Discovery Server
+// FindServers returns the Servers known to a Server or Discovery Server.
 // See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.2/
 func FindServers(ctx context.Context, request *opcua.FindServersRequest) (*opcua.FindServersResponse, error) {
 	ch := newClientSecureChannel(
@@ -72,7 +72,7 @@ func FindServers(ctx context.Context, request *opcua.FindServersRequest) (*opcua
 }
 
 // GetEndpoints returns the endpoint descriptions supported by the server.
-// https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.4/
+// See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.4/
 func GetEndpoints(ctx context.Context, request *opcua.GetEndpointsRequest) (*opcua.GetEndpointsResponse, error) {
 	ch := newClientSecureChannel(
 		opcua.ApplicationDescription{
@@ -134,7 +134,7 @@ func (ch *clientSecureChannel) RegisterServer2(ctx context.Context, request *opc
 }
 
 // RegisterServer registers a server with a discovery server.
-// https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.5/
+// See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.5/
 func RegisterServer(ctx context.Context, endpointURL string, request *opcua.RegisterServerRequest) (*opcua.RegisterServerResponse, error) {
 	ch := newClientSecureChannel(
 		opcua.ApplicationDescription{
