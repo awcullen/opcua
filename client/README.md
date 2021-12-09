@@ -1,6 +1,4 @@
-![robot][1]
-
-# opcua - [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua)[![License](http://img.shields.io/badge/license-mit-blue.svg?style=flat-square)](https://raw.githubusercontent.com/awcullen/opcua/master/LICENSE)
+# client - [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua/client) [![License](http://img.shields.io/badge/license-mit-blue.svg?style=flat-square)](https://raw.githubusercontent.com/awcullen/opcua/master/LICENSE)
 Browse, read, write and subscribe to the live data published by the OPC UA servers on your network.
 
 This package supports OPC UA TCP transport protocol with secure channel and binary encoding.  For more information, visit https://reference.opcfoundation.org/v104/.
@@ -26,11 +24,10 @@ func ExampleClient_ReadMe() {
 
 	ctx := context.Background()
 
-	// open a connection to the on-line OPC UA C++ Demo Server, sponsored by One-Way Automation Inc.
-	// See http://www.opcuaserver.com/
+	// open a connection to a local testserver. Testserver is started automatically if not already running.
 	ch, err := client.Dial(
 		ctx,
-		"opc.tcp://opcuaserver.com:48010",
+		"opc.tcp://localhost:48010",
 		client.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
@@ -63,7 +60,7 @@ func ExampleClient_ReadMe() {
 		fmt.Printf("  ManufacturerName: %s\n", serverStatus.BuildInfo.ManufacturerName)
 		fmt.Printf("  State: %s\n", serverStatus.State)
 	} else {
-		fmt.Printf("Error reading ServerStatus.\n")
+		fmt.Println("Error decoding ServerStatus.")
 	}
 
 	// close connection
@@ -75,13 +72,10 @@ func ExampleClient_ReadMe() {
 
 	// Output:
 	// Server status:
-	//   ProductName: C++ SDK OPC UA Demo Server
-	//   ManufacturerName: Unified Automation GmbH
+	//   ProductName: testserver
+	//   ManufacturerName: awcullen
 	//   State: Running
 }
 
 
 ```
-
-
- [1]: robot6.jpg
