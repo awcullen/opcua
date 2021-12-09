@@ -20,7 +20,6 @@ import (
 
 	"github.com/awcullen/opcua"
 	"github.com/awcullen/opcua/client"
-	"github.com/awcullen/opcua/testserver"
 
 	"github.com/pkg/errors"
 )
@@ -29,30 +28,36 @@ var (
 	endpointURL = "opc.tcp://127.0.0.1:46010" // our testserver
 )
 
+// TestMain is run at the start of client testing. If an opcua server is not already running,
+// then testserver is started.
 func TestMain(m *testing.M) {
 	if err := ensurePKI(); err != nil {
 		fmt.Println(errors.Wrap(err, "Error creating pki"))
 		os.Exit(1)
 	}
-	srv, err := testserver.New()
+	// check if server is listening at endpointURL
+	_, err := client.FindServers(context.Background(), &opcua.FindServersRequest{EndpointURL: endpointURL})
 	if err != nil {
-		fmt.Println(errors.Wrap(err, "Error creating server"))
-		os.Exit(2)
-	}
-	go func() {
-		if err := srv.ListenAndServe(); err != opcua.BadServerHalted {
-			fmt.Println(errors.Wrap(err, "Error opening server"))
-			os.Exit(3)
+		// if testserver not listening, start it.
+		srv, err := NewTestServer()
+		if err != nil {
+			fmt.Println(errors.Wrap(err, "Error creating server"))
+			os.Exit(2)
 		}
-	}()
-	res := m.Run()
-	if err := srv.Close(); err != nil {
-		fmt.Println(errors.Wrap(err, "Error closing server"))
-		os.Exit(4)
+		defer srv.Close()
+		go func() {
+			if err := srv.ListenAndServe(); err != opcua.BadServerHalted {
+				fmt.Println(errors.Wrap(err, "Error opening server"))
+				os.Exit(3)
+			}
+		}()
 	}
-	os.Exit(res)
+	// run the tests
+	res := m.Run()
+	defer os.Exit(res)
 }
 
+// TestDiscoveryClient discovers connection information about a server.
 func TestDiscoveryClient(t *testing.T) {
 	{
 		res, err := client.FindServers(context.Background(), &opcua.FindServersRequest{EndpointURL: endpointURL})
@@ -81,6 +86,7 @@ func TestDiscoveryClient(t *testing.T) {
 	}
 }
 
+// TestOpenClientlWithoutSecurity tests opening a connection with a server using no security.
 func TestOpenClientlWithoutSecurity(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
@@ -96,14 +102,14 @@ func TestOpenClientlWithoutSecurity(t *testing.T) {
 	ch.Close(ctx)
 }
 
+// TestOpenClientWithSecurity tests opening a connection with a server using the best security the server offers.
 func TestOpenClientWithSecurity(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithApplicationName("test-client"),
 		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
@@ -116,13 +122,14 @@ func TestOpenClientWithSecurity(t *testing.T) {
 	ch.Close(ctx)
 }
 
+// TestReadServerStatus tests reading the server status variable.
 func TestReadServerStatus(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
 		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
@@ -158,44 +165,13 @@ func TestReadServerStatus(t *testing.T) {
 	t.Logf("  CurrentTime: %s", status.CurrentTime)
 }
 
-func TestReadServerCurrentTime(t *testing.T) {
-	ctx := context.Background()
-	ch, err := client.Dial(
-		ctx,
-		endpointURL,
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
-	)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
-		return
-	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
-			{NodeID: opcua.VariableIDServerServerStatusCurrentTime, AttributeID: opcua.AttributeIDValue},
-		},
-	}
-	res, err := ch.Read(ctx, req)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error reading current time"))
-		ch.Abort(ctx)
-		return
-	}
-	if res.Results[0].StatusCode.IsBad() {
-		t.Error(errors.Wrap(res.Results[0].StatusCode, "Error reading current time"))
-		ch.Abort(ctx)
-		return
-	}
-	t.Logf(" + CurrentTime: %s", res.Results[0].Value.(time.Time))
-	ch.Close(ctx)
-}
-
+// TestReadBuiltinTypes tests reading the server variables to demonstrate the built-in types available.
 func TestReadBuiltinTypes(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
 		t.Error(errors.Wrap(err, "Error opening client"))
@@ -258,13 +234,15 @@ func TestReadBuiltinTypes(t *testing.T) {
 		}
 	}
 }
+
+// TestReadAttributes tests reading various attributes of a server object.
 func TestReadAttributes(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
 		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
@@ -304,12 +282,52 @@ func TestReadAttributes(t *testing.T) {
 	}
 }
 
+// TestWriteIndexRange tests writing the fourth and fifth elements of a server array variable.
+func TestWrite(t *testing.T) {
+	ctx := context.Background()
+	ch, err := client.Dial(
+		ctx,
+		endpointURL,
+		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithInsecureSkipVerify(),
+		client.WithUserNameIdentity("root", "secret"),
+	)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error opening client"))
+		return
+	}
+	t.Logf("Success opening client: %s", ch.EndpointURL())
+	req := &opcua.WriteRequest{
+		NodesToWrite: []opcua.WriteValue{
+			{
+				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Double"),
+				AttributeID: opcua.AttributeIDValue,
+				Value:       opcua.NewDataValue(float64(42.0), 0, time.Time{}, 0, time.Time{}, 0),
+			},
+		},
+	}
+	res, err := ch.Write(ctx, req)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error writing"))
+		ch.Abort(ctx)
+		return
+	}
+	if res.Results[0].IsBad() {
+		t.Error(errors.Wrap(res.Results[0], "Error writing"))
+		ch.Abort(ctx)
+		return
+	}
+	t.Logf("%s: %s", req.NodesToWrite[0].NodeID, res.Results[0])
+	ch.Close(ctx)
+}
+
+// TestReadIndexRange tests reading the first three elements of a server array variable.
 func TestReadIndexRange(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
 		t.Error(errors.Wrap(err, "Error opening client"))
@@ -338,13 +356,14 @@ func TestReadIndexRange(t *testing.T) {
 	}
 }
 
-func TestWriteRange(t *testing.T) {
+// TestWriteIndexRange tests writing the fourth and fifth elements of a server array variable.
+func TestWriteIndexRange(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
 		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
@@ -393,139 +412,13 @@ func TestWriteRange(t *testing.T) {
 	ch.Close(ctx)
 }
 
-func TestReadStringIndexRange(t *testing.T) {
-	ctx := context.Background()
-	ch, err := client.Dial(
-		ctx,
-		endpointURL,
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
-	)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
-		return
-	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
-			{
-				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.String"),
-				AttributeID: opcua.AttributeIDValue,
-				IndexRange:  "0:2",
-			},
-		},
-	}
-	res, err := ch.Read(ctx, req)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error reading"))
-		ch.Abort(ctx)
-		return
-	}
-	ch.Close(ctx)
-	t.Logf("Results:")
-	for i, result := range res.Results {
-		t.Logf("%s: %v, %s", req.NodesToRead[i].NodeID, result.Value, result.StatusCode)
-	}
-}
-
-func TestWriteStringRange(t *testing.T) {
-	ctx := context.Background()
-	ch, err := client.Dial(
-		ctx,
-		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
-		client.WithUserNameIdentity("root", "secret"),
-	)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
-		return
-	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.WriteRequest{
-		NodesToWrite: []opcua.WriteValue{
-			{
-				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.String"),
-				AttributeID: opcua.AttributeIDValue,
-				IndexRange:  "5",
-				Value:       opcua.NewDataValue(string("D"), 0, time.Time{}, 0, time.Time{}, 0),
-			},
-		},
-	}
-	res, err := ch.Write(ctx, req)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error writing"))
-		ch.Abort(ctx)
-		return
-	}
-	if res.Results[0].IsBad() {
-		t.Error(errors.Wrap(res.Results[0], "Error writing"))
-		ch.Abort(ctx)
-		return
-	}
-	req2 := &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
-			{
-				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.String"),
-				AttributeID: opcua.AttributeIDValue,
-				IndexRange:  "0:9",
-			},
-		},
-	}
-	res2, err := ch.Read(ctx, req2)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error reading"))
-		ch.Abort(ctx)
-		return
-	}
-	t.Logf("Wrote %s: %v", req.NodesToWrite[0].NodeID, req.NodesToWrite[0].Value.Value)
-	t.Logf("Read %s: %v", req2.NodesToRead[0].NodeID, res2.Results[0].Value)
-	ch.Close(ctx)
-}
-
-func TestWrite(t *testing.T) {
-	ctx := context.Background()
-	ch, err := client.Dial(
-		ctx,
-		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
-		client.WithUserNameIdentity("root", "secret"),
-	)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
-		return
-	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.WriteRequest{
-		NodesToWrite: []opcua.WriteValue{
-			{
-				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Double"),
-				AttributeID: opcua.AttributeIDValue,
-				Value:       opcua.NewDataValue(float64(42.0), 0, time.Time{}, 0, time.Time{}, 0),
-			},
-		},
-	}
-	res, err := ch.Write(ctx, req)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error writing"))
-		ch.Abort(ctx)
-		return
-	}
-	if res.Results[0].IsBad() {
-		t.Error(errors.Wrap(res.Results[0], "Error writing"))
-		ch.Abort(ctx)
-		return
-	}
-	t.Logf("%s: %s", req.NodesToWrite[0].NodeID, res.Results[0])
-	ch.Close(ctx)
-}
-
+// TestBrowse tests browsing the top-level objects folder.
 func TestBrowse(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
 		t.Error(errors.Wrap(err, "Error opening client"))
@@ -561,12 +454,13 @@ func TestBrowse(t *testing.T) {
 	}
 }
 
+// TestSubscribe tests subscribing to recieve data changes of the server's variable.
 func TestSubscribe(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
 		t.Error(errors.Wrap(err, "Error opening client"))
@@ -643,13 +537,14 @@ func TestSubscribe(t *testing.T) {
 	ch.Close(ctx)
 }
 
+// TestCallMethod tests calling a method of the server and passing Aurguments.
 func TestCallMethod(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
 		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
@@ -683,12 +578,15 @@ func TestCallMethod(t *testing.T) {
 	t.Logf("  %6d", res.Results[0].OutputArguments[0])
 }
 
+// TestTranslate tests finding a node in the namespace, given a starting nodeID and a BrowsePath.
 func TestTranslate(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithTrustedCertificatesFile("./pki/server.crt"),
+		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithInsecureSkipVerify(),
+		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
 		t.Error(errors.Wrap(err, "Error opening client"))
@@ -735,7 +633,7 @@ func TestTranslate(t *testing.T) {
 }
 
 /*
-// This test demonstrates reading history from the UaCPPServer available from https://www.unified-automation.com/
+// TestReadHistory demonstrates reading history from the UaCPPServer available from https://www.unified-automation.com/
 func TestReadHistory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping long running test")
@@ -874,6 +772,7 @@ func TestReadHistory(t *testing.T) {
 	ch.Close(ctx)
 }
 */
+
 func createNewCertificate(appName, certFile, keyFile string) error {
 
 	// Create a keypair.
@@ -946,15 +845,14 @@ func ensurePKI() error {
 		return err
 	}
 
-	// create a server cert in ./pki
-	if err := createNewCertificate("testserver", "./pki/server.crt", "./pki/server.key"); err != nil {
-		return err
-	}
-
 	// create a client cert in ./pki
 	if err := createNewCertificate("test-client", "./pki/client.crt", "./pki/client.key"); err != nil {
 		return err
 	}
 
+	// create a server cert in ./pki
+	if err := createNewCertificate("testserver", "./pki/server.crt", "./pki/server.key"); err != nil {
+		return err
+	}
 	return nil
 }

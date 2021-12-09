@@ -1,6 +1,6 @@
 // Copyright 2021 Converter Systems LLC. All rights reserved.
 
-package testserver
+package client_test
 
 import (
 	"context"
@@ -17,7 +17,7 @@ const (
 	SoftwareVersion = "0.9.0"
 )
 
-func New() (*server.Server, error) {
+func NewTestServer() (*server.Server, error) {
 
 	// local hostname
 	host, _ := os.Hostname()
@@ -130,7 +130,7 @@ func New() (*server.Server, error) {
 
 	// load nodeset
 	nm := srv.NamespaceManager()
-	if err := nm.LoadNodeSetFromBuffer([]byte(nodeset)); err != nil {
+	if err := nm.LoadNodeSetFromBuffer([]byte(testnodeset)); err != nil {
 		return nil, err
 	}
 
