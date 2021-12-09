@@ -6,8 +6,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/awcullen/opcua"
 	"github.com/awcullen/opcua/client"
+	"github.com/awcullen/opcua/ua"
 )
 
 // This example demonstrates subscribing to the server's 'CurrentTime' variable and receiving data changes.
@@ -15,7 +15,7 @@ func ExampleClient_CreateSubscription() {
 
 	ctx := context.Background()
 
-	// open a connection to the testserver
+	// open a connection to testserver running locally. Testserver is started if not already running.
 	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://localhost:46010",
@@ -27,7 +27,7 @@ func ExampleClient_CreateSubscription() {
 	}
 
 	// prepare create subscription request
-	req := &opcua.CreateSubscriptionRequest{
+	req := &ua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
 		RequestedMaxKeepAliveCount:  30,
 		RequestedLifetimeCount:      30 * 3,
@@ -43,18 +43,18 @@ func ExampleClient_CreateSubscription() {
 	}
 
 	// prepare create monitored items request
-	req2 := &opcua.CreateMonitoredItemsRequest{
+	req2 := &ua.CreateMonitoredItemsRequest{
 		SubscriptionID:     res.SubscriptionID,
-		TimestampsToReturn: opcua.TimestampsToReturnBoth,
-		ItemsToCreate: []opcua.MonitoredItemCreateRequest{
+		TimestampsToReturn: ua.TimestampsToReturnBoth,
+		ItemsToCreate: []ua.MonitoredItemCreateRequest{
 			{
-				ItemToMonitor:  opcua.ReadValueID{
-					NodeID: opcua.VariableIDServerServerStatusCurrentTime, 
-					AttributeID: opcua.AttributeIDValue,
+				ItemToMonitor:  ua.ReadValueID{
+					NodeID: ua.VariableIDServerServerStatusCurrentTime, 
+					AttributeID: ua.AttributeIDValue,
 				},
-				MonitoringMode: opcua.MonitoringModeReporting,
+				MonitoringMode: ua.MonitoringModeReporting,
 				// specify a unique ClientHandle. The ClientHandle is returned in the PublishResponse
-				RequestedParameters: opcua.MonitoringParameters{
+				RequestedParameters: ua.MonitoringParameters{
 					ClientHandle: 42, QueueSize: 1, DiscardOldest: true, SamplingInterval: 1000.0},
 			},
 		},
@@ -69,9 +69,9 @@ func ExampleClient_CreateSubscription() {
 	}
 
 	// prepare an initial publish request
-	req3 := &opcua.PublishRequest{
-		RequestHeader:                opcua.RequestHeader{TimeoutHint: 60000},
-		SubscriptionAcknowledgements: []opcua.SubscriptionAcknowledgement{},
+	req3 := &ua.PublishRequest{
+		RequestHeader:                ua.RequestHeader{TimeoutHint: 60000},
+		SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{},
 	}
 
 	// loop until 3 data changes received.
@@ -85,7 +85,7 @@ func ExampleClient_CreateSubscription() {
 		// loop thru all the notifications in the response.
 		for _, data := range res3.NotificationMessage.NotificationData {
 			switch body := data.(type) {
-			case opcua.DataChangeNotification:
+			case ua.DataChangeNotification:
 				// the data change notification contains a slice of monitored item notifications.
 				for _, item := range body.MonitoredItems {
 					// each monitored item notification contains a clientHandle and dataValue.
@@ -97,9 +97,9 @@ func ExampleClient_CreateSubscription() {
 			}
 		}
 		// prepare another publish request
-		req3 = &opcua.PublishRequest{
-			RequestHeader: opcua.RequestHeader{TimeoutHint: 60000},
-			SubscriptionAcknowledgements: []opcua.SubscriptionAcknowledgement{
+		req3 = &ua.PublishRequest{
+			RequestHeader: ua.RequestHeader{TimeoutHint: 60000},
+			SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{
 				{SequenceNumber: res3.NotificationMessage.SequenceNumber, SubscriptionID: res3.SubscriptionID},
 			},
 		}

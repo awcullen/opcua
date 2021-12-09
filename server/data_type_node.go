@@ -6,20 +6,20 @@ import (
 	"context"
 	"sync"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 // DataTypeNode is a Node class that describes the syntax of a variable's Value.
 type DataTypeNode struct {
 	sync.RWMutex
-	nodeID             opcua.NodeID
-	nodeClass          opcua.NodeClass
-	browseName         opcua.QualifiedName
-	displayName        opcua.LocalizedText
-	description        opcua.LocalizedText
-	rolePermissions    []opcua.RolePermissionType
+	nodeID             ua.NodeID
+	nodeClass          ua.NodeClass
+	browseName         ua.QualifiedName
+	displayName        ua.LocalizedText
+	description        ua.LocalizedText
+	rolePermissions    []ua.RolePermissionType
 	accessRestrictions uint16
-	references         []opcua.Reference
+	references         []ua.Reference
 	isAbstract         bool
 	dataTypeDefinition interface{}
 }
@@ -27,10 +27,10 @@ type DataTypeNode struct {
 var _ Node = (*DataTypeNode)(nil)
 
 // NewDataTypeNode creates a new DataTypeNode.
-func NewDataTypeNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displayName opcua.LocalizedText, description opcua.LocalizedText, rolePermissions []opcua.RolePermissionType, references []opcua.Reference, isAbstract bool) *DataTypeNode {
+func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool) *DataTypeNode {
 	return &DataTypeNode{
 		nodeID:             nodeID,
-		nodeClass:          opcua.NodeClassDataType,
+		nodeClass:          ua.NodeClassDataType,
 		browseName:         browseName,
 		displayName:        displayName,
 		description:        description,
@@ -43,38 +43,38 @@ func NewDataTypeNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displa
 }
 
 //NodeID returns the NodeID attribute of this node.
-func (n *DataTypeNode) NodeID() opcua.NodeID {
+func (n *DataTypeNode) NodeID() ua.NodeID {
 	return n.nodeID
 }
 
 // NodeClass returns the NodeClass attribute of this node.
-func (n *DataTypeNode) NodeClass() opcua.NodeClass {
+func (n *DataTypeNode) NodeClass() ua.NodeClass {
 	return n.nodeClass
 }
 
 // BrowseName returns the BrowseName attribute of this node.
-func (n *DataTypeNode) BrowseName() opcua.QualifiedName {
+func (n *DataTypeNode) BrowseName() ua.QualifiedName {
 	return n.browseName
 }
 
 // DisplayName returns the DisplayName attribute of this node.
-func (n *DataTypeNode) DisplayName() opcua.LocalizedText {
+func (n *DataTypeNode) DisplayName() ua.LocalizedText {
 	return n.displayName
 }
 
 // Description returns the Description attribute of this node.
-func (n *DataTypeNode) Description() opcua.LocalizedText {
+func (n *DataTypeNode) Description() ua.LocalizedText {
 	return n.description
 }
 
 // RolePermissions returns the RolePermissions attribute of this node.
-func (n *DataTypeNode) RolePermissions() []opcua.RolePermissionType {
+func (n *DataTypeNode) RolePermissions() []ua.RolePermissionType {
 	return n.rolePermissions
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *DataTypeNode) UserRolePermissions(ctx context.Context) []opcua.RolePermissionType {
-	filteredPermissions := []opcua.RolePermissionType{}
+func (n *DataTypeNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+	filteredPermissions := []ua.RolePermissionType{}
 	session, ok := ctx.Value(SessionKey).(*Session)
 	if !ok {
 		return filteredPermissions
@@ -95,7 +95,7 @@ func (n *DataTypeNode) UserRolePermissions(ctx context.Context) []opcua.RolePerm
 }
 
 // References returns the References of this node.
-func (n *DataTypeNode) References() []opcua.Reference {
+func (n *DataTypeNode) References() []ua.Reference {
 	n.RLock()
 	res := n.references
 	n.RUnlock()
@@ -103,7 +103,7 @@ func (n *DataTypeNode) References() []opcua.Reference {
 }
 
 // SetReferences sets the References of the Variable.
-func (n *DataTypeNode) SetReferences(value []opcua.Reference) {
+func (n *DataTypeNode) SetReferences(value []ua.Reference) {
 	n.Lock()
 	n.references = value
 	n.Unlock()
@@ -122,9 +122,9 @@ func (n *DataTypeNode) DataTypeDefinition() interface{} {
 // IsAttributeIDValid returns true if attributeId is supported for the node.
 func (n *DataTypeNode) IsAttributeIDValid(attributeID uint32) bool {
 	switch attributeID {
-	case opcua.AttributeIDNodeID, opcua.AttributeIDNodeClass, opcua.AttributeIDBrowseName,
-		opcua.AttributeIDDisplayName, opcua.AttributeIDDescription, opcua.AttributeIDRolePermissions,
-		opcua.AttributeIDUserRolePermissions, opcua.AttributeIDIsAbstract, opcua.AttributeIDDataTypeDefinition:
+	case ua.AttributeIDNodeID, ua.AttributeIDNodeClass, ua.AttributeIDBrowseName,
+		ua.AttributeIDDisplayName, ua.AttributeIDDescription, ua.AttributeIDRolePermissions,
+		ua.AttributeIDUserRolePermissions, ua.AttributeIDIsAbstract, ua.AttributeIDDataTypeDefinition:
 		return true
 	default:
 		return false

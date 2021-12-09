@@ -10,8 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awcullen/opcua"
-
+	"github.com/awcullen/opcua/ua"
 	"github.com/gammazero/workerpool"
 )
 
@@ -45,13 +44,13 @@ const (
 // Server implements an OpcUa server for clients.
 type Server struct {
 	sync.RWMutex
-	localDescription                   opcua.ApplicationDescription
-	endpoints                          []opcua.EndpointDescription
+	localDescription                   ua.ApplicationDescription
+	endpoints                          []ua.EndpointDescription
 	sessionTimeout                     float64
 	maxSessionCount                    uint32
 	maxSubscriptionCount               uint32
-	serverCapabilities                 *opcua.ServerCapabilities
-	buildInfo                          opcua.BuildInfo
+	serverCapabilities                 *ua.ServerCapabilities
+	buildInfo                          ua.BuildInfo
 	certPath                           string
 	keyPath                            string
 	trustedCertsPath                   string
@@ -72,10 +71,10 @@ type Server struct {
 	closed                             chan struct{}
 	closing                            chan struct{}
 	stateSemaphore                     chan struct{}
-	state                              opcua.ServerState
+	state                              ua.ServerState
 	secondsTillShutdown                uint32
-	shutdownReason                     opcua.LocalizedText
-	stateListener                      func(state opcua.ServerState)
+	shutdownReason                     ua.LocalizedText
+	stateListener                      func(state ua.ServerState)
 	workerpool                         *workerpool.WorkerPool
 	channelManager                     *ChannelManager
 	sessionManager                     *SessionManager
@@ -84,7 +83,7 @@ type Server struct {
 	registrationManager                *RegistrationManager
 	serverUris                         []string
 	startTime                          time.Time
-	serverDiagnosticsSummary           *opcua.ServerDiagnosticsSummaryDataType
+	serverDiagnosticsSummary           *ua.ServerDiagnosticsSummaryDataType
 	useRegisterServer2                 bool
 	scheduler                          *Scheduler
 	historian                          HistoryReadWriter
@@ -92,11 +91,11 @@ type Server struct {
 	x509IdentityAuthenticator          X509IdentityAuthenticator
 	issuedIdentityAuthenticator        IssuedIdentityAuthenticator
 	rolesProvider                      RolesProvider
-	rolePermissions                    []opcua.RolePermissionType
+	rolePermissions                    []ua.RolePermissionType
 }
 
 // New initializes a new instance of the UaTcpServer.
-func New(localDescription opcua.ApplicationDescription, certPath, keyPath, endpointURL string, options ...Option) (*Server, error) {
+func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpointURL string, options ...Option) (*Server, error) {
 	srv := &Server{
 		localDescription:                   localDescription,
 		certPath:                           certPath,
@@ -105,8 +104,8 @@ func New(localDescription opcua.ApplicationDescription, certPath, keyPath, endpo
 		sessionTimeout:                     defaultSessionTimeout,
 		maxSessionCount:                    defaultMaxSessionCount,
 		maxSubscriptionCount:               defaultMaxSubscriptionCount,
-		serverCapabilities:                 opcua.NewServerCapabilities(),
-		buildInfo:                          opcua.BuildInfo{},
+		serverCapabilities:                 ua.NewServerCapabilities(),
+		buildInfo:                          ua.BuildInfo{},
 		suppressCertificateExpired:         false,
 		suppressCertificateChainIncomplete: false,
 		receiveBufferSize:                  defaultBufferSize,
@@ -123,9 +122,9 @@ func New(localDescription opcua.ApplicationDescription, certPath, keyPath, endpo
 		stateSemaphore:                     make(chan struct{}, 1),
 		listeners:                          make([]net.Listener, 0, 3),
 		serverUris:                         []string{localDescription.ApplicationURI},
-		state:                              opcua.ServerStateUnknown,
+		state:                              ua.ServerStateUnknown,
 		startTime:                          time.Now(),
-		serverDiagnosticsSummary:           &opcua.ServerDiagnosticsSummaryDataType{},
+		serverDiagnosticsSummary:           &ua.ServerDiagnosticsSummaryDataType{},
 		useRegisterServer2:                 true,
 		rolePermissions:                    DefaultRolePermissions,
 	}
@@ -159,7 +158,7 @@ func New(localDescription opcua.ApplicationDescription, certPath, keyPath, endpo
 }
 
 // LocalDescription gets the application description.
-func (srv *Server) LocalDescription() opcua.ApplicationDescription {
+func (srv *Server) LocalDescription() ua.ApplicationDescription {
 	srv.RLock()
 	defer srv.RUnlock()
 	return srv.localDescription
@@ -187,7 +186,7 @@ func (srv *Server) EndpointURL() string {
 }
 
 // Endpoints gets the endpoint descriptions.
-func (srv *Server) Endpoints() []opcua.EndpointDescription {
+func (srv *Server) Endpoints() []ua.EndpointDescription {
 	srv.RLock()
 	defer srv.RUnlock()
 	if srv.endpoints == nil {
@@ -204,13 +203,13 @@ func (srv *Server) Closing() <-chan struct{} {
 }
 
 // State gets the ServerState.
-func (srv *Server) State() opcua.ServerState {
+func (srv *Server) State() ua.ServerState {
 	srv.RLock()
 	defer srv.RUnlock()
 	return srv.state
 }
 
-func (srv *Server) setState(value opcua.ServerState) {
+func (srv *Server) setState(value ua.ServerState) {
 	srv.Lock()
 	srv.state = value
 	listener := srv.stateListener
@@ -221,7 +220,7 @@ func (srv *Server) setState(value opcua.ServerState) {
 }
 
 // SetStateListener sets a func that listens for change of ServerState.
-func (srv *Server) SetStateListener(listener func(state opcua.ServerState)) {
+func (srv *Server) SetStateListener(listener func(state ua.ServerState)) {
 	srv.Lock()
 	defer srv.Unlock()
 	srv.stateListener = listener
@@ -242,7 +241,7 @@ func (srv *Server) ServerUris() []string {
 }
 
 // RolePermissions gets the RolePermissions.
-func (srv *Server) RolePermissions() []opcua.RolePermissionType {
+func (srv *Server) RolePermissions() []ua.RolePermissionType {
 	return srv.rolePermissions
 }
 
@@ -310,7 +309,7 @@ func (srv *Server) MaxSubscriptionCount() uint32 {
 }
 
 // ServerCapabilities gets the capabilities of the server.
-func (srv *Server) ServerCapabilities() *opcua.ServerCapabilities {
+func (srv *Server) ServerCapabilities() *ua.ServerCapabilities {
 	srv.RLock()
 	defer srv.RUnlock()
 	return srv.serverCapabilities
@@ -322,24 +321,24 @@ func (srv *Server) ServerCapabilities() *opcua.ServerCapabilities {
 // the returned error is BadServerHalted.
 func (srv *Server) ListenAndServe() error {
 	srv.stateSemaphore <- struct{}{}
-	if srv.state != opcua.ServerStateUnknown {
+	if srv.state != ua.ServerStateUnknown {
 		<-srv.stateSemaphore
-		return opcua.BadInternalError
+		return ua.BadInternalError
 	}
 	baseURL, err := url.Parse(srv.endpointURL)
 	if err != nil {
 		// log.Printf("Error opening secure channel listener. %s\n", err.Error())
 		<-srv.stateSemaphore
-		return opcua.BadTCPEndpointURLInvalid
+		return ua.BadTCPEndpointURLInvalid
 	}
 	l, err := net.Listen("tcp", ":"+baseURL.Port())
 	if err != nil {
 		// log.Printf("Error opening secure channel listener. %s\n", err.Error())
 		<-srv.stateSemaphore
-		return opcua.BadResourceUnavailable
+		return ua.BadResourceUnavailable
 	}
 	srv.listeners = append(srv.listeners, l)
-	srv.setState(opcua.ServerStateRunning)
+	srv.setState(ua.ServerStateRunning)
 	<-srv.stateSemaphore
 
 	return srv.serve(l)
@@ -348,14 +347,14 @@ func (srv *Server) ListenAndServe() error {
 // Close server.
 func (srv *Server) Close() error {
 	srv.stateSemaphore <- struct{}{}
-	if srv.state != opcua.ServerStateRunning {
+	if srv.state != ua.ServerStateRunning {
 		<-srv.stateSemaphore
-		return opcua.BadInternalError
+		return ua.BadInternalError
 	}
 
 	// allow for clients to stop gracefully
-	srv.setState(opcua.ServerStateShutdown)
-	srv.shutdownReason = opcua.NewLocalizedText("Closing", "")
+	srv.setState(ua.ServerStateShutdown)
+	srv.shutdownReason = ua.NewLocalizedText("Closing", "")
 	for i := 3; i > 0; i-- {
 		srv.secondsTillShutdown = uint32(i)
 		time.Sleep(time.Second)
@@ -389,12 +388,12 @@ func (srv *Server) Close() error {
 // Abort the server.
 func (srv *Server) Abort() error {
 	srv.stateSemaphore <- struct{}{}
-	if srv.state != opcua.ServerStateRunning {
+	if srv.state != ua.ServerStateRunning {
 		<-srv.stateSemaphore
-		return opcua.BadInternalError
+		return ua.BadInternalError
 	}
 
-	srv.setState(opcua.ServerStateFailed)
+	srv.setState(ua.ServerStateFailed)
 
 	// close subscriptions
 	close(srv.closing)
@@ -436,9 +435,9 @@ func (srv *Server) serve(l net.Listener) error {
 			}
 			select {
 			case <-srv.closing:
-				return opcua.BadServerHalted
+				return ua.BadServerHalted
 			default:
-				return opcua.BadTCPInternalError
+				return ua.BadTCPInternalError
 			}
 		}
 		delay = 0
@@ -446,11 +445,11 @@ func (srv *Server) serve(l net.Listener) error {
 		go func(ch *serverSecureChannel) {
 			err := ch.Open()
 			if err != nil {
-				if reason, ok := err.(opcua.StatusCode); ok {
+				if reason, ok := err.(ua.StatusCode); ok {
 					ch.Abort(reason, reason.Error())
 					return
 				}
-				ch.Abort(opcua.BadSecureChannelClosed, err.Error())
+				ch.Abort(ua.BadSecureChannelClosed, err.Error())
 				return
 			}
 			srv.channelManager.Add(ch)
@@ -458,7 +457,7 @@ func (srv *Server) serve(l net.Listener) error {
 	}
 }
 
-func (srv *Server) handleCloseSecureChannel(ch *serverSecureChannel, requestid uint32, req *opcua.CloseSecureChannelRequest) error {
+func (srv *Server) handleCloseSecureChannel(ch *serverSecureChannel, requestid uint32, req *ua.CloseSecureChannelRequest) error {
 	srv.ChannelManager().Delete(ch)
 	ch.Close()
 	return nil
@@ -469,48 +468,48 @@ func (srv *Server) initializeNamespace() error {
 	if err := nm.LoadNodeSetFromBuffer([]byte(nodeset104)); err != nil {
 		return err
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerAuditing); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerAuditing); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindNode(opcua.MethodIDServerRequestServerStateChange); ok {
+	if n, ok := nm.FindNode(ua.MethodIDServerRequestServerStateChange); ok {
 		nm.DeleteNode(n, true)
 	}
-	if n, ok := nm.FindNode(opcua.MethodIDServerSetSubscriptionDurable); ok {
+	if n, ok := nm.FindNode(ua.MethodIDServerSetSubscriptionDurable); ok {
 		nm.DeleteNode(n, true)
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServiceLevel); ok {
-		n.SetValue(opcua.NewDataValue(byte(255), 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServiceLevel); ok {
+		n.SetValue(ua.NewDataValue(byte(255), 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerRedundancyRedundancySupport); ok {
-		n.SetValue(opcua.NewDataValue(int32(0), 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerRedundancyRedundancySupport); ok {
+		n.SetValue(ua.NewDataValue(int32(0), 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindNode(opcua.VariableIDServerServerRedundancyCurrentServerID); ok {
+	if n, ok := nm.FindNode(ua.VariableIDServerServerRedundancyCurrentServerID); ok {
 		nm.DeleteNode(n, false)
 	}
-	if n, ok := nm.FindNode(opcua.VariableIDServerServerRedundancyRedundantServerArray); ok {
+	if n, ok := nm.FindNode(ua.VariableIDServerServerRedundancyRedundantServerArray); ok {
 		nm.DeleteNode(n, true)
 	}
-	if n, ok := nm.FindNode(opcua.VariableIDServerServerRedundancyServerNetworkGroups); ok {
+	if n, ok := nm.FindNode(ua.VariableIDServerServerRedundancyServerNetworkGroups); ok {
 		nm.DeleteNode(n, true)
 	}
-	if n, ok := nm.FindNode(opcua.VariableIDServerServerRedundancyServerURIArray); ok {
+	if n, ok := nm.FindNode(ua.VariableIDServerServerRedundancyServerURIArray); ok {
 		nm.DeleteNode(n, true)
 	}
 
-	if n, ok := nm.FindVariable(opcua.VariableIDServerNamespaceArray); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.NamespaceUris(), 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerNamespaceArray); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.NamespaceUris(), 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerArray); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.ServerUris(), 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerArray); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.ServerUris(), 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatus); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(
-				opcua.ServerStatusDataType{
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatus); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(
+				ua.ServerStatusDataType{
 					StartTime:           srv.startTime,
 					CurrentTime:         time.Now(),
 					State:               srv.state,
@@ -520,260 +519,260 @@ func (srv *Server) initializeNamespace() error {
 				}, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusState); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(int32(srv.State()), 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusState); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(int32(srv.State()), 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusCurrentTime); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(time.Now(), 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusCurrentTime); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(time.Now(), 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusSecondsTillShutdown); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.secondsTillShutdown, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusSecondsTillShutdown); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.secondsTillShutdown, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusShutdownReason); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.shutdownReason, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusShutdownReason); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.shutdownReason, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusStartTime); ok {
-		n.SetValue(opcua.NewDataValue(srv.startTime, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusStartTime); ok {
+		n.SetValue(ua.NewDataValue(srv.startTime, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusBuildInfo); ok {
-		n.SetValue(opcua.NewDataValue(srv.buildInfo, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusBuildInfo); ok {
+		n.SetValue(ua.NewDataValue(srv.buildInfo, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusBuildInfoProductURI); ok {
-		n.SetValue(opcua.NewDataValue(srv.buildInfo.ProductURI, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusBuildInfoProductURI); ok {
+		n.SetValue(ua.NewDataValue(srv.buildInfo.ProductURI, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusBuildInfoManufacturerName); ok {
-		n.SetValue(opcua.NewDataValue(srv.buildInfo.ManufacturerName, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusBuildInfoManufacturerName); ok {
+		n.SetValue(ua.NewDataValue(srv.buildInfo.ManufacturerName, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusBuildInfoProductName); ok {
-		n.SetValue(opcua.NewDataValue(srv.buildInfo.ProductName, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusBuildInfoProductName); ok {
+		n.SetValue(ua.NewDataValue(srv.buildInfo.ProductName, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusBuildInfoSoftwareVersion); ok {
-		n.SetValue(opcua.NewDataValue(srv.buildInfo.SoftwareVersion, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusBuildInfoSoftwareVersion); ok {
+		n.SetValue(ua.NewDataValue(srv.buildInfo.SoftwareVersion, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusBuildInfoBuildNumber); ok {
-		n.SetValue(opcua.NewDataValue(srv.buildInfo.BuildNumber, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusBuildInfoBuildNumber); ok {
+		n.SetValue(ua.NewDataValue(srv.buildInfo.BuildNumber, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerStatusBuildInfoBuildDate); ok {
-		n.SetValue(opcua.NewDataValue(srv.buildInfo.BuildDate, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusBuildInfoBuildDate); ok {
+		n.SetValue(ua.NewDataValue(srv.buildInfo.BuildDate, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesLocaleIDArray); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.LocaleIDArray, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesLocaleIDArray); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.LocaleIDArray, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesMaxStringLength); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.MaxStringLength, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesMaxStringLength); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.MaxStringLength, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesMaxArrayLength); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.MaxArrayLength, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesMaxArrayLength); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.MaxArrayLength, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesMaxByteStringLength); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.MaxByteStringLength, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesMaxByteStringLength); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.MaxByteStringLength, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesMaxBrowseContinuationPoints); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.MaxBrowseContinuationPoints, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesMaxBrowseContinuationPoints); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.MaxBrowseContinuationPoints, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesMaxHistoryContinuationPoints); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.MaxHistoryContinuationPoints, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesMaxHistoryContinuationPoints); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.MaxHistoryContinuationPoints, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesMaxQueryContinuationPoints); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.MaxQueryContinuationPoints, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesMaxQueryContinuationPoints); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.MaxQueryContinuationPoints, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesMinSupportedSampleRate); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.MinSupportedSampleRate, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesMinSupportedSampleRate); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.MinSupportedSampleRate, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesServerProfileArray); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.ServerProfileArray, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesServerProfileArray); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.ServerProfileArray, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesAccessHistoryDataCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesAccessHistoryDataCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesInsertDataCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesInsertDataCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesReplaceDataCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesReplaceDataCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesUpdateDataCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesUpdateDataCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesDeleteRawCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesDeleteRawCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesDeleteAtTimeCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesDeleteAtTimeCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesAccessHistoryEventsCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesAccessHistoryEventsCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesMaxReturnDataValues); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesMaxReturnDataValues); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesMaxReturnEventValues); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesMaxReturnEventValues); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesInsertAnnotationCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesInsertAnnotationCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesInsertEventCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesInsertEventCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesReplaceEventCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesReplaceEventCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDHistoryServerCapabilitiesUpdateEventCapability); ok {
-		n.SetValue(opcua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDHistoryServerCapabilitiesUpdateEventCapability); ok {
+		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxMonitoredItemsPerCall); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxMonitoredItemsPerCall); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerBrowse); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerBrowse, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerBrowse); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerBrowse, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerHistoryReadData); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryReadData, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerHistoryReadData); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryReadData, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerHistoryReadEvents); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryReadEvents, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerHistoryReadEvents); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryReadEvents, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerHistoryUpdateData); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryUpdateData, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerHistoryUpdateData); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryUpdateData, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerHistoryUpdateEvents); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryUpdateEvents, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerHistoryUpdateEvents); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryUpdateEvents, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerMethodCall); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerMethodCall, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerMethodCall); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerMethodCall, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerNodeManagement); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerNodeManagement, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerNodeManagement); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerNodeManagement, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerRead); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerRead, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerRead); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerRead, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerRegisterNodes); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerRegisterNodes, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerRegisterNodes); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerRegisterNodes, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerTranslateBrowsePathsToNodeIDs); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerTranslateBrowsePathsToNodeIds, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerTranslateBrowsePathsToNodeIDs); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerTranslateBrowsePathsToNodeIds, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerWrite); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerWrite, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerCapabilitiesOperationLimitsMaxNodesPerWrite); ok {
+		n.SetValue(ua.NewDataValue(srv.serverCapabilities.OperationLimits.MaxNodesPerWrite, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindObject(opcua.ObjectIDServerServerCapabilitiesModellingRules); ok {
-		if mandatory, ok := nm.FindObject(opcua.ObjectIDModellingRuleMandatory); ok {
-			mandatory.SetReferences(append(mandatory.References(), opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(n.NodeID()))))
-			n.SetReferences(append(n.References(), opcua.NewReference(opcua.ReferenceTypeIDHasComponent, false, opcua.NewExpandedNodeID(mandatory.NodeID()))))
+	if n, ok := nm.FindObject(ua.ObjectIDServerServerCapabilitiesModellingRules); ok {
+		if mandatory, ok := nm.FindObject(ua.ObjectIDModellingRuleMandatory); ok {
+			mandatory.SetReferences(append(mandatory.References(), ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(n.NodeID()))))
+			n.SetReferences(append(n.References(), ua.NewReference(ua.ReferenceTypeIDHasComponent, false, ua.NewExpandedNodeID(mandatory.NodeID()))))
 		}
-		if mandatoryPlaceholder, ok := nm.FindObject(opcua.ObjectIDModellingRuleMandatoryPlaceholder); ok {
-			mandatoryPlaceholder.SetReferences(append(mandatoryPlaceholder.References(), opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(n.NodeID()))))
-			n.SetReferences(append(n.References(), opcua.NewReference(opcua.ReferenceTypeIDHasComponent, false, opcua.NewExpandedNodeID(mandatoryPlaceholder.NodeID()))))
+		if mandatoryPlaceholder, ok := nm.FindObject(ua.ObjectIDModellingRuleMandatoryPlaceholder); ok {
+			mandatoryPlaceholder.SetReferences(append(mandatoryPlaceholder.References(), ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(n.NodeID()))))
+			n.SetReferences(append(n.References(), ua.NewReference(ua.ReferenceTypeIDHasComponent, false, ua.NewExpandedNodeID(mandatoryPlaceholder.NodeID()))))
 		}
-		if optional, ok := nm.FindObject(opcua.ObjectIDModellingRuleOptional); ok {
-			optional.SetReferences(append(optional.References(), opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(n.NodeID()))))
-			n.SetReferences(append(n.References(), opcua.NewReference(opcua.ReferenceTypeIDHasComponent, false, opcua.NewExpandedNodeID(optional.NodeID()))))
+		if optional, ok := nm.FindObject(ua.ObjectIDModellingRuleOptional); ok {
+			optional.SetReferences(append(optional.References(), ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(n.NodeID()))))
+			n.SetReferences(append(n.References(), ua.NewReference(ua.ReferenceTypeIDHasComponent, false, ua.NewExpandedNodeID(optional.NodeID()))))
 		}
-		if optionalPlaceholder, ok := nm.FindObject(opcua.ObjectIDModellingRuleOptionalPlaceholder); ok {
-			optionalPlaceholder.SetReferences(append(optionalPlaceholder.References(), opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(n.NodeID()))))
-			n.SetReferences(append(n.References(), opcua.NewReference(opcua.ReferenceTypeIDHasComponent, false, opcua.NewExpandedNodeID(optionalPlaceholder.NodeID()))))
+		if optionalPlaceholder, ok := nm.FindObject(ua.ObjectIDModellingRuleOptionalPlaceholder); ok {
+			optionalPlaceholder.SetReferences(append(optionalPlaceholder.References(), ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(n.NodeID()))))
+			n.SetReferences(append(n.References(), ua.NewReference(ua.ReferenceTypeIDHasComponent, false, ua.NewExpandedNodeID(optionalPlaceholder.NodeID()))))
 		}
 	}
-	if nr, ok := nm.FindVariable(opcua.VariableIDModellingRuleMandatoryNamingRule); ok {
-		nr.SetValue(opcua.NewDataValue(int32(1), 0, time.Now(), 0, time.Now(), 0))
+	if nr, ok := nm.FindVariable(ua.VariableIDModellingRuleMandatoryNamingRule); ok {
+		nr.SetValue(ua.NewDataValue(int32(1), 0, time.Now(), 0, time.Now(), 0))
 	}
-	if nr, ok := nm.FindVariable(opcua.VariableIDModellingRuleMandatoryPlaceholderNamingRule); ok {
-		nr.SetValue(opcua.NewDataValue(int32(1), 0, time.Now(), 0, time.Now(), 0))
+	if nr, ok := nm.FindVariable(ua.VariableIDModellingRuleMandatoryPlaceholderNamingRule); ok {
+		nr.SetValue(ua.NewDataValue(int32(1), 0, time.Now(), 0, time.Now(), 0))
 	}
-	if nr, ok := nm.FindVariable(opcua.VariableIDModellingRuleOptionalNamingRule); ok {
-		nr.SetValue(opcua.NewDataValue(int32(2), 0, time.Now(), 0, time.Now(), 0))
+	if nr, ok := nm.FindVariable(ua.VariableIDModellingRuleOptionalNamingRule); ok {
+		nr.SetValue(ua.NewDataValue(int32(2), 0, time.Now(), 0, time.Now(), 0))
 	}
-	if nr, ok := nm.FindVariable(opcua.VariableIDModellingRuleOptionalPlaceholderNamingRule); ok {
-		nr.SetValue(opcua.NewDataValue(int32(2), 0, time.Now(), 0, time.Now(), 0))
+	if nr, ok := nm.FindVariable(ua.VariableIDModellingRuleOptionalPlaceholderNamingRule); ok {
+		nr.SetValue(ua.NewDataValue(int32(2), 0, time.Now(), 0, time.Now(), 0))
 	}
 
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsEnabledFlag); ok {
-		n.SetValue(opcua.NewDataValue(srv.serverDiagnostics, 0, time.Now(), 0, time.Now(), 0))
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsEnabledFlag); ok {
+		n.SetValue(ua.NewDataValue(srv.serverDiagnostics, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummary); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummary); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCumulatedSessionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.CumulatedSessionCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCumulatedSessionCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.CumulatedSessionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCumulatedSubscriptionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.CumulatedSubscriptionCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCumulatedSubscriptionCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.CumulatedSubscriptionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCurrentSessionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.CurrentSessionCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCurrentSessionCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.CurrentSessionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCurrentSubscriptionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.CurrentSubscriptionCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCurrentSubscriptionCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.CurrentSubscriptionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryServerViewCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.ServerViewCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryServerViewCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.ServerViewCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySecurityRejectedSessionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.SecurityRejectedSessionCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySecurityRejectedSessionCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.SecurityRejectedSessionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySessionAbortCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.SessionAbortCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySessionAbortCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.SessionAbortCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryPublishingIntervalCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.PublishingIntervalCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryPublishingIntervalCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.PublishingIntervalCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySecurityRejectedRequestsCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.SecurityRejectedRequestsCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySecurityRejectedRequestsCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.SecurityRejectedRequestsCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryRejectedRequestsCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.RejectedRequestsCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryRejectedRequestsCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.RejectedRequestsCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryRejectedSessionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.RejectedSessionCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryRejectedSessionCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.RejectedSessionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySessionTimeoutCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-			return opcua.NewDataValue(srv.serverDiagnosticsSummary.SessionTimeoutCount, 0, time.Now(), 0, time.Now(), 0)
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySessionTimeoutCount); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+			return ua.NewDataValue(srv.serverDiagnosticsSummary.SessionTimeoutCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindVariable(opcua.VariableIDServerServerDiagnosticsSubscriptionDiagnosticsArray); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
+	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsSubscriptionDiagnosticsArray); ok {
+		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 			if !srv.serverDiagnostics {
-				return opcua.NewDataValue(nil, 0, time.Now(), 0, time.Now(), 0)
+				return ua.NewDataValue(nil, 0, time.Now(), 0, time.Now(), 0)
 			}
-			a := make([]opcua.ExtensionObject, 0, 16)
+			a := make([]ua.ExtensionObject, 0, 16)
 			for _, s := range srv.SubscriptionManager().subscriptionsByID {
 				s.RLock()
-				e := opcua.SubscriptionDiagnosticsDataType{
+				e := ua.SubscriptionDiagnosticsDataType{
 					SessionID:                  s.sessionId,
 					SubscriptionID:             s.id,
 					Priority:                   s.priority,
@@ -809,38 +808,38 @@ func (srv *Server) initializeNamespace() error {
 				s.RUnlock()
 				a = append(a, e)
 			}
-			return opcua.NewDataValue(a, 0, time.Now(), 0, time.Now(), 0)
+			return ua.NewDataValue(a, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindNode(opcua.VariableIDServerServerDiagnosticsSamplingIntervalDiagnosticsArray); ok {
+	if n, ok := nm.FindNode(ua.VariableIDServerServerDiagnosticsSamplingIntervalDiagnosticsArray); ok {
 		nm.DeleteNode(n, true)
 	}
 
-	if n, ok := nm.FindMethod(opcua.MethodIDServerGetMonitoredItems); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req opcua.CallMethodRequest) opcua.CallMethodResult {
+	if n, ok := nm.FindMethod(ua.MethodIDServerGetMonitoredItems); ok {
+		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadArgumentsMissing}
+				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
 			if len(req.InputArguments) > 1 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadTooManyArguments}
+				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
-			opResult := opcua.Good
-			argsResults := make([]opcua.StatusCode, 1)
+			opResult := ua.Good
+			argsResults := make([]ua.StatusCode, 1)
 			subscriptionID, ok := req.InputArguments[0].(uint32)
 			if !ok {
-				opResult = opcua.BadInvalidArgument
-				argsResults[0] = opcua.BadTypeMismatch
+				opResult = ua.BadInvalidArgument
+				argsResults[0] = ua.BadTypeMismatch
 			}
-			if opResult == opcua.BadInvalidArgument {
-				return opcua.CallMethodResult{StatusCode: opResult, InputArgumentResults: argsResults}
+			if opResult == ua.BadInvalidArgument {
+				return ua.CallMethodResult{StatusCode: opResult, InputArgumentResults: argsResults}
 			}
 			sub, ok := srv.SubscriptionManager().Get(subscriptionID)
 			if !ok {
-				return opcua.CallMethodResult{StatusCode: opcua.BadSubscriptionIDInvalid}
+				return ua.CallMethodResult{StatusCode: ua.BadSubscriptionIDInvalid}
 			}
 			session, ok := ctx.Value(SessionKey).(*Session)
 			if !ok || sub.session != session {
-				return opcua.CallMethodResult{StatusCode: opcua.BadUserAccessDenied}
+				return ua.CallMethodResult{StatusCode: ua.BadUserAccessDenied}
 			}
 			svrHandles := []uint32{}
 			cliHandles := []uint32{}
@@ -848,35 +847,35 @@ func (srv *Server) initializeNamespace() error {
 				svrHandles = append(svrHandles, item.id)
 				cliHandles = append(cliHandles, item.clientHandle)
 			}
-			return opcua.CallMethodResult{OutputArguments: []opcua.Variant{svrHandles, cliHandles}}
+			return ua.CallMethodResult{OutputArguments: []ua.Variant{svrHandles, cliHandles}}
 		})
 	}
 
-	if n, ok := nm.FindMethod(opcua.MethodIDServerGetMonitoredItems); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req opcua.CallMethodRequest) opcua.CallMethodResult {
+	if n, ok := nm.FindMethod(ua.MethodIDServerGetMonitoredItems); ok {
+		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadArgumentsMissing}
+				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
 			if len(req.InputArguments) > 1 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadTooManyArguments}
+				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
-			opResult := opcua.Good
-			argsResults := make([]opcua.StatusCode, 1)
+			opResult := ua.Good
+			argsResults := make([]ua.StatusCode, 1)
 			subscriptionID, ok := req.InputArguments[0].(uint32)
 			if !ok {
-				opResult = opcua.BadInvalidArgument
-				argsResults[0] = opcua.BadTypeMismatch
+				opResult = ua.BadInvalidArgument
+				argsResults[0] = ua.BadTypeMismatch
 			}
-			if opResult == opcua.BadInvalidArgument {
-				return opcua.CallMethodResult{StatusCode: opResult, InputArgumentResults: argsResults}
+			if opResult == ua.BadInvalidArgument {
+				return ua.CallMethodResult{StatusCode: opResult, InputArgumentResults: argsResults}
 			}
 			sub, ok := srv.SubscriptionManager().Get(subscriptionID)
 			if !ok {
-				return opcua.CallMethodResult{StatusCode: opcua.BadSubscriptionIDInvalid}
+				return ua.CallMethodResult{StatusCode: ua.BadSubscriptionIDInvalid}
 			}
 			session, ok := ctx.Value(SessionKey).(*Session)
 			if !ok || sub.session != session {
-				return opcua.CallMethodResult{StatusCode: opcua.BadUserAccessDenied}
+				return ua.CallMethodResult{StatusCode: ua.BadUserAccessDenied}
 			}
 			svrHandles := []uint32{}
 			cliHandles := []uint32{}
@@ -884,82 +883,82 @@ func (srv *Server) initializeNamespace() error {
 				svrHandles = append(svrHandles, item.id)
 				cliHandles = append(cliHandles, item.clientHandle)
 			}
-			return opcua.CallMethodResult{OutputArguments: []opcua.Variant{svrHandles, cliHandles}}
+			return ua.CallMethodResult{OutputArguments: []ua.Variant{svrHandles, cliHandles}}
 		})
 	}
 
-	if n, ok := nm.FindMethod(opcua.MethodIDServerResendData); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req opcua.CallMethodRequest) opcua.CallMethodResult {
+	if n, ok := nm.FindMethod(ua.MethodIDServerResendData); ok {
+		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadArgumentsMissing}
+				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
 			if len(req.InputArguments) > 1 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadTooManyArguments}
+				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
-			opResult := opcua.Good
-			argsResults := make([]opcua.StatusCode, 1)
+			opResult := ua.Good
+			argsResults := make([]ua.StatusCode, 1)
 			subscriptionID, ok := req.InputArguments[0].(uint32)
 			if !ok {
-				opResult = opcua.BadInvalidArgument
-				argsResults[0] = opcua.BadTypeMismatch
+				opResult = ua.BadInvalidArgument
+				argsResults[0] = ua.BadTypeMismatch
 			}
-			if opResult == opcua.BadInvalidArgument {
-				return opcua.CallMethodResult{StatusCode: opResult, InputArgumentResults: argsResults}
+			if opResult == ua.BadInvalidArgument {
+				return ua.CallMethodResult{StatusCode: opResult, InputArgumentResults: argsResults}
 			}
 			sub, ok := srv.SubscriptionManager().Get(subscriptionID)
 			if !ok {
-				return opcua.CallMethodResult{StatusCode: opcua.BadSubscriptionIDInvalid}
+				return ua.CallMethodResult{StatusCode: ua.BadSubscriptionIDInvalid}
 			}
 			session, ok := ctx.Value(SessionKey).(*Session)
 			if !ok || sub.session != session {
-				return opcua.CallMethodResult{StatusCode: opcua.BadUserAccessDenied}
+				return ua.CallMethodResult{StatusCode: ua.BadUserAccessDenied}
 			}
 			sub.resendData()
-			return opcua.CallMethodResult{OutputArguments: []opcua.Variant{}}
+			return ua.CallMethodResult{OutputArguments: []ua.Variant{}}
 		})
 	}
 	return nil
 }
 
-func (srv *Server) buildEndpointDescriptions() []opcua.EndpointDescription {
-	var eds []opcua.EndpointDescription
+func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
+	var eds []ua.EndpointDescription
 	if true {
-		eds = append(eds, opcua.EndpointDescription{
+		eds = append(eds, ua.EndpointDescription{
 			EndpointURL:         srv.endpointURL,
 			Server:              srv.localDescription,
-			ServerCertificate:   opcua.ByteString(srv.LocalCertificate()),
-			SecurityMode:        opcua.MessageSecurityModeNone,
-			SecurityPolicyURI:   opcua.SecurityPolicyURINone,
-			TransportProfileURI: opcua.TransportProfileURIUaTcpTransport,
+			ServerCertificate:   ua.ByteString(srv.LocalCertificate()),
+			SecurityMode:        ua.MessageSecurityModeNone,
+			SecurityPolicyURI:   ua.SecurityPolicyURINone,
+			TransportProfileURI: ua.TransportProfileURIUaTcpTransport,
 			SecurityLevel:       byte(0),
-			UserIdentityTokens: []opcua.UserTokenPolicy{
+			UserIdentityTokens: []ua.UserTokenPolicy{
 				{
-					PolicyID:          opcua.UserTokenTypeAnonymous.String(),
-					TokenType:         opcua.UserTokenTypeAnonymous,
-					SecurityPolicyURI: opcua.SecurityPolicyURINone,
+					PolicyID:          ua.UserTokenTypeAnonymous.String(),
+					TokenType:         ua.UserTokenTypeAnonymous,
+					SecurityPolicyURI: ua.SecurityPolicyURINone,
 				},
 			},
 		})
 	}
 	if true {
-		eds = append(eds, opcua.EndpointDescription{
+		eds = append(eds, ua.EndpointDescription{
 			EndpointURL:         srv.endpointURL,
 			Server:              srv.localDescription,
-			ServerCertificate:   opcua.ByteString(srv.LocalCertificate()),
-			SecurityMode:        opcua.MessageSecurityModeSignAndEncrypt,
-			SecurityPolicyURI:   opcua.SecurityPolicyURIBasic256Sha256,
-			TransportProfileURI: opcua.TransportProfileURIUaTcpTransport,
+			ServerCertificate:   ua.ByteString(srv.LocalCertificate()),
+			SecurityMode:        ua.MessageSecurityModeSignAndEncrypt,
+			SecurityPolicyURI:   ua.SecurityPolicyURIBasic256Sha256,
+			TransportProfileURI: ua.TransportProfileURIUaTcpTransport,
 			SecurityLevel:       byte(1),
-			UserIdentityTokens: []opcua.UserTokenPolicy{
+			UserIdentityTokens: []ua.UserTokenPolicy{
 				{
-					PolicyID:          opcua.UserTokenTypeAnonymous.String(),
-					TokenType:         opcua.UserTokenTypeAnonymous,
-					SecurityPolicyURI: opcua.SecurityPolicyURINone,
+					PolicyID:          ua.UserTokenTypeAnonymous.String(),
+					TokenType:         ua.UserTokenTypeAnonymous,
+					SecurityPolicyURI: ua.SecurityPolicyURINone,
 				},
 				{
-					PolicyID:          opcua.UserTokenTypeUserName.String(),
-					TokenType:         opcua.UserTokenTypeUserName,
-					SecurityPolicyURI: opcua.SecurityPolicyURIBasic256Sha256,
+					PolicyID:          ua.UserTokenTypeUserName.String(),
+					TokenType:         ua.UserTokenTypeUserName,
+					SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
 				},
 			},
 		})

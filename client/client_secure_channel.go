@@ -27,8 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awcullen/opcua"
-
+	"github.com/awcullen/opcua/ua"
 	"github.com/djherbis/buffer"
 )
 
@@ -60,7 +59,7 @@ const (
 // clientSecureChannel implements a secure channel for binary data over Tcp.
 type clientSecureChannel struct {
 	sync.RWMutex
-	localDescription                   opcua.ApplicationDescription
+	localDescription                   ua.ApplicationDescription
 	applicationCertificate             tls.Certificate
 	timeoutHint                        uint32
 	diagnosticsHint                    uint32
@@ -86,18 +85,18 @@ type clientSecureChannel struct {
 	channelID                  uint32
 	tokenID                    uint32
 	tokenLock                  sync.RWMutex
-	authenticationToken        opcua.NodeID
+	authenticationToken        ua.NodeID
 	securityPolicyURI          string
-	securityPolicy             opcua.SecurityPolicy
-	securityMode               opcua.MessageSecurityMode
+	securityPolicy             ua.SecurityPolicy
+	securityMode               ua.MessageSecurityMode
 	namespaceURIs              []string
 	serverURIs                 []string
 	cancellation               chan struct{}
-	errCode                    opcua.StatusCode
+	errCode                    ua.StatusCode
 	sendingSemaphore           sync.Mutex
 	receivingSemaphore         sync.Mutex
-	pendingResponseCh          chan *opcua.ServiceOperation
-	pendingResponses           map[uint32]*opcua.ServiceOperation
+	pendingResponseCh          chan *ua.ServiceOperation
+	pendingResponses           map[uint32]*ua.ServiceOperation
 	reconnecting               bool
 	closing                    bool
 	requestHandleLock          sync.Mutex
@@ -124,12 +123,12 @@ type clientSecureChannel struct {
 
 // newClientSecureChannel initializes a new instance of the secure channel.
 func newClientSecureChannel(
-	localDescription opcua.ApplicationDescription,
+	localDescription ua.ApplicationDescription,
 	localCertificate []byte,
 	localPrivateKey *rsa.PrivateKey,
 	endpointURL string,
 	securityPolicyURI string,
-	securityMode opcua.MessageSecurityMode,
+	securityMode ua.MessageSecurityMode,
 	remoteCertificate []byte,
 	connectTimeout int64,
 	applicationCertificate tls.Certificate,
@@ -196,7 +195,7 @@ func (ch *clientSecureChannel) MaxChunkCount() uint32 {
 }
 
 // SetAuthenticationToken sets the authentication token.
-func (ch *clientSecureChannel) SetAuthenticationToken(value opcua.NodeID) {
+func (ch *clientSecureChannel) SetAuthenticationToken(value ua.NodeID) {
 	ch.Lock()
 	defer ch.Unlock()
 	ch.authenticationToken = value
@@ -231,7 +230,7 @@ func (ch *clientSecureChannel) SetServerURIs(value []string) {
 }
 
 // Request sends a service request to the server and returns the response.
-func (ch *clientSecureChannel) Request(ctx context.Context, req opcua.ServiceRequest) (opcua.ServiceResponse, error) {
+func (ch *clientSecureChannel) Request(ctx context.Context, req ua.ServiceRequest) (ua.ServiceResponse, error) {
 	header := req.Header()
 	header.Timestamp = time.Now()
 	header.RequestHandle = ch.getNextRequestHandle()
@@ -239,7 +238,7 @@ func (ch *clientSecureChannel) Request(ctx context.Context, req opcua.ServiceReq
 	if header.TimeoutHint == 0 {
 		header.TimeoutHint = defaultTimeoutHint
 	}
-	var operation = opcua.NewServiceOperation(req, make(chan opcua.ServiceResponse, 1))
+	var operation = ua.NewServiceOperation(req, make(chan ua.ServiceResponse, 1))
 	ch.pendingResponseCh <- operation
 	ctx, cancel := context.WithDeadline(ctx, header.Timestamp.Add(time.Duration(header.TimeoutHint)*time.Millisecond))
 	err := ch.sendRequest(ctx, operation)
@@ -249,7 +248,7 @@ func (ch *clientSecureChannel) Request(ctx context.Context, req opcua.ServiceReq
 	}
 	select {
 	case res := <-operation.ResponseCh():
-		if sr := res.Header().ServiceResult; sr != opcua.Good {
+		if sr := res.Header().ServiceResult; sr != ua.Good {
 			cancel()
 			return nil, sr
 		}
@@ -257,7 +256,7 @@ func (ch *clientSecureChannel) Request(ctx context.Context, req opcua.ServiceReq
 		return res, nil
 	case <-ctx.Done():
 		cancel()
-		return nil, opcua.BadRequestTimeout
+		return nil, ua.BadRequestTimeout
 	case <-ch.cancellation:
 		cancel()
 		return nil, ch.errCode
@@ -277,7 +276,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 	if len(ch.remoteCertificate) > 0 {
 		cert, err := x509.ParseCertificate(ch.remoteCertificate)
 		if err != nil {
-			return opcua.BadSecurityChecksFailed
+			return ua.BadSecurityChecksFailed
 		}
 		_, err = validateServerCertificate(cert, remoteURL.Hostname(), ch.trustedCertsFile, ch.suppressHostNameInvalid, ch.suppressCertificateExpired, ch.suppressCertificateChainIncomplete)
 		if err != nil {
@@ -292,9 +291,9 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 
 	buf := *(bytesPool.Get().(*[]byte))
 	defer bytesPool.Put(&buf)
-	var writer = opcua.NewWriter(buf)
-	var enc = opcua.NewBinaryEncoder(writer, ch)
-	enc.WriteUInt32(opcua.MessageTypeHello)
+	var writer = ua.NewWriter(buf)
+	var enc = ua.NewBinaryEncoder(writer, ch)
+	enc.WriteUInt32(ua.MessageTypeHello)
 	enc.WriteUInt32(uint32(32 + len(ch.endpointURL)))
 	enc.WriteUInt32(protocolVersion)
 	enc.WriteUInt32(defaultBufferSize)
@@ -317,7 +316,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 	}
 
 	var reader = bytes.NewReader(buf)
-	var dec = opcua.NewBinaryDecoder(reader, ch)
+	var dec = ua.NewBinaryDecoder(reader, ch)
 	var msgType uint32
 	if err := dec.ReadUInt32(&msgType); err != nil {
 		return err
@@ -328,16 +327,16 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 	}
 
 	switch msgType {
-	case opcua.MessageTypeAck:
+	case ua.MessageTypeAck:
 		if msgLen < 28 {
-			return opcua.BadDecodingError
+			return ua.BadDecodingError
 		}
 		var remoteProtocolVersion uint32
 		if err := dec.ReadUInt32(&remoteProtocolVersion); err != nil {
 			return err
 		}
 		if remoteProtocolVersion < protocolVersion {
-			return opcua.BadProtocolVersionUnsupported
+			return ua.BadProtocolVersionUnsupported
 		}
 		if err := dec.ReadUInt32(&ch.sendBufferSize); err != nil {
 			return err
@@ -355,9 +354,9 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 			log.Printf("Ack{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d}\n", remoteProtocolVersion, ch.sendBufferSize, ch.receiveBufferSize, ch.maxMessageSize, ch.maxChunkCount)
 		}
 
-	case opcua.MessageTypeError:
+	case ua.MessageTypeError:
 		if msgLen < 16 {
-			return opcua.BadDecodingError
+			return ua.BadDecodingError
 		}
 		var remoteCode uint32
 		if err := dec.ReadUInt32(&remoteCode); err != nil {
@@ -367,41 +366,41 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		if err = dec.ReadString(&unused); err != nil {
 			return err
 		}
-		return opcua.StatusCode(remoteCode)
+		return ua.StatusCode(remoteCode)
 
 	default:
-		return opcua.BadDecodingError
+		return ua.BadDecodingError
 	}
 
 	switch ch.securityMode {
-	case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+	case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 
 		if ch.localPrivateKey == nil {
-			return opcua.BadSecurityChecksFailed
+			return ua.BadSecurityChecksFailed
 		}
 
 		if ch.remotePublicKey == nil {
-			return opcua.BadSecurityChecksFailed
+			return ua.BadSecurityChecksFailed
 		}
 
 		switch ch.securityPolicyURI {
-		case opcua.SecurityPolicyURIBasic128Rsa15:
-			ch.securityPolicy = new(opcua.SecurityPolicyBasic128Rsa15)
+		case ua.SecurityPolicyURIBasic128Rsa15:
+			ch.securityPolicy = new(ua.SecurityPolicyBasic128Rsa15)
 
-		case opcua.SecurityPolicyURIBasic256:
-			ch.securityPolicy = new(opcua.SecurityPolicyBasic256)
+		case ua.SecurityPolicyURIBasic256:
+			ch.securityPolicy = new(ua.SecurityPolicyBasic256)
 
-		case opcua.SecurityPolicyURIBasic256Sha256:
-			ch.securityPolicy = new(opcua.SecurityPolicyBasic256Sha256)
+		case ua.SecurityPolicyURIBasic256Sha256:
+			ch.securityPolicy = new(ua.SecurityPolicyBasic256Sha256)
 
-		case opcua.SecurityPolicyURIAes128Sha256RsaOaep:
-			ch.securityPolicy = new(opcua.SecurityPolicyAes128Sha256RsaOaep)
+		case ua.SecurityPolicyURIAes128Sha256RsaOaep:
+			ch.securityPolicy = new(ua.SecurityPolicyAes128Sha256RsaOaep)
 
-		case opcua.SecurityPolicyURIAes256Sha256RsaPss:
-			ch.securityPolicy = new(opcua.SecurityPolicyAes256Sha256RsaPss)
+		case ua.SecurityPolicyURIAes256Sha256RsaPss:
+			ch.securityPolicy = new(ua.SecurityPolicyAes256Sha256RsaPss)
 
 		default:
-			return opcua.BadSecurityPolicyRejected
+			return ua.BadSecurityPolicyRejected
 		}
 
 		ch.localSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
@@ -420,18 +419,18 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 			mac.Write(plainText)
 			sig := mac.Sum(nil)
 			if !hmac.Equal(sig, signature) {
-				return opcua.BadSecurityChecksFailed
+				return ua.BadSecurityChecksFailed
 			}
 			return nil
 		}
 
 	default:
-		ch.securityPolicy = new(opcua.SecurityPolicyNone)
+		ch.securityPolicy = new(ua.SecurityPolicyNone)
 
 	}
 
-	ch.pendingResponseCh = make(chan *opcua.ServiceOperation, 32)
-	ch.pendingResponses = make(map[uint32]*opcua.ServiceOperation)
+	ch.pendingResponseCh = make(chan *ua.ServiceOperation, 32)
+	ch.pendingResponses = make(map[uint32]*ua.ServiceOperation)
 	ch.cancellation = make(chan struct{})
 	ch.channelID = 0
 	ch.tokenID = 0
@@ -440,20 +439,20 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 
 	go ch.responseWorker()
 
-	request := &opcua.OpenSecureChannelRequest{
+	request := &ua.OpenSecureChannelRequest{
 		ClientProtocolVersion: protocolVersion,
-		RequestType:           opcua.SecurityTokenRequestTypeIssue,
+		RequestType:           ua.SecurityTokenRequestTypeIssue,
 		SecurityMode:          ch.securityMode,
-		ClientNonce:           opcua.ByteString(getNextNonce(ch.securityPolicy.NonceSize())),
+		ClientNonce:           ua.ByteString(getNextNonce(ch.securityPolicy.NonceSize())),
 		RequestedLifetime:     ch.tokenRequestedLifetime,
 	}
 	res, err := ch.Request(ctx, request)
 	if err != nil {
 		return err
 	}
-	response := res.(*opcua.OpenSecureChannelResponse)
+	response := res.(*ua.OpenSecureChannelResponse)
 	if response.ServerProtocolVersion < protocolVersion {
-		return opcua.BadProtocolVersionUnsupported
+		return ua.BadProtocolVersionUnsupported
 	}
 
 	ch.tokenLock.Lock()
@@ -471,7 +470,7 @@ func (ch *clientSecureChannel) Close(ctx context.Context) error {
 	ch.Lock()
 	defer ch.Unlock()
 	ch.closing = true
-	var request = &opcua.CloseSecureChannelRequest{}
+	var request = &ua.CloseSecureChannelRequest{}
 	_, err := ch.Request(ctx, request)
 	if err != nil {
 		return err
@@ -493,7 +492,7 @@ func (ch *clientSecureChannel) Abort(ctx context.Context) error {
 }
 
 // sendRequest sends the service request on transport channel.
-func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *opcua.ServiceOperation) error {
+func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *ua.ServiceOperation) error {
 	// Check if time to renew security token.
 	if !ch.tokenRenewalTime.IsZero() && time.Now().After(ch.tokenRenewalTime) {
 		ch.tokenRenewalTime = ch.tokenRenewalTime.Add(60000 * time.Millisecond)
@@ -511,19 +510,19 @@ func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *opcua.Servic
 	}
 
 	switch req := req.(type) {
-	case *opcua.OpenSecureChannelRequest:
+	case *ua.OpenSecureChannelRequest:
 		err := ch.sendOpenSecureChannelRequest(ctx, req)
 		if err != nil {
 			return err
 		}
-	case *opcua.CloseSecureChannelRequest:
+	case *ua.CloseSecureChannelRequest:
 		err := ch.sendServiceRequest(ctx, req)
 		if err != nil {
 			return err
 		}
 		// send a success response to ourselves (the server will just close it's socket).
 		select {
-		case op.ResponseCh() <- &opcua.CloseSecureChannelResponse{ResponseHeader: opcua.ResponseHeader{RequestHandle: req.RequestHandle, Timestamp: time.Now()}}:
+		case op.ResponseCh() <- &ua.CloseSecureChannelResponse{ResponseHeader: ua.ResponseHeader{RequestHandle: req.RequestHandle, Timestamp: time.Now()}}:
 		default:
 		}
 	default:
@@ -536,25 +535,25 @@ func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *opcua.Servic
 }
 
 // sendOpenSecureChannelRequest sends open secure channel service request on transport channel.
-func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context, request *opcua.OpenSecureChannelRequest) error {
+func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context, request *ua.OpenSecureChannelRequest) error {
 	var bodyStream = buffer.NewPartitionAt(bufferPool)
 	defer bodyStream.Reset()
 
 	var sendBuffer = *(bytesPool.Get().(*[]byte))
 	defer bytesPool.Put(&sendBuffer)
 
-	var bodyEncoder = opcua.NewBinaryEncoder(bodyStream, ch)
+	var bodyEncoder = ua.NewBinaryEncoder(bodyStream, ch)
 
-	if err := bodyEncoder.WriteNodeID(opcua.ObjectIDOpenSecureChannelRequestEncodingDefaultBinary); err != nil {
-		return opcua.BadEncodingError
+	if err := bodyEncoder.WriteNodeID(ua.ObjectIDOpenSecureChannelRequestEncodingDefaultBinary); err != nil {
+		return ua.BadEncodingError
 	}
 
 	if err := bodyEncoder.Encode(request); err != nil {
-		return opcua.BadEncodingError
+		return ua.BadEncodingError
 	}
 
 	if i := int64(ch.maxMessageSize); i > 0 && bodyStream.Len() > i {
-		return opcua.BadEncodingLimitsExceeded
+		return ua.BadEncodingLimitsExceeded
 	}
 
 	// write chunks
@@ -564,7 +563,7 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 	for bodyCount > 0 {
 		chunkCount++
 		if i := int(ch.maxChunkCount); i > 0 && chunkCount > i {
-			return opcua.BadEncodingLimitsExceeded
+			return ua.BadEncodingLimitsExceeded
 		}
 
 		// plan
@@ -578,7 +577,7 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 		var cipherTextBlockSize int
 		var plainTextBlockSize int
 		switch ch.securityMode {
-		case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 			plainHeaderSize = 16 + len(ch.securityPolicyURI) + 28 + len(ch.localCertificate)
 			signatureSize = ch.localPrivateKey.Size()
 			cipherTextBlockSize = ch.remotePublicKey.Size()
@@ -614,18 +613,18 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
 		}
 
-		var stream = opcua.NewWriter(sendBuffer)
-		var encoder = opcua.NewBinaryEncoder(stream, ch)
+		var stream = ua.NewWriter(sendBuffer)
+		var encoder = ua.NewBinaryEncoder(stream, ch)
 
 		// header
-		encoder.WriteUInt32(opcua.MessageTypeOpenFinal)
+		encoder.WriteUInt32(ua.MessageTypeOpenFinal)
 		encoder.WriteUInt32(uint32(chunkSize))
 		encoder.WriteUInt32(ch.channelID)
 
 		// asymmetric security header
 		encoder.WriteString(ch.securityPolicyURI)
 		switch ch.securityMode {
-		case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 			encoder.WriteByteArray(ch.localCertificate)
 			thumbprint := sha1.Sum(ch.remoteCertificate)
 			encoder.WriteByteArray(thumbprint[:])
@@ -635,7 +634,7 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 		}
 
 		if plainHeaderSize != int(stream.Len()) {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
 
 		// sequence header
@@ -651,7 +650,7 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 
 		// padding
 		switch ch.securityMode {
-		case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 			paddingByte := byte(paddingSize & 0xFF)
 			encoder.WriteByte(paddingByte)
 			for i := int(0); i < paddingSize; i++ {
@@ -665,18 +664,18 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 		}
 
 		if bodyCount > 0 {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
 
 		// sign
 		switch ch.securityMode {
-		case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 			signature, err := ch.securityPolicy.RSASign(ch.localPrivateKey, stream.Bytes())
 			if err != nil {
 				return err
 			}
 			if len(signature) != signatureSize {
-				return opcua.BadEncodingError
+				return ua.BadEncodingError
 			}
 			_, err = stream.Write(signature)
 			if err != nil {
@@ -686,7 +685,7 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 
 		// encrypt
 		switch ch.securityMode {
-		case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 			var encryptionBuffer = *(bytesPool.Get().(*[]byte))
 			defer bytesPool.Put(&encryptionBuffer)
 
@@ -702,13 +701,13 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 					return err
 				}
 				if len(cipherText) != cipherTextBlockSize {
-					return opcua.BadEncodingError
+					return ua.BadEncodingError
 				}
 				copy(encryptionBuffer[jj:], cipherText)
 				jj += cipherTextBlockSize
 			}
 			if jj != chunkSize {
-				return opcua.BadEncodingError
+				return ua.BadEncodingError
 			}
 			// pass buffer to transport
 			_, err := ch.Write(encryptionBuffer[:chunkSize])
@@ -719,7 +718,7 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 		default:
 
 			if stream.Len() != chunkSize {
-				return opcua.BadEncodingError
+				return ua.BadEncodingError
 			}
 			// pass buffer to transport
 			_, err := ch.Write(stream.Bytes())
@@ -732,301 +731,301 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 }
 
 // sendServiceRequest sends the service request on transport channel.
-func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request opcua.ServiceRequest) error {
+func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request ua.ServiceRequest) error {
 	var bodyStream = buffer.NewPartitionAt(bufferPool)
 	defer bodyStream.Reset()
 
 	var sendBuffer = *(bytesPool.Get().(*[]byte))
 	defer bytesPool.Put(&sendBuffer)
 
-	var bodyEncoder = opcua.NewBinaryEncoder(bodyStream, ch)
+	var bodyEncoder = ua.NewBinaryEncoder(bodyStream, ch)
 
 	switch req := request.(type) {
 
 	// frequent
-	case *opcua.PublishRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDPublishRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.PublishRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDPublishRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.ReadRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDReadRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.BrowseRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDBrowseRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.ReadRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDReadRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.BrowseNextRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDBrowseNextRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.TranslateBrowsePathsToNodeIDsRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDTranslateBrowsePathsToNodeIDsRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.BrowseRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDBrowseRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.WriteRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDWriteRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.CallRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDCallRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.BrowseNextRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDBrowseNextRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.HistoryReadRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDHistoryReadRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.TranslateBrowsePathsToNodeIDsRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDTranslateBrowsePathsToNodeIDsRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
+		}
+	case *ua.WriteRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDWriteRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.CallRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDCallRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.HistoryReadRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDHistoryReadRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
 		}
 
 	// moderate
-	case *opcua.GetEndpointsRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDGetEndpointsRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.GetEndpointsRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDGetEndpointsRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.OpenSecureChannelRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDOpenSecureChannelRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.CloseSecureChannelRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDCloseSecureChannelRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.OpenSecureChannelRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDOpenSecureChannelRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.CreateSessionRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDCreateSessionRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.ActivateSessionRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDActivateSessionRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.CloseSecureChannelRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDCloseSecureChannelRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.CloseSessionRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDCloseSessionRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.CreateMonitoredItemsRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDCreateMonitoredItemsRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.CreateSessionRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDCreateSessionRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.DeleteMonitoredItemsRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDDeleteMonitoredItemsRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.CreateSubscriptionRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDCreateSubscriptionRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.ActivateSessionRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDActivateSessionRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.DeleteSubscriptionsRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDDeleteSubscriptionsRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.SetPublishingModeRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDSetPublishingModeRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.CloseSessionRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDCloseSessionRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
+		}
+	case *ua.CreateMonitoredItemsRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDCreateMonitoredItemsRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.DeleteMonitoredItemsRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDDeleteMonitoredItemsRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.CreateSubscriptionRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDCreateSubscriptionRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.DeleteSubscriptionsRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDDeleteSubscriptionsRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.SetPublishingModeRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDSetPublishingModeRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
 		}
 
 		// rare
-	case *opcua.ModifyMonitoredItemsRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDModifyMonitoredItemsRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.ModifyMonitoredItemsRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDModifyMonitoredItemsRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.SetMonitoringModeRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDSetMonitoringModeRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.SetTriggeringRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDSetTriggeringRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.SetMonitoringModeRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDSetMonitoringModeRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.ModifySubscriptionRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDModifySubscriptionRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.RepublishRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDRepublishRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.SetTriggeringRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDSetTriggeringRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.TransferSubscriptionsRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDTransferSubscriptionsRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.FindServersRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDFindServersRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.ModifySubscriptionRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDModifySubscriptionRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.FindServersOnNetworkRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDFindServersOnNetworkRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.RegisterServerRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDRegisterServerRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.RepublishRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDRepublishRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.RegisterServer2Request:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDRegisterServer2RequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.CancelRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDCancelRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.TransferSubscriptionsRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDTransferSubscriptionsRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.AddNodesRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDAddNodesRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.AddReferencesRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDAddReferencesRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.FindServersRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDFindServersRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.DeleteNodesRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDDeleteNodesRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.DeleteReferencesRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDDeleteReferencesRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.FindServersOnNetworkRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDFindServersOnNetworkRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.RegisterNodesRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDRegisterNodesRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.UnregisterNodesRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDUnregisterNodesRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.RegisterServerRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDRegisterServerRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.QueryFirstRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDQueryFirstRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
-		}
-		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
-		}
-	case *opcua.QueryNextRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDQueryNextRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.RegisterServer2Request:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDRegisterServer2RequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
 		}
-	case *opcua.HistoryUpdateRequest:
-		if err := bodyEncoder.WriteNodeID(opcua.ObjectIDHistoryUpdateRequestEncodingDefaultBinary); err != nil {
-			return opcua.BadEncodingError
+	case *ua.CancelRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDCancelRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
 		}
 		if err := bodyEncoder.Encode(req); err != nil {
-			return opcua.BadEncodingError
+			return ua.BadEncodingError
+		}
+	case *ua.AddNodesRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDAddNodesRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.AddReferencesRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDAddReferencesRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.DeleteNodesRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDDeleteNodesRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.DeleteReferencesRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDDeleteReferencesRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.RegisterNodesRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDRegisterNodesRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.UnregisterNodesRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDUnregisterNodesRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.QueryFirstRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDQueryFirstRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.QueryNextRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDQueryNextRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	case *ua.HistoryUpdateRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDHistoryUpdateRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
 		}
 	default:
-		return opcua.BadEncodingError
+		return ua.BadEncodingError
 	}
 
 	if i := int64(ch.maxMessageSize); i > 0 && bodyStream.Len() > i {
-		return opcua.BadEncodingLimitsExceeded
+		return ua.BadEncodingLimitsExceeded
 	}
 
 	var chunkCount int
@@ -1035,7 +1034,7 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request o
 	for bodyCount > 0 {
 		chunkCount++
 		if i := int(ch.maxChunkCount); i > 0 && chunkCount > i {
-			return opcua.BadEncodingLimitsExceeded
+			return ua.BadEncodingLimitsExceeded
 		}
 
 		// plan
@@ -1046,7 +1045,7 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request o
 		var paddingSize int
 		var chunkSize int
 		switch ch.securityMode {
-		case opcua.MessageSecurityModeSignAndEncrypt:
+		case ua.MessageSecurityModeSignAndEncrypt:
 			plainHeaderSize = 16
 			if ch.securityPolicy.SymEncryptionBlockSize() > 256 {
 				paddingHeaderSize = 2
@@ -1076,14 +1075,14 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request o
 			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + ch.securityPolicy.SymSignatureSize()
 		}
 
-		var stream = opcua.NewWriter(sendBuffer)
-		var encoder = opcua.NewBinaryEncoder(stream, ch)
+		var stream = ua.NewWriter(sendBuffer)
+		var encoder = ua.NewBinaryEncoder(stream, ch)
 
 		// header
 		if bodyCount > bodySize {
-			encoder.WriteUInt32(opcua.MessageTypeChunk)
+			encoder.WriteUInt32(ua.MessageTypeChunk)
 		} else {
-			encoder.WriteUInt32(opcua.MessageTypeFinal)
+			encoder.WriteUInt32(ua.MessageTypeFinal)
 		}
 		encoder.WriteUInt32(uint32(chunkSize))
 		encoder.WriteUInt32(ch.channelID)
@@ -1097,7 +1096,7 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request o
 			ch.sendingTokenID = ch.tokenID
 
 			switch ch.securityMode {
-			case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 				// (re)create local security keys for encrypting the next message sent
 				localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
 				jj := copy(ch.localSigningKey, localSecurityKey)
@@ -1105,7 +1104,7 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request o
 				copy(ch.localInitializationVector, localSecurityKey[jj:])
 				// update signer and encrypter with new symmetric keys
 				ch.symSignHMAC = ch.securityPolicy.SymHMACFactory(ch.localSigningKey)
-				if ch.securityMode == opcua.MessageSecurityModeSignAndEncrypt {
+				if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
 					ch.symEncryptingBlockCipher, _ = aes.NewCipher(ch.localEncryptingKey)
 				}
 			}
@@ -1124,7 +1123,7 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request o
 		bodyCount -= bodySize
 
 		// padding
-		if ch.securityMode == opcua.MessageSecurityModeSignAndEncrypt {
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
 			paddingByte := byte(paddingSize & 0xFF)
 			encoder.WriteByte(paddingByte)
 			for i := 0; i < paddingSize; i++ {
@@ -1139,7 +1138,7 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request o
 
 		// sign
 		switch ch.securityMode {
-		case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 			signature, err := ch.symSign(ch.symSignHMAC, stream.Bytes())
 			if err != nil {
 				return err
@@ -1148,10 +1147,10 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request o
 		}
 
 		// encrypt
-		if ch.securityMode == opcua.MessageSecurityModeSignAndEncrypt {
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
 			span := stream.Bytes()[plainHeaderSize:]
 			if len(span)%ch.symEncryptingBlockCipher.BlockSize() != 0 {
-				return opcua.BadEncodingError
+				return ua.BadEncodingError
 			}
 			cipher.NewCBCEncrypter(ch.symEncryptingBlockCipher, ch.localInitializationVector).CryptBlocks(span, span)
 		}
@@ -1174,8 +1173,8 @@ func (ch *clientSecureChannel) responseWorker() {
 				time.Sleep(1000 * time.Millisecond)
 				continue
 			}
-			if ch.errCode == opcua.Good {
-				if ec, ok := err.(opcua.StatusCode); ok {
+			if ch.errCode == ua.Good {
+				if ec, ok := err.(ua.StatusCode); ok {
 					ch.errCode = ec
 				}
 			}
@@ -1187,10 +1186,10 @@ func (ch *clientSecureChannel) responseWorker() {
 }
 
 // readResponse receives next service response from transport channel.
-func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
+func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 	ch.receivingSemaphore.Lock()
 	defer ch.receivingSemaphore.Unlock()
-	var res opcua.ServiceResponse
+	var res ua.ServiceResponse
 	var paddingHeaderSize int
 	var plainHeaderSize int
 	var bodySize int
@@ -1202,7 +1201,7 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 	var receiveBuffer = *(bytesPool.Get().(*[]byte))
 	defer bytesPool.Put(&receiveBuffer)
 
-	var bodyDecoder = opcua.NewBinaryDecoder(bodyStream, ch)
+	var bodyDecoder = ua.NewBinaryDecoder(bodyStream, ch)
 
 	// read chunks
 	var chunkCount int32
@@ -1211,45 +1210,45 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 	for !isFinal {
 		chunkCount++
 		if i := int32(ch.maxChunkCount); i > 0 && chunkCount > i {
-			return nil, opcua.BadEncodingLimitsExceeded
+			return nil, ua.BadEncodingLimitsExceeded
 		}
 
 		count, err := ch.Read(receiveBuffer)
 		if err != nil || count == 0 {
-			return nil, opcua.BadSecureChannelClosed
+			return nil, ua.BadSecureChannelClosed
 		}
 
 		var stream = bytes.NewReader(receiveBuffer[0:count])
-		var decoder = opcua.NewBinaryDecoder(stream, ch)
+		var decoder = ua.NewBinaryDecoder(stream, ch)
 
 		var messageType uint32
 		if err := decoder.ReadUInt32(&messageType); err != nil {
-			return nil, opcua.BadDecodingError
+			return nil, ua.BadDecodingError
 		}
 		var messageLength uint32
 		if err := decoder.ReadUInt32(&messageLength); err != nil {
-			return nil, opcua.BadDecodingError
+			return nil, ua.BadDecodingError
 		}
 
 		if count != int(messageLength) {
-			return nil, opcua.BadDecodingError
+			return nil, ua.BadDecodingError
 		}
 
 		switch messageType {
-		case opcua.MessageTypeChunk, opcua.MessageTypeFinal:
+		case ua.MessageTypeChunk, ua.MessageTypeFinal:
 			// header
 			var channelID uint32
 			if err := decoder.ReadUInt32(&channelID); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 			if channelID != ch.channelID {
-				return nil, opcua.BadTCPSecureChannelUnknown
+				return nil, ua.BadTCPSecureChannelUnknown
 			}
 
 			// symmetric security header
 			var tokenID uint32
 			if err := decoder.ReadUInt32(&tokenID); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 
 			// detect new token
@@ -1258,7 +1257,7 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 				ch.receivingTokenID = tokenID
 
 				switch ch.securityMode {
-				case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+				case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 					// (re)create remote security keys for decrypting the next message received that has a new TokenId
 					remoteSecurityKey := calculatePSHA(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
 					jj := copy(ch.remoteSigningKey, remoteSecurityKey)
@@ -1266,7 +1265,7 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 					copy(ch.remoteInitializationVector, remoteSecurityKey[jj:])
 					// update verifier and decrypter with new symmetric keys
 					ch.symVerifyHMAC = ch.securityPolicy.SymHMACFactory(ch.remoteSigningKey)
-					if ch.securityMode == opcua.MessageSecurityModeSignAndEncrypt {
+					if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
 						ch.symDecryptingBlockCipher, _ = aes.NewCipher(ch.remoteEncryptingKey)
 					}
 				}
@@ -1275,17 +1274,17 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 
 			plainHeaderSize = 16
 			// decrypt
-			if ch.securityMode == opcua.MessageSecurityModeSignAndEncrypt {
+			if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
 				span := receiveBuffer[plainHeaderSize:count]
 				if len(span)%ch.symDecryptingBlockCipher.BlockSize() != 0 {
-					return nil, opcua.BadDecodingError
+					return nil, ua.BadDecodingError
 				}
 				cipher.NewCBCDecrypter(ch.symDecryptingBlockCipher, ch.remoteInitializationVector).CryptBlocks(span, span)
 			}
 
 			// verify
 			switch ch.securityMode {
-			case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 				sigStart := count - ch.securityPolicy.SymSignatureSize()
 				err := ch.symVerify(ch.symVerifyHMAC, receiveBuffer[:sigStart], receiveBuffer[sigStart:count])
 				if err != nil {
@@ -1296,16 +1295,16 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 			// read sequence header
 			var unused uint32
 			if err = decoder.ReadUInt32(&unused); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 
 			if err = decoder.ReadUInt32(&unused); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 
 			// body
 			switch ch.securityMode {
-			case opcua.MessageSecurityModeSignAndEncrypt:
+			case ua.MessageSecurityModeSignAndEncrypt:
 				if ch.securityPolicy.SymEncryptionBlockSize() > 256 {
 					paddingHeaderSize = 2
 					start := int(messageLength) - ch.securityPolicy.SymSignatureSize() - paddingHeaderSize
@@ -1328,31 +1327,31 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 				return nil, err
 			}
 
-			isFinal = messageType == opcua.MessageTypeFinal
+			isFinal = messageType == ua.MessageTypeFinal
 
-		case opcua.MessageTypeOpenFinal:
+		case ua.MessageTypeOpenFinal:
 			// header
 			var unused1 uint32
 			if err = decoder.ReadUInt32(&unused1); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 			// asymmetric header
 			var unused2 string
 			if err = decoder.ReadString(&unused2); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
-			var unused3 opcua.ByteString
+			var unused3 ua.ByteString
 			if err := decoder.ReadByteString(&unused3); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 			if err := decoder.ReadByteString(&unused3); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 			plainHeaderSize = count - stream.Len()
 
 			// decrypt
 			switch ch.securityMode {
-			case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 				cipherTextBlockSize := ch.localPrivateKey.Size()
 				cipherText := make([]byte, cipherTextBlockSize)
 				jj := plainHeaderSize
@@ -1371,28 +1370,28 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 
 			// verify
 			switch ch.securityMode {
-			case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 				// verify with remote public key.
 				sigEnd := int(messageLength)
 				sigStart := sigEnd - ch.remotePublicKey.Size()
 				err := ch.securityPolicy.RSAVerify(ch.remotePublicKey, receiveBuffer[:sigStart], receiveBuffer[sigStart:sigEnd])
 				if err != nil {
-					return nil, opcua.BadDecodingError
+					return nil, ua.BadDecodingError
 				}
 			}
 
 			// sequence header
 			var unused uint32
 			if err = decoder.ReadUInt32(&unused); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 			if err = decoder.ReadUInt32(&unused); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 
 			// body
 			switch ch.securityMode {
-			case opcua.MessageSecurityModeSignAndEncrypt, opcua.MessageSecurityModeSign:
+			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 				cipherTextBlockSize := ch.localPrivateKey.Size()
 				signatureSize := ch.remotePublicKey.Size()
 				if cipherTextBlockSize > 256 {
@@ -1416,130 +1415,130 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 				return nil, err
 			}
 
-			isFinal = messageType == opcua.MessageTypeOpenFinal
+			isFinal = messageType == ua.MessageTypeOpenFinal
 
-		case opcua.MessageTypeError, opcua.MessageTypeAbort:
+		case ua.MessageTypeError, ua.MessageTypeAbort:
 			var statusCode uint32
 			if err := decoder.ReadUInt32(&statusCode); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
 			var unused string
 			if err = decoder.ReadString(&unused); err != nil {
-				return nil, opcua.BadDecodingError
+				return nil, ua.BadDecodingError
 			}
-			ch.errCode = opcua.StatusCode(statusCode)
-			return nil, opcua.StatusCode(statusCode)
+			ch.errCode = ua.StatusCode(statusCode)
+			return nil, ua.StatusCode(statusCode)
 
 		default:
-			return nil, opcua.BadUnknownResponse
+			return nil, ua.BadUnknownResponse
 		}
 
 		if i := int64(ch.maxMessageSize); i > 0 && bodyStream.Len() > i {
-			return nil, opcua.BadEncodingLimitsExceeded
+			return nil, ua.BadEncodingLimitsExceeded
 		}
 	}
 
-	var nodeID opcua.NodeID
+	var nodeID ua.NodeID
 	if err := bodyDecoder.ReadNodeID(&nodeID); err != nil {
-		return nil, opcua.BadDecodingError
+		return nil, ua.BadDecodingError
 	}
 	var temp interface{}
 	switch nodeID {
 
 	// frequent
-	case opcua.ObjectIDPublishResponseEncodingDefaultBinary:
-		temp = new(opcua.PublishResponse)
-	case opcua.ObjectIDReadResponseEncodingDefaultBinary:
-		temp = new(opcua.ReadResponse)
-	case opcua.ObjectIDBrowseResponseEncodingDefaultBinary:
-		temp = new(opcua.BrowseResponse)
-	case opcua.ObjectIDBrowseNextResponseEncodingDefaultBinary:
-		temp = new(opcua.BrowseNextResponse)
-	case opcua.ObjectIDTranslateBrowsePathsToNodeIDsResponseEncodingDefaultBinary:
-		temp = new(opcua.TranslateBrowsePathsToNodeIDsResponse)
-	case opcua.ObjectIDWriteResponseEncodingDefaultBinary:
-		temp = new(opcua.WriteResponse)
-	case opcua.ObjectIDCallResponseEncodingDefaultBinary:
-		temp = new(opcua.CallResponse)
-	case opcua.ObjectIDHistoryReadResponseEncodingDefaultBinary:
-		temp = new(opcua.HistoryReadResponse)
+	case ua.ObjectIDPublishResponseEncodingDefaultBinary:
+		temp = new(ua.PublishResponse)
+	case ua.ObjectIDReadResponseEncodingDefaultBinary:
+		temp = new(ua.ReadResponse)
+	case ua.ObjectIDBrowseResponseEncodingDefaultBinary:
+		temp = new(ua.BrowseResponse)
+	case ua.ObjectIDBrowseNextResponseEncodingDefaultBinary:
+		temp = new(ua.BrowseNextResponse)
+	case ua.ObjectIDTranslateBrowsePathsToNodeIDsResponseEncodingDefaultBinary:
+		temp = new(ua.TranslateBrowsePathsToNodeIDsResponse)
+	case ua.ObjectIDWriteResponseEncodingDefaultBinary:
+		temp = new(ua.WriteResponse)
+	case ua.ObjectIDCallResponseEncodingDefaultBinary:
+		temp = new(ua.CallResponse)
+	case ua.ObjectIDHistoryReadResponseEncodingDefaultBinary:
+		temp = new(ua.HistoryReadResponse)
 
 	// moderate
-	case opcua.ObjectIDGetEndpointsResponseEncodingDefaultBinary:
-		temp = new(opcua.GetEndpointsResponse)
-	case opcua.ObjectIDOpenSecureChannelResponseEncodingDefaultBinary:
-		temp = new(opcua.OpenSecureChannelResponse)
-	case opcua.ObjectIDCloseSecureChannelResponseEncodingDefaultBinary:
-		temp = new(opcua.CloseSecureChannelResponse)
-	case opcua.ObjectIDCreateSessionResponseEncodingDefaultBinary:
-		temp = new(opcua.CreateSessionResponse)
-	case opcua.ObjectIDActivateSessionResponseEncodingDefaultBinary:
-		temp = new(opcua.ActivateSessionResponse)
-	case opcua.ObjectIDCloseSessionResponseEncodingDefaultBinary:
-		temp = new(opcua.CloseSessionResponse)
-	case opcua.ObjectIDCreateMonitoredItemsResponseEncodingDefaultBinary:
-		temp = new(opcua.CreateMonitoredItemsResponse)
-	case opcua.ObjectIDDeleteMonitoredItemsResponseEncodingDefaultBinary:
-		temp = new(opcua.DeleteMonitoredItemsResponse)
-	case opcua.ObjectIDCreateSubscriptionResponseEncodingDefaultBinary:
-		temp = new(opcua.CreateSubscriptionResponse)
-	case opcua.ObjectIDDeleteSubscriptionsResponseEncodingDefaultBinary:
-		temp = new(opcua.DeleteSubscriptionsResponse)
-	case opcua.ObjectIDSetPublishingModeResponseEncodingDefaultBinary:
-		temp = new(opcua.SetPublishingModeResponse)
-	case opcua.ObjectIDServiceFaultEncodingDefaultBinary:
-		temp = new(opcua.ServiceFault)
+	case ua.ObjectIDGetEndpointsResponseEncodingDefaultBinary:
+		temp = new(ua.GetEndpointsResponse)
+	case ua.ObjectIDOpenSecureChannelResponseEncodingDefaultBinary:
+		temp = new(ua.OpenSecureChannelResponse)
+	case ua.ObjectIDCloseSecureChannelResponseEncodingDefaultBinary:
+		temp = new(ua.CloseSecureChannelResponse)
+	case ua.ObjectIDCreateSessionResponseEncodingDefaultBinary:
+		temp = new(ua.CreateSessionResponse)
+	case ua.ObjectIDActivateSessionResponseEncodingDefaultBinary:
+		temp = new(ua.ActivateSessionResponse)
+	case ua.ObjectIDCloseSessionResponseEncodingDefaultBinary:
+		temp = new(ua.CloseSessionResponse)
+	case ua.ObjectIDCreateMonitoredItemsResponseEncodingDefaultBinary:
+		temp = new(ua.CreateMonitoredItemsResponse)
+	case ua.ObjectIDDeleteMonitoredItemsResponseEncodingDefaultBinary:
+		temp = new(ua.DeleteMonitoredItemsResponse)
+	case ua.ObjectIDCreateSubscriptionResponseEncodingDefaultBinary:
+		temp = new(ua.CreateSubscriptionResponse)
+	case ua.ObjectIDDeleteSubscriptionsResponseEncodingDefaultBinary:
+		temp = new(ua.DeleteSubscriptionsResponse)
+	case ua.ObjectIDSetPublishingModeResponseEncodingDefaultBinary:
+		temp = new(ua.SetPublishingModeResponse)
+	case ua.ObjectIDServiceFaultEncodingDefaultBinary:
+		temp = new(ua.ServiceFault)
 
 		// rare
-	case opcua.ObjectIDModifyMonitoredItemsResponseEncodingDefaultBinary:
-		temp = new(opcua.ModifyMonitoredItemsResponse)
-	case opcua.ObjectIDSetMonitoringModeResponseEncodingDefaultBinary:
-		temp = new(opcua.SetMonitoringModeResponse)
-	case opcua.ObjectIDSetTriggeringResponseEncodingDefaultBinary:
-		temp = new(opcua.SetTriggeringResponse)
-	case opcua.ObjectIDModifySubscriptionResponseEncodingDefaultBinary:
-		temp = new(opcua.ModifySubscriptionResponse)
-	case opcua.ObjectIDRepublishResponseEncodingDefaultBinary:
-		temp = new(opcua.RepublishResponse)
-	case opcua.ObjectIDTransferSubscriptionsResponseEncodingDefaultBinary:
-		temp = new(opcua.TransferSubscriptionsResponse)
-	case opcua.ObjectIDFindServersResponseEncodingDefaultBinary:
-		temp = new(opcua.FindServersResponse)
-	case opcua.ObjectIDFindServersOnNetworkResponseEncodingDefaultBinary:
-		temp = new(opcua.FindServersOnNetworkResponse)
-	case opcua.ObjectIDRegisterServerResponseEncodingDefaultBinary:
-		temp = new(opcua.RegisterServerResponse)
-	case opcua.ObjectIDRegisterServer2ResponseEncodingDefaultBinary:
-		temp = new(opcua.RegisterServer2Response)
-	case opcua.ObjectIDCancelResponseEncodingDefaultBinary:
-		temp = new(opcua.CancelResponse)
-	case opcua.ObjectIDAddNodesResponseEncodingDefaultBinary:
-		temp = new(opcua.AddNodesResponse)
-	case opcua.ObjectIDAddReferencesResponseEncodingDefaultBinary:
-		temp = new(opcua.AddReferencesResponse)
-	case opcua.ObjectIDDeleteNodesResponseEncodingDefaultBinary:
-		temp = new(opcua.DeleteNodesResponse)
-	case opcua.ObjectIDDeleteReferencesResponseEncodingDefaultBinary:
-		temp = new(opcua.DeleteReferencesResponse)
-	case opcua.ObjectIDRegisterNodesResponseEncodingDefaultBinary:
-		temp = new(opcua.RegisterNodesResponse)
-	case opcua.ObjectIDUnregisterNodesResponseEncodingDefaultBinary:
-		temp = new(opcua.UnregisterNodesResponse)
-	case opcua.ObjectIDQueryFirstResponseEncodingDefaultBinary:
-		temp = new(opcua.QueryFirstResponse)
-	case opcua.ObjectIDQueryNextResponseEncodingDefaultBinary:
-		temp = new(opcua.QueryNextResponse)
-	case opcua.ObjectIDHistoryUpdateResponseEncodingDefaultBinary:
-		temp = new(opcua.HistoryUpdateResponse)
+	case ua.ObjectIDModifyMonitoredItemsResponseEncodingDefaultBinary:
+		temp = new(ua.ModifyMonitoredItemsResponse)
+	case ua.ObjectIDSetMonitoringModeResponseEncodingDefaultBinary:
+		temp = new(ua.SetMonitoringModeResponse)
+	case ua.ObjectIDSetTriggeringResponseEncodingDefaultBinary:
+		temp = new(ua.SetTriggeringResponse)
+	case ua.ObjectIDModifySubscriptionResponseEncodingDefaultBinary:
+		temp = new(ua.ModifySubscriptionResponse)
+	case ua.ObjectIDRepublishResponseEncodingDefaultBinary:
+		temp = new(ua.RepublishResponse)
+	case ua.ObjectIDTransferSubscriptionsResponseEncodingDefaultBinary:
+		temp = new(ua.TransferSubscriptionsResponse)
+	case ua.ObjectIDFindServersResponseEncodingDefaultBinary:
+		temp = new(ua.FindServersResponse)
+	case ua.ObjectIDFindServersOnNetworkResponseEncodingDefaultBinary:
+		temp = new(ua.FindServersOnNetworkResponse)
+	case ua.ObjectIDRegisterServerResponseEncodingDefaultBinary:
+		temp = new(ua.RegisterServerResponse)
+	case ua.ObjectIDRegisterServer2ResponseEncodingDefaultBinary:
+		temp = new(ua.RegisterServer2Response)
+	case ua.ObjectIDCancelResponseEncodingDefaultBinary:
+		temp = new(ua.CancelResponse)
+	case ua.ObjectIDAddNodesResponseEncodingDefaultBinary:
+		temp = new(ua.AddNodesResponse)
+	case ua.ObjectIDAddReferencesResponseEncodingDefaultBinary:
+		temp = new(ua.AddReferencesResponse)
+	case ua.ObjectIDDeleteNodesResponseEncodingDefaultBinary:
+		temp = new(ua.DeleteNodesResponse)
+	case ua.ObjectIDDeleteReferencesResponseEncodingDefaultBinary:
+		temp = new(ua.DeleteReferencesResponse)
+	case ua.ObjectIDRegisterNodesResponseEncodingDefaultBinary:
+		temp = new(ua.RegisterNodesResponse)
+	case ua.ObjectIDUnregisterNodesResponseEncodingDefaultBinary:
+		temp = new(ua.UnregisterNodesResponse)
+	case ua.ObjectIDQueryFirstResponseEncodingDefaultBinary:
+		temp = new(ua.QueryFirstResponse)
+	case ua.ObjectIDQueryNextResponseEncodingDefaultBinary:
+		temp = new(ua.QueryNextResponse)
+	case ua.ObjectIDHistoryUpdateResponseEncodingDefaultBinary:
+		temp = new(ua.HistoryUpdateResponse)
 	default:
-		return nil, opcua.BadDecodingError
+		return nil, ua.BadDecodingError
 	}
 
 	// decode fields from message stream
 	if err := bodyDecoder.Decode(temp); err != nil {
-		return nil, opcua.BadDecodingError
+		return nil, ua.BadDecodingError
 	}
-	res = temp.(opcua.ServiceResponse)
+	res = temp.(ua.ServiceResponse)
 
 	if ch.trace {
 		b, _ := json.MarshalIndent(res, "", " ")
@@ -1550,7 +1549,7 @@ func (ch *clientSecureChannel) readResponse() (opcua.ServiceResponse, error) {
 }
 
 // handleResponse directs the response to the correct handler.
-func (ch *clientSecureChannel) handleResponse(res opcua.ServiceResponse) error {
+func (ch *clientSecureChannel) handleResponse(res ua.ServiceResponse) error {
 	ch.mapPendingResponses()
 	hnd := res.Header().RequestHandle
 	if op, ok := ch.pendingResponses[hnd]; ok {
@@ -1562,7 +1561,7 @@ func (ch *clientSecureChannel) handleResponse(res opcua.ServiceResponse) error {
 		}
 		return nil
 	}
-	return opcua.BadUnknownResponse
+	return ua.BadUnknownResponse
 }
 
 // mapPendingResponses maps operations coming from pendingResponseCh.
@@ -1579,25 +1578,25 @@ func (ch *clientSecureChannel) mapPendingResponses() {
 
 // renewToken sends request to renew security token.
 func (ch *clientSecureChannel) renewToken(ctx context.Context) error {
-	request := &opcua.OpenSecureChannelRequest{
+	request := &ua.OpenSecureChannelRequest{
 		ClientProtocolVersion: protocolVersion,
-		RequestType:           opcua.SecurityTokenRequestTypeRenew,
+		RequestType:           ua.SecurityTokenRequestTypeRenew,
 		SecurityMode:          ch.securityMode,
-		ClientNonce:           opcua.ByteString(getNextNonce(ch.securityPolicy.NonceSize())),
+		ClientNonce:           ua.ByteString(getNextNonce(ch.securityPolicy.NonceSize())),
 		RequestedLifetime:     ch.tokenRequestedLifetime,
 	}
 	res, err := ch.Request(ctx, request)
 	if err != nil {
 		return err
 	}
-	response := res.(*opcua.OpenSecureChannelResponse)
+	response := res.(*ua.OpenSecureChannelResponse)
 	if response.ServerProtocolVersion < protocolVersion {
-		return opcua.BadProtocolVersionUnsupported
+		return ua.BadProtocolVersionUnsupported
 	}
 
 	ch.tokenLock.Lock()
 	ch.tokenRenewalTime = time.Now().Add(time.Duration(response.SecurityToken.RevisedLifetime*75/100) * time.Millisecond)
-	// ch.channelId = response.opcua.SecurityToken.ChannelID
+	// ch.channelId = response.ua.SecurityToken.ChannelID
 	ch.tokenID = response.SecurityToken.TokenID
 	ch.localNonce = []byte(request.ClientNonce)
 	ch.remoteNonce = []byte(response.ServerNonce)
@@ -1609,7 +1608,7 @@ func (ch *clientSecureChannel) renewToken(ctx context.Context) error {
 func calculatePSHA(secret, seed []byte, sizeBytes int, securityPolicyURI string) []byte {
 	var mac hash.Hash
 	switch securityPolicyURI {
-	case opcua.SecurityPolicyURIBasic128Rsa15, opcua.SecurityPolicyURIBasic256:
+	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 		mac = hmac.New(sha1.New, secret)
 	default:
 		mac = hmac.New(sha256.New, secret)
@@ -1674,7 +1673,7 @@ func (ch *clientSecureChannel) Write(p []byte) (int, error) {
 // Read receives a chunk from the remote endpoint.
 func (ch *clientSecureChannel) Read(p []byte) (int, error) {
 	if ch.conn == nil {
-		return 0, opcua.BadSecureChannelClosed
+		return 0, ua.BadSecureChannelClosed
 	}
 
 	var err error

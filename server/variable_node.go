@@ -4,36 +4,36 @@ import (
 	"context"
 	"sync"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 type VariableNode struct {
 	sync.RWMutex
-	nodeId                  opcua.NodeID
-	nodeClass               opcua.NodeClass
-	browseName              opcua.QualifiedName
-	displayName             opcua.LocalizedText
-	description             opcua.LocalizedText
-	rolePermissions         []opcua.RolePermissionType
+	nodeId                  ua.NodeID
+	nodeClass               ua.NodeClass
+	browseName              ua.QualifiedName
+	displayName             ua.LocalizedText
+	description             ua.LocalizedText
+	rolePermissions         []ua.RolePermissionType
 	accessRestrictions      uint16
-	references              []opcua.Reference
-	value                   opcua.DataValue
-	dataType                opcua.NodeID
+	references              []ua.Reference
+	value                   ua.DataValue
+	dataType                ua.NodeID
 	valueRank               int32
 	arrayDimensions         []uint32
 	accessLevel             byte
 	minimumSamplingInterval float64
 	historizing             bool
-	readValueHandler        func(context.Context, opcua.ReadValueID) opcua.DataValue
-	writeValueHandler       func(context.Context, opcua.WriteValue) opcua.StatusCode
+	readValueHandler        func(context.Context, ua.ReadValueID) ua.DataValue
+	writeValueHandler       func(context.Context, ua.WriteValue) ua.StatusCode
 }
 
 var _ Node = (*VariableNode)(nil)
 
-func NewVariableNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displayName opcua.LocalizedText, description opcua.LocalizedText, rolePermissions []opcua.RolePermissionType, references []opcua.Reference, value opcua.DataValue, dataType opcua.NodeID, valueRank int32, arrayDimensions []uint32, accessLevel byte, minimumSamplingInterval float64, historizing bool) *VariableNode {
+func NewVariableNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, value ua.DataValue, dataType ua.NodeID, valueRank int32, arrayDimensions []uint32, accessLevel byte, minimumSamplingInterval float64, historizing bool) *VariableNode {
 	return &VariableNode{
 		nodeId:                  nodeID,
-		nodeClass:               opcua.NodeClassVariable,
+		nodeClass:               ua.NodeClassVariable,
 		browseName:              browseName,
 		displayName:             displayName,
 		description:             description,
@@ -51,38 +51,38 @@ func NewVariableNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displa
 }
 
 // NodeID returns the NodeID attribute of this node.
-func (n *VariableNode) NodeID() opcua.NodeID {
+func (n *VariableNode) NodeID() ua.NodeID {
 	return n.nodeId
 }
 
 // NodeClass returns the NodeClass attribute of this node.
-func (n *VariableNode) NodeClass() opcua.NodeClass {
+func (n *VariableNode) NodeClass() ua.NodeClass {
 	return n.nodeClass
 }
 
 // BrowseName returns the BrowseName attribute of this node.
-func (n *VariableNode) BrowseName() opcua.QualifiedName {
+func (n *VariableNode) BrowseName() ua.QualifiedName {
 	return n.browseName
 }
 
 // DisplayName returns the DisplayName attribute of this node.
-func (n *VariableNode) DisplayName() opcua.LocalizedText {
+func (n *VariableNode) DisplayName() ua.LocalizedText {
 	return n.displayName
 }
 
 // Description returns the Description attribute of this node.
-func (n *VariableNode) Description() opcua.LocalizedText {
+func (n *VariableNode) Description() ua.LocalizedText {
 	return n.description
 }
 
 // RolePermissions returns the RolePermissions attribute of this node.
-func (n *VariableNode) RolePermissions() []opcua.RolePermissionType {
+func (n *VariableNode) RolePermissions() []ua.RolePermissionType {
 	return n.rolePermissions
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *VariableNode) UserRolePermissions(ctx context.Context) []opcua.RolePermissionType {
-	filteredPermissions := []opcua.RolePermissionType{}
+func (n *VariableNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+	filteredPermissions := []ua.RolePermissionType{}
 	session, ok := ctx.Value(SessionKey).(*Session)
 	if !ok {
 		return filteredPermissions
@@ -103,7 +103,7 @@ func (n *VariableNode) UserRolePermissions(ctx context.Context) []opcua.RolePerm
 }
 
 // References returns the References of this node.
-func (n *VariableNode) References() []opcua.Reference {
+func (n *VariableNode) References() []ua.Reference {
 	n.RLock()
 	res := n.references
 	n.RUnlock()
@@ -111,14 +111,14 @@ func (n *VariableNode) References() []opcua.Reference {
 }
 
 // SetReferences sets the References of the Variable.
-func (n *VariableNode) SetReferences(value []opcua.Reference) {
+func (n *VariableNode) SetReferences(value []ua.Reference) {
 	n.Lock()
 	n.references = value
 	n.Unlock()
 }
 
 // Value returns the value of the Variable.
-func (n *VariableNode) Value() opcua.DataValue {
+func (n *VariableNode) Value() ua.DataValue {
 	n.RLock()
 	res := n.value
 	n.RUnlock()
@@ -126,14 +126,14 @@ func (n *VariableNode) Value() opcua.DataValue {
 }
 
 // SetValue sets the value of the Variable.
-func (n *VariableNode) SetValue(value opcua.DataValue) {
+func (n *VariableNode) SetValue(value ua.DataValue) {
 	n.Lock()
 	n.value = value
 	n.Unlock()
 }
 
 // DataType returns the DataType attribute of this node.
-func (n *VariableNode) DataType() opcua.NodeID {
+func (n *VariableNode) DataType() ua.NodeID {
 	return n.dataType
 }
 
@@ -168,26 +168,26 @@ func (n *VariableNode) UserAccessLevel(ctx context.Context) byte {
 	for _, role := range roles {
 		for _, rp := range rolePermissions {
 			if rp.RoleID == role {
-				if rp.Permissions&opcua.PermissionTypeRead != 0 {
+				if rp.Permissions&ua.PermissionTypeRead != 0 {
 					currentRead = true
 				}
-				if rp.Permissions&opcua.PermissionTypeWrite != 0 {
+				if rp.Permissions&ua.PermissionTypeWrite != 0 {
 					currentWrite = true
 				}
-				if rp.Permissions&opcua.PermissionTypeReadHistory != 0 {
+				if rp.Permissions&ua.PermissionTypeReadHistory != 0 {
 					historyRead = true
 				}
 			}
 		}
 	}
 	if !currentRead {
-		accessLevel &^= opcua.AccessLevelsCurrentRead
+		accessLevel &^= ua.AccessLevelsCurrentRead
 	}
 	if !currentWrite {
-		accessLevel &^= opcua.AccessLevelsCurrentWrite
+		accessLevel &^= ua.AccessLevelsCurrentWrite
 	}
 	if !historyRead {
-		accessLevel &^= opcua.AccessLevelsHistoryRead
+		accessLevel &^= ua.AccessLevelsHistoryRead
 	}
 	return accessLevel
 }
@@ -213,14 +213,14 @@ func (n *VariableNode) SetHistorizing(historizing bool) {
 }
 
 // SetReadValueHandler sets the ReadValueHandler of this node.
-func (n *VariableNode) SetReadValueHandler(value func(context.Context, opcua.ReadValueID) opcua.DataValue) {
+func (n *VariableNode) SetReadValueHandler(value func(context.Context, ua.ReadValueID) ua.DataValue) {
 	n.Lock()
 	n.readValueHandler = value
 	n.Unlock()
 }
 
 // SetWriteValueHandler sets the WriteValueHandler of this node.
-func (n *VariableNode) SetWriteValueHandler(value func(context.Context, opcua.WriteValue) opcua.StatusCode) {
+func (n *VariableNode) SetWriteValueHandler(value func(context.Context, ua.WriteValue) ua.StatusCode) {
 	n.Lock()
 	n.writeValueHandler = value
 	n.Unlock()
@@ -229,11 +229,11 @@ func (n *VariableNode) SetWriteValueHandler(value func(context.Context, opcua.Wr
 // IsAttributeIDValid returns true if attributeId is supported for the node.
 func (n *VariableNode) IsAttributeIDValid(attributeID uint32) bool {
 	switch attributeID {
-	case opcua.AttributeIDNodeID, opcua.AttributeIDNodeClass, opcua.AttributeIDBrowseName,
-		opcua.AttributeIDDisplayName, opcua.AttributeIDDescription, opcua.AttributeIDRolePermissions,
-		opcua.AttributeIDUserRolePermissions, opcua.AttributeIDValue, opcua.AttributeIDDataType,
-		opcua.AttributeIDValueRank, opcua.AttributeIDArrayDimensions, opcua.AttributeIDAccessLevel,
-		opcua.AttributeIDUserAccessLevel, opcua.AttributeIDMinimumSamplingInterval, opcua.AttributeIDHistorizing:
+	case ua.AttributeIDNodeID, ua.AttributeIDNodeClass, ua.AttributeIDBrowseName,
+		ua.AttributeIDDisplayName, ua.AttributeIDDescription, ua.AttributeIDRolePermissions,
+		ua.AttributeIDUserRolePermissions, ua.AttributeIDValue, ua.AttributeIDDataType,
+		ua.AttributeIDValueRank, ua.AttributeIDArrayDimensions, ua.AttributeIDAccessLevel,
+		ua.AttributeIDUserAccessLevel, ua.AttributeIDMinimumSamplingInterval, ua.AttributeIDHistorizing:
 		return true
 	default:
 		return false

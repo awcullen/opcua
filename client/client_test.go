@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/awcullen/opcua"
 	"github.com/awcullen/opcua/client"
+	"github.com/awcullen/opcua/ua"
 
 	"github.com/pkg/errors"
 )
@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	// check if server is listening at endpointURL
-	_, err := client.FindServers(context.Background(), &opcua.FindServersRequest{EndpointURL: endpointURL})
+	_, err := client.FindServers(context.Background(), &ua.FindServersRequest{EndpointURL: endpointURL})
 	if err != nil {
 		// if testserver not listening, start it.
 		srv, err := NewTestServer()
@@ -46,7 +46,7 @@ func TestMain(m *testing.M) {
 		}
 		defer srv.Close()
 		go func() {
-			if err := srv.ListenAndServe(); err != opcua.BadServerHalted {
+			if err := srv.ListenAndServe(); err != ua.BadServerHalted {
 				fmt.Println(errors.Wrap(err, "Error opening server"))
 				os.Exit(3)
 			}
@@ -60,7 +60,7 @@ func TestMain(m *testing.M) {
 // TestDiscoveryClient discovers connection information about a server.
 func TestDiscoveryClient(t *testing.T) {
 	{
-		res, err := client.FindServers(context.Background(), &opcua.FindServersRequest{EndpointURL: endpointURL})
+		res, err := client.FindServers(context.Background(), &ua.FindServersRequest{EndpointURL: endpointURL})
 		if err != nil {
 			t.Error(errors.Wrap(err, "Error calling FindServers"))
 			return
@@ -71,7 +71,7 @@ func TestDiscoveryClient(t *testing.T) {
 		}
 	}
 	{
-		res, err := client.GetEndpoints(context.Background(), &opcua.GetEndpointsRequest{EndpointURL: endpointURL})
+		res, err := client.GetEndpoints(context.Background(), &ua.GetEndpointsRequest{EndpointURL: endpointURL})
 		if err != nil {
 			t.Error(errors.Wrap(err, "Error calling GetEndpoints"))
 			return
@@ -137,9 +137,9 @@ func TestReadServerStatus(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	res, err := ch.Read(ctx, &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
-			{NodeID: opcua.VariableIDServerServerStatus, AttributeID: opcua.AttributeIDValue},
+	res, err := ch.Read(ctx, &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
+			{NodeID: ua.VariableIDServerServerStatus, AttributeID: ua.AttributeIDValue},
 		},
 	})
 	if err != nil {
@@ -152,7 +152,7 @@ func TestReadServerStatus(t *testing.T) {
 		t.Error(errors.Wrap(res.Results[0].StatusCode, "Error reading ServerStatus"))
 		return
 	}
-	status, ok := res.Results[0].Value.(opcua.ServerStatusDataType)
+	status, ok := res.Results[0].Value.(ua.ServerStatusDataType)
 	if !ok {
 		t.Error(errors.New("Error decoding ServerStatusDataType"))
 		return
@@ -178,44 +178,44 @@ func TestReadBuiltinTypes(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Boolean"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.SByte"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Int16"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Int32"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Int64"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Byte"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.UInt16"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.UInt32"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.UInt64"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Float"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Double"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.String"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.DateTime"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Guid"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.ByteString"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.XmlElement"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.LocalizedText"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.QualifiedName"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Boolean"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.SByte"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int16"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int32"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int64"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Byte"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.UInt16"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.UInt32"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.UInt64"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Float"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Double"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.String"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.DateTime"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Guid"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.ByteString"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.XmlElement"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.LocalizedText"), AttributeID: opcua.AttributeIDValue},
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.QualifiedName"), AttributeID: opcua.AttributeIDValue},
+	req := &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Boolean"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.SByte"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Int16"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Int32"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Int64"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Byte"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.UInt16"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.UInt32"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.UInt64"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Float"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Double"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.String"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.DateTime"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Guid"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.ByteString"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.XmlElement"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.LocalizedText"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.QualifiedName"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Boolean"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.SByte"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int16"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int32"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int64"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Byte"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.UInt16"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.UInt32"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.UInt64"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Float"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Double"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.String"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.DateTime"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Guid"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.ByteString"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.XmlElement"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.LocalizedText"), AttributeID: ua.AttributeIDValue},
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.QualifiedName"), AttributeID: ua.AttributeIDValue},
 		},
 	}
 	res, err := ch.Read(ctx, req)
@@ -250,19 +250,19 @@ func TestReadAttributes(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
-			{NodeID: opcua.ObjectIDServer, AttributeID: 1},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 2},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 3},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 4},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 5},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 6},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 7},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 24},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 25},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 26},
-			{NodeID: opcua.ObjectIDServer, AttributeID: 12},
+	req := &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
+			{NodeID: ua.ObjectIDServer, AttributeID: 1},
+			{NodeID: ua.ObjectIDServer, AttributeID: 2},
+			{NodeID: ua.ObjectIDServer, AttributeID: 3},
+			{NodeID: ua.ObjectIDServer, AttributeID: 4},
+			{NodeID: ua.ObjectIDServer, AttributeID: 5},
+			{NodeID: ua.ObjectIDServer, AttributeID: 6},
+			{NodeID: ua.ObjectIDServer, AttributeID: 7},
+			{NodeID: ua.ObjectIDServer, AttributeID: 24},
+			{NodeID: ua.ObjectIDServer, AttributeID: 25},
+			{NodeID: ua.ObjectIDServer, AttributeID: 26},
+			{NodeID: ua.ObjectIDServer, AttributeID: 12},
 		},
 	}
 	res, err := ch.Read(ctx, req)
@@ -297,12 +297,12 @@ func TestWrite(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.WriteRequest{
-		NodesToWrite: []opcua.WriteValue{
+	req := &ua.WriteRequest{
+		NodesToWrite: []ua.WriteValue{
 			{
-				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Double"),
-				AttributeID: opcua.AttributeIDValue,
-				Value:       opcua.NewDataValue(float64(42.0), 0, time.Time{}, 0, time.Time{}, 0),
+				NodeID:      ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Double"),
+				AttributeID: ua.AttributeIDValue,
+				Value:       ua.NewDataValue(float64(42.0), 0, time.Time{}, 0, time.Time{}, 0),
 			},
 		},
 	}
@@ -334,11 +334,11 @@ func TestReadIndexRange(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
+	req := &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
 			{
-				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Double"),
-				AttributeID: opcua.AttributeIDValue,
+				NodeID:      ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Double"),
+				AttributeID: ua.AttributeIDValue,
 				IndexRange:  "0:2",
 			},
 		},
@@ -371,13 +371,13 @@ func TestWriteIndexRange(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.WriteRequest{
-		NodesToWrite: []opcua.WriteValue{
+	req := &ua.WriteRequest{
+		NodesToWrite: []ua.WriteValue{
 			{
-				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int32"),
-				AttributeID: opcua.AttributeIDValue,
+				NodeID:      ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int32"),
+				AttributeID: ua.AttributeIDValue,
 				IndexRange:  "4:5",
-				Value:       opcua.NewDataValue([]int32{4, 5}, 0, time.Time{}, 0, time.Time{}, 0),
+				Value:       ua.NewDataValue([]int32{4, 5}, 0, time.Time{}, 0, time.Time{}, 0),
 			},
 		},
 	}
@@ -393,11 +393,11 @@ func TestWriteIndexRange(t *testing.T) {
 		return
 	}
 	t.Logf("%s: %s", req.NodesToWrite[0].NodeID, res.Results[0])
-	req2 := &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
+	req2 := &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
 			{
-				NodeID:      opcua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int32"),
-				AttributeID: opcua.AttributeIDValue,
+				NodeID:      ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Int32"),
+				AttributeID: ua.AttributeIDValue,
 				IndexRange:  "0:9",
 			},
 		},
@@ -425,14 +425,14 @@ func TestBrowse(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.BrowseRequest{
-		NodesToBrowse: []opcua.BrowseDescription{
+	req := &ua.BrowseRequest{
+		NodesToBrowse: []ua.BrowseDescription{
 			{
-				NodeID:          opcua.ParseNodeID("i=85"),
-				BrowseDirection: opcua.BrowseDirectionForward,
-				ReferenceTypeID: opcua.ReferenceTypeIDHierarchicalReferences,
+				NodeID:          ua.ParseNodeID("i=85"),
+				BrowseDirection: ua.BrowseDirectionForward,
+				ReferenceTypeID: ua.ReferenceTypeIDHierarchicalReferences,
 				IncludeSubtypes: true,
-				ResultMask:      uint32(opcua.BrowseResultMaskAll),
+				ResultMask:      uint32(ua.BrowseResultMaskAll),
 			},
 		},
 	}
@@ -467,7 +467,7 @@ func TestSubscribe(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.CreateSubscriptionRequest{
+	req := &ua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
 		RequestedMaxKeepAliveCount:  30,
 		RequestedLifetimeCount:      30 * 3,
@@ -479,17 +479,17 @@ func TestSubscribe(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	req2 := &opcua.CreateMonitoredItemsRequest{
+	req2 := &ua.CreateMonitoredItemsRequest{
 		SubscriptionID:     res.SubscriptionID,
-		TimestampsToReturn: opcua.TimestampsToReturnBoth,
-		ItemsToCreate: []opcua.MonitoredItemCreateRequest{
+		TimestampsToReturn: ua.TimestampsToReturnBoth,
+		ItemsToCreate: []ua.MonitoredItemCreateRequest{
 			{
-				ItemToMonitor: opcua.ReadValueID{
-					AttributeID: opcua.AttributeIDValue,
-					NodeID:      opcua.VariableIDServerServerStatusCurrentTime,
+				ItemToMonitor: ua.ReadValueID{
+					AttributeID: ua.AttributeIDValue,
+					NodeID:      ua.VariableIDServerServerStatusCurrentTime,
 				},
-				MonitoringMode: opcua.MonitoringModeReporting,
-				RequestedParameters: opcua.MonitoringParameters{
+				MonitoringMode: ua.MonitoringModeReporting,
+				RequestedParameters: ua.MonitoringParameters{
 					ClientHandle: 42, QueueSize: 1, DiscardOldest: true, SamplingInterval: 500.0,
 				},
 			},
@@ -501,9 +501,9 @@ func TestSubscribe(t *testing.T) {
 	}
 	_ = res2
 	// prepare an initial publish request
-	req3 := &opcua.PublishRequest{
-		RequestHeader:                opcua.RequestHeader{TimeoutHint: 60000},
-		SubscriptionAcknowledgements: []opcua.SubscriptionAcknowledgement{},
+	req3 := &ua.PublishRequest{
+		RequestHeader:                ua.RequestHeader{TimeoutHint: 60000},
+		SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{},
 	}
 	// loop until 3 data changes received.
 	numChanges := 0
@@ -516,7 +516,7 @@ func TestSubscribe(t *testing.T) {
 		// loop thru all the notifications.
 		for _, data := range res.NotificationMessage.NotificationData {
 			switch body := data.(type) {
-			case opcua.DataChangeNotification:
+			case ua.DataChangeNotification:
 				for _, z := range body.MonitoredItems {
 					if z.ClientHandle == 42 {
 						t.Logf(" + CurrentTime: %s", z.Value.Value)
@@ -526,9 +526,9 @@ func TestSubscribe(t *testing.T) {
 			}
 		}
 		// prepare another publish request
-		req3 = &opcua.PublishRequest{
-			RequestHeader: opcua.RequestHeader{TimeoutHint: 60000},
-			SubscriptionAcknowledgements: []opcua.SubscriptionAcknowledgement{
+		req3 = &ua.PublishRequest{
+			RequestHeader: ua.RequestHeader{TimeoutHint: 60000},
+			SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{
 				{SequenceNumber: res.NotificationMessage.SequenceNumber, SubscriptionID: res.SubscriptionID},
 			},
 		}
@@ -553,11 +553,11 @@ func TestCallMethod(t *testing.T) {
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
 
-	req := &opcua.CallRequest{
-		MethodsToCall: []opcua.CallMethodRequest{{
-			ObjectID:       opcua.ParseNodeID("ns=2;s=Demo.Methods"), // parent node
-			MethodID:       opcua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO"),
-			InputArguments: []opcua.Variant{uint32(uint32(6)), uint32(uint32(7))}},
+	req := &ua.CallRequest{
+		MethodsToCall: []ua.CallMethodRequest{{
+			ObjectID:       ua.ParseNodeID("ns=2;s=Demo.Methods"), // parent node
+			MethodID:       ua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO"),
+			InputArguments: []ua.Variant{uint32(uint32(6)), uint32(uint32(7))}},
 		},
 	}
 	res, err := ch.Call(ctx, req)
@@ -593,15 +593,15 @@ func TestTranslate(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
-	req := &opcua.TranslateBrowsePathsToNodeIDsRequest{
-		BrowsePaths: []opcua.BrowsePath{
+	req := &ua.TranslateBrowsePathsToNodeIDsRequest{
+		BrowsePaths: []ua.BrowsePath{
 			{
-				StartingNode: opcua.ParseNodeID("ns=2;s=Demo"),
-				RelativePath: opcua.RelativePath{
-					Elements: []opcua.RelativePathElement{
-						{TargetName: opcua.ParseQualifiedName("2:Static")},
-						{TargetName: opcua.ParseQualifiedName("2:Scalar")},
-						{TargetName: opcua.ParseQualifiedName("2:Float")},
+				StartingNode: ua.ParseNodeID("ns=2;s=Demo"),
+				RelativePath: ua.RelativePath{
+					Elements: []ua.RelativePathElement{
+						{TargetName: ua.ParseQualifiedName("2:Static")},
+						{TargetName: ua.ParseQualifiedName("2:Scalar")},
+						{TargetName: ua.ParseQualifiedName("2:Float")},
 					},
 				},
 			},
@@ -653,12 +653,12 @@ func TestReadHistory(t *testing.T) {
 	t.Logf("Success opening client: %s", ch.EndpointURL())
 
 	t.Logf("Start logging of data...")
-	req := &opcua.CallRequest{
-		MethodsToCall: []opcua.CallMethodRequest{
+	req := &ua.CallRequest{
+		MethodsToCall: []ua.CallMethodRequest{
 			{
-				ObjectID:       opcua.ParseNodeID("ns=2;s=Demo.History"), // parent node
-				MethodID:       opcua.ParseNodeID("ns=2;s=Demo.History.StartLogging"),
-				InputArguments: []opcua.Variant{},
+				ObjectID:       ua.ParseNodeID("ns=2;s=Demo.History"), // parent node
+				MethodID:       ua.ParseNodeID("ns=2;s=Demo.History.StartLogging"),
+				InputArguments: []ua.Variant{},
 			},
 		},
 	}
@@ -675,19 +675,19 @@ func TestReadHistory(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	t.Log("Reading history for last 10 seconds")
-	var cp opcua.ByteString
+	var cp ua.ByteString
 	for {
-		req2 := &opcua.HistoryReadRequest{
-			HistoryReadDetails: opcua.ReadRawModifiedDetails{
+		req2 := &ua.HistoryReadRequest{
+			HistoryReadDetails: ua.ReadRawModifiedDetails{
 				StartTime:        time.Now().Add(-1 * time.Minute),
 				EndTime:          time.Now(),
 				NumValuesPerNode: 100,
 				ReturnBounds:     false,
 			},
-			TimestampsToReturn:        opcua.TimestampsToReturnBoth,
+			TimestampsToReturn:        ua.TimestampsToReturnBoth,
 			ReleaseContinuationPoints: false,
-			NodesToRead: []opcua.HistoryReadValueID{
-				{NodeID: opcua.ParseNodeID("ns=2;s=Demo.History.DoubleWithHistory"), ContinuationPoint: cp},
+			NodesToRead: []ua.HistoryReadValueID{
+				{NodeID: ua.ParseNodeID("ns=2;s=Demo.History.DoubleWithHistory"), ContinuationPoint: cp},
 			},
 		}
 
@@ -704,7 +704,7 @@ func TestReadHistory(t *testing.T) {
 			return
 		}
 
-		if historyData, ok := res2.Results[0].HistoryData.(opcua.HistoryData); ok {
+		if historyData, ok := res2.Results[0].HistoryData.(ua.HistoryData); ok {
 			t.Logf("Found %d value(s) for node '%s':", len(historyData.DataValues), req2.NodesToRead[0].NodeID)
 			for _, result := range historyData.DataValues {
 				t.Logf("Read %v, q: %#X, ts: %s", result.Value, uint32(result.StatusCode), result.SourceTimestamp)
@@ -718,17 +718,17 @@ func TestReadHistory(t *testing.T) {
 	}
 	t.Log("Now read the 1 sec average of the last 10 seconds...")
 
-	req3 := &opcua.HistoryReadRequest{
-		HistoryReadDetails: opcua.ReadProcessedDetails{
+	req3 := &ua.HistoryReadRequest{
+		HistoryReadDetails: ua.ReadProcessedDetails{
 			StartTime:          time.Now().Add(-10 * time.Second),
 			EndTime:            time.Now(),
 			ProcessingInterval: 1000.0,
-			AggregateType:      []opcua.NodeID{opcua.ObjectIDAggregateFunctionAverage},
+			AggregateType:      []ua.NodeID{ua.ObjectIDAggregateFunctionAverage},
 		},
-		TimestampsToReturn:        opcua.TimestampsToReturnBoth,
+		TimestampsToReturn:        ua.TimestampsToReturnBoth,
 		ReleaseContinuationPoints: false,
-		NodesToRead: []opcua.HistoryReadValueID{
-			{NodeID: opcua.ParseNodeID("ns=2;s=Demo.History.DoubleWithHistory")},
+		NodesToRead: []ua.HistoryReadValueID{
+			{NodeID: ua.ParseNodeID("ns=2;s=Demo.History.DoubleWithHistory")},
 		},
 	}
 
@@ -745,7 +745,7 @@ func TestReadHistory(t *testing.T) {
 		return
 	}
 
-	if historyData, ok := res3.Results[0].HistoryData.(opcua.HistoryData); ok {
+	if historyData, ok := res3.Results[0].HistoryData.(ua.HistoryData); ok {
 		t.Logf("Found %d average value(s) for node '%s':", len(historyData.DataValues), req3.NodesToRead[0].NodeID)
 		for _, result := range historyData.DataValues {
 			t.Logf("Read %v, q: %#X, ts: %s", result.Value, uint32(result.StatusCode), result.SourceTimestamp)
@@ -753,11 +753,11 @@ func TestReadHistory(t *testing.T) {
 	}
 
 	t.Logf("Stop logging of data...")
-	req4 := &opcua.CallRequest{
-		MethodsToCall: []opcua.CallMethodRequest{{
-			ObjectID:       opcua.ParseNodeID("ns=2;s=Demo.History"), // parent node
-			MethodID:       opcua.ParseNodeID("ns=2;s=Demo.History.StopLogging"),
-			InputArguments: []opcua.Variant{}},
+	req4 := &ua.CallRequest{
+		MethodsToCall: []ua.CallMethodRequest{{
+			ObjectID:       ua.ParseNodeID("ns=2;s=Demo.History"), // parent node
+			MethodID:       ua.ParseNodeID("ns=2;s=Demo.History.StopLogging"),
+			InputArguments: []ua.Variant{}},
 		},
 	}
 
@@ -778,7 +778,7 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 	// Create a keypair.
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return opcua.BadCertificateInvalid
+		return ua.BadCertificateInvalid
 	}
 
 	// Create a certificate.
@@ -805,7 +805,7 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 
 	rawcrt, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
 	if err != nil {
-		return opcua.BadCertificateInvalid
+		return ua.BadCertificateInvalid
 	}
 
 	if f, err := os.Create(certFile); err == nil {

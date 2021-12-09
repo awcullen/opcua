@@ -10,7 +10,7 @@ import (
 
 	"sync"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 	deque "github.com/gammazero/deque"
 )
 
@@ -27,19 +27,19 @@ var (
 type MonitoredItem struct {
 	sync.RWMutex
 	id                  uint32
-	itemToMonitor       opcua.ReadValueID
-	monitoringMode      opcua.MonitoringMode
+	itemToMonitor       ua.ReadValueID
+	monitoringMode      ua.MonitoringMode
 	clientHandle        uint32
 	samplingInterval    float64
 	queueSize           uint32
 	discardOldest       bool
-	timestampsToReturn  opcua.TimestampsToReturn
+	timestampsToReturn  ua.TimestampsToReturn
 	minSamplingInterval float64
 	queue               deque.Deque
 	node                Node
-	dataChangeFilter    opcua.DataChangeFilter
-	eventFilter         opcua.EventFilter
-	previousQueuedValue opcua.DataValue
+	dataChangeFilter    ua.DataChangeFilter
+	eventFilter         ua.EventFilter
+	previousQueuedValue ua.DataValue
 	sub                 *Subscription
 	srv                 *Server
 	prequeue            deque.Deque
@@ -51,7 +51,7 @@ type MonitoredItem struct {
 }
 
 // NewMonitoredItem constructs a new MonitoredItem.
-func NewMonitoredItem(ctx context.Context, sub *Subscription, node Node, itemToMonitor opcua.ReadValueID, monitoringMode opcua.MonitoringMode, parameters opcua.MonitoringParameters, timestampsToReturn opcua.TimestampsToReturn, minSamplingInterval float64) *MonitoredItem {
+func NewMonitoredItem(ctx context.Context, sub *Subscription, node Node, itemToMonitor ua.ReadValueID, monitoringMode ua.MonitoringMode, parameters ua.MonitoringParameters, timestampsToReturn ua.TimestampsToReturn, minSamplingInterval float64) *MonitoredItem {
 	mi := &MonitoredItem{
 		sub:                 sub,
 		srv:                 sub.manager.server,
@@ -65,7 +65,7 @@ func NewMonitoredItem(ctx context.Context, sub *Subscription, node Node, itemToM
 		minSamplingInterval: minSamplingInterval,
 		queue:               deque.Deque{},
 		prequeue:            deque.Deque{},
-		previousQueuedValue: opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Time{}, 0, time.Time{}, 0),
+		previousQueuedValue: ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Time{}, 0, time.Time{}, 0),
 	}
 	mi.setQueueSize(parameters.QueueSize)
 	mi.setSamplingInterval(parameters.SamplingInterval)
@@ -77,7 +77,7 @@ func NewMonitoredItem(ctx context.Context, sub *Subscription, node Node, itemToM
 }
 
 // Modify modifies the MonitoredItem.
-func (mi *MonitoredItem) Modify(ctx context.Context, req opcua.MonitoredItemModifyRequest) opcua.MonitoredItemModifyResult {
+func (mi *MonitoredItem) Modify(ctx context.Context, req ua.MonitoredItemModifyRequest) ua.MonitoredItemModifyResult {
 	mi.Lock()
 	defer mi.Unlock()
 	mi.stopMonitoring()
@@ -87,7 +87,7 @@ func (mi *MonitoredItem) Modify(ctx context.Context, req opcua.MonitoredItemModi
 	mi.setSamplingInterval(req.RequestedParameters.SamplingInterval)
 	mi.setFilter(req.RequestedParameters.Filter)
 	mi.startMonitoring(ctx)
-	return opcua.MonitoredItemModifyResult{RevisedSamplingInterval: mi.samplingInterval, RevisedQueueSize: mi.queueSize}
+	return ua.MonitoredItemModifyResult{RevisedSamplingInterval: mi.samplingInterval, RevisedQueueSize: mi.queueSize}
 }
 
 // Delete deletes the MonitoredItem.
@@ -97,14 +97,14 @@ func (mi *MonitoredItem) Delete() {
 	mi.stopMonitoring()
 	mi.queue.Clear()
 	mi.node = nil
-	mi.previousQueuedValue = opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Time{}, 0, time.Time{}, 0)
+	mi.previousQueuedValue = ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Time{}, 0, time.Time{}, 0)
 	mi.sub = nil
 	mi.prequeue.Clear()
 	mi.triggeredItems = nil
 }
 
 // SetMonitoringMode sets the MonitoringMode of the MonitoredItem.
-func (mi *MonitoredItem) SetMonitoringMode(ctx context.Context, mode opcua.MonitoringMode) {
+func (mi *MonitoredItem) SetMonitoringMode(ctx context.Context, mode ua.MonitoringMode) {
 	mi.Lock()
 	defer mi.Unlock()
 	if mi.monitoringMode == mode {
@@ -112,9 +112,9 @@ func (mi *MonitoredItem) SetMonitoringMode(ctx context.Context, mode opcua.Monit
 	}
 	mi.stopMonitoring()
 	mi.monitoringMode = mode
-	if mode == opcua.MonitoringModeDisabled {
+	if mode == ua.MonitoringModeDisabled {
 		mi.queue.Clear()
-		mi.previousQueuedValue = opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Time{}, 0, time.Time{}, 0)
+		mi.previousQueuedValue = ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Time{}, 0, time.Time{}, 0)
 		mi.sub.disabledMonitoredItemCount++
 	} else {
 		mi.sub.disabledMonitoredItemCount--
@@ -124,7 +124,7 @@ func (mi *MonitoredItem) SetMonitoringMode(ctx context.Context, mode opcua.Monit
 
 func (mi *MonitoredItem) setQueueSize(queueSize uint32) {
 	switch mi.itemToMonitor.AttributeID {
-	case opcua.AttributeIDEventNotifier:
+	case ua.AttributeIDEventNotifier:
 		queueSize = maxQueueSize
 	default:
 		if queueSize > maxQueueSize {
@@ -145,8 +145,8 @@ func (mi *MonitoredItem) setQueueSize(queueSize uint32) {
 		}
 		if overflow && mi.queue.Len() > 1 {
 			// set overflow bit of statuscode
-			if v, ok := mi.queue.Front().(opcua.DataValue); ok {
-				v.StatusCode = opcua.StatusCode(uint32(v.StatusCode) | opcua.InfoTypeDataValue | opcua.Overflow)
+			if v, ok := mi.queue.Front().(ua.DataValue); ok {
+				v.StatusCode = ua.StatusCode(uint32(v.StatusCode) | ua.InfoTypeDataValue | ua.Overflow)
 			}
 		}
 	} else {
@@ -156,8 +156,8 @@ func (mi *MonitoredItem) setQueueSize(queueSize uint32) {
 		}
 		if overflow && mi.queue.Len() > 1 {
 			// set overflow bit of statuscode
-			if v, ok := mi.queue.Back().(opcua.DataValue); ok {
-				v.StatusCode = opcua.StatusCode(uint32(v.StatusCode) | opcua.InfoTypeDataValue | opcua.Overflow)
+			if v, ok := mi.queue.Back().(ua.DataValue); ok {
+				v.StatusCode = ua.StatusCode(uint32(v.StatusCode) | ua.InfoTypeDataValue | ua.Overflow)
 			}
 		}
 	}
@@ -172,7 +172,7 @@ func (mi *MonitoredItem) SamplingInterval() float64 {
 
 func (mi *MonitoredItem) setSamplingInterval(samplingInterval float64) {
 	switch mi.itemToMonitor.AttributeID {
-	case opcua.AttributeIDValue:
+	case ua.AttributeIDValue:
 		if samplingInterval < 0 {
 			samplingInterval = mi.sub.publishingInterval
 		}
@@ -187,7 +187,7 @@ func (mi *MonitoredItem) setSamplingInterval(samplingInterval float64) {
 				samplingInterval = min
 			}
 		}
-	case opcua.AttributeIDEventNotifier:
+	case ua.AttributeIDEventNotifier:
 		samplingInterval = 0
 	default:
 		if samplingInterval < 0 {
@@ -205,15 +205,15 @@ func (mi *MonitoredItem) setSamplingInterval(samplingInterval float64) {
 }
 
 func (mi *MonitoredItem) setFilter(filter interface{}) {
-	mi.dataChangeFilter = opcua.DataChangeFilter{Trigger: opcua.DataChangeTriggerStatusValue}
-	mi.eventFilter = opcua.EventFilter{}
+	mi.dataChangeFilter = ua.DataChangeFilter{Trigger: ua.DataChangeTriggerStatusValue}
+	mi.eventFilter = ua.EventFilter{}
 	switch mi.itemToMonitor.AttributeID {
-	case opcua.AttributeIDValue:
-		if dcf, ok := filter.(opcua.DataChangeFilter); ok {
+	case ua.AttributeIDValue:
+		if dcf, ok := filter.(ua.DataChangeFilter); ok {
 			mi.dataChangeFilter = dcf
 		}
-	case opcua.AttributeIDEventNotifier:
-		if ef, ok := filter.(opcua.EventFilter); ok {
+	case ua.AttributeIDEventNotifier:
+		if ef, ok := filter.(ua.EventFilter); ok {
 			mi.eventFilter = ef
 		}
 	}
@@ -222,12 +222,12 @@ func (mi *MonitoredItem) setFilter(filter interface{}) {
 func (mi *MonitoredItem) startMonitoring(ctx context.Context) {
 	mi.cachedCtx = ctx
 	mi.ts = time.Now()
-	if mi.monitoringMode == opcua.MonitoringModeDisabled {
+	if mi.monitoringMode == ua.MonitoringModeDisabled {
 		return
 	}
 
 	switch mi.itemToMonitor.AttributeID {
-	case opcua.AttributeIDEventNotifier:
+	case ua.AttributeIDEventNotifier:
 
 	default:
 		v := mi.srv.readValue(ctx, mi.itemToMonitor)
@@ -240,7 +240,7 @@ func (mi *MonitoredItem) startMonitoring(ctx context.Context) {
 
 func (mi *MonitoredItem) stopMonitoring() {
 	switch mi.itemToMonitor.AttributeID {
-	case opcua.AttributeIDEventNotifier:
+	case ua.AttributeIDEventNotifier:
 
 	default:
 		mi.Unlock()
@@ -295,8 +295,8 @@ func (mi *MonitoredItem) enqueue(item interface{}) {
 		mi.queue.PushBack(item)
 		if overflow && mi.queueSize > 1 {
 			// set overflow bit of statuscode
-			if v, ok := mi.queue.Front().(opcua.DataValue); ok {
-				v.StatusCode = opcua.StatusCode(uint32(v.StatusCode) | opcua.InfoTypeDataValue | opcua.Overflow)
+			if v, ok := mi.queue.Front().(ua.DataValue); ok {
+				v.StatusCode = ua.StatusCode(uint32(v.StatusCode) | ua.InfoTypeDataValue | ua.Overflow)
 			}
 			mi.sub.monitoringQueueOverflowCount++
 		}
@@ -308,8 +308,8 @@ func (mi *MonitoredItem) enqueue(item interface{}) {
 		mi.queue.PushBack(item)
 		if overflow && mi.queueSize > 1 {
 			// set overflow bit of statuscode
-			if v, ok := mi.queue.Back().(opcua.DataValue); ok {
-				v.StatusCode = opcua.StatusCode(uint32(v.StatusCode) | opcua.InfoTypeDataValue | opcua.Overflow)
+			if v, ok := mi.queue.Back().(ua.DataValue); ok {
+				v.StatusCode = ua.StatusCode(uint32(v.StatusCode) | ua.InfoTypeDataValue | ua.Overflow)
 			}
 			mi.sub.monitoringQueueOverflowCount++
 		}
@@ -340,13 +340,13 @@ func (mi *MonitoredItem) notificationsAvailable(tn time.Time, late bool, resend 
 	mi.Lock()
 	defer mi.Unlock()
 	// if disabled, then report false.
-	if mi.monitoringMode == opcua.MonitoringModeDisabled {
+	if mi.monitoringMode == ua.MonitoringModeDisabled {
 		mi.ts = tn
 		return false
 	}
 	// update queue and report if queue has notifications available.
 	switch mi.itemToMonitor.AttributeID {
-	case opcua.AttributeIDEventNotifier:
+	case ua.AttributeIDEventNotifier:
 		// TODO:
 	default:
 		// if in sampling interval mode, queue the last value of each sampling interval
@@ -358,7 +358,7 @@ func (mi *MonitoredItem) notificationsAvailable(tn time.Time, late bool, resend 
 				// for each value in prequeue
 				for mi.prequeue.Len() > 0 {
 					// peek
-					peek := mi.prequeue.Front().(opcua.DataValue)
+					peek := mi.prequeue.Front().(ua.DataValue)
 					// if timestamp is within sampling interval
 					if !peek.ServerTimestamp.After(mi.ts) {
 						v = peek
@@ -386,7 +386,7 @@ func (mi *MonitoredItem) notificationsAvailable(tn time.Time, late bool, resend 
 		} else {
 			// for each value in prequeue
 			for mi.prequeue.Len() > 0 {
-				v := mi.prequeue.PopFront().(opcua.DataValue)
+				v := mi.prequeue.PopFront().(ua.DataValue)
 				if mi.isDataChange(v, mi.previousQueuedValue) {
 					mi.enqueue(withTimestamps(v, mi.timestampsToReturn))
 					mi.previousQueuedValue = v
@@ -399,7 +399,7 @@ func (mi *MonitoredItem) notificationsAvailable(tn time.Time, late bool, resend 
 				}
 			}
 		}
-		if resend && mi.monitoringMode == opcua.MonitoringModeReporting {
+		if resend && mi.monitoringMode == ua.MonitoringModeReporting {
 			if mi.queue.Len() == 0 {
 				v := mi.srv.readValue(mi.cachedCtx, mi.itemToMonitor)
 				mi.enqueue(withTimestamps(v, mi.timestampsToReturn))
@@ -407,46 +407,46 @@ func (mi *MonitoredItem) notificationsAvailable(tn time.Time, late bool, resend 
 			}
 		}
 	}
-	return mi.queue.Len() > 0 && (mi.monitoringMode == opcua.MonitoringModeReporting || mi.triggered)
+	return mi.queue.Len() > 0 && (mi.monitoringMode == ua.MonitoringModeReporting || mi.triggered)
 }
 
-func (mi *MonitoredItem) isDataChange(current, previous opcua.DataValue) bool {
+func (mi *MonitoredItem) isDataChange(current, previous ua.DataValue) bool {
 	dcf := mi.dataChangeFilter
 	switch dcf.Trigger {
-	case opcua.DataChangeTriggerStatus:
+	case ua.DataChangeTriggerStatus:
 		return (current.StatusCode&0xFFFFF000 != previous.StatusCode&0xFFFFF000)
-	case opcua.DataChangeTriggerStatusValue:
+	case ua.DataChangeTriggerStatusValue:
 		if current.StatusCode&0xFFFFF000 != previous.StatusCode&0xFFFFF000 {
 			return true
 		}
-		switch opcua.DeadbandType(dcf.DeadbandType) {
-		case opcua.DeadbandTypeNone:
+		switch ua.DeadbandType(dcf.DeadbandType) {
+		case ua.DeadbandTypeNone:
 			return !reflect.DeepEqual(current.Value, previous.Value)
-		case opcua.DeadbandTypeAbsolute:
+		case ua.DeadbandTypeAbsolute:
 			return !deadbandEqualAbsolute(current.Value, previous.Value, dcf.DeadbandValue)
-		case opcua.DeadbandTypePercent:
+		case ua.DeadbandTypePercent:
 			return true
 		}
-	case opcua.DataChangeTriggerStatusValueTimestamp:
+	case ua.DataChangeTriggerStatusValueTimestamp:
 		if current.StatusCode&0xFFFFF000 != previous.StatusCode&0xFFFFF000 {
 			return true
 		}
 		if current.SourceTimestamp != previous.SourceTimestamp {
 			return true
 		}
-		switch opcua.DeadbandType(dcf.DeadbandType) {
-		case opcua.DeadbandTypeNone:
+		switch ua.DeadbandType(dcf.DeadbandType) {
+		case ua.DeadbandTypeNone:
 			return !reflect.DeepEqual(current.Value, previous.Value)
-		case opcua.DeadbandTypeAbsolute:
+		case ua.DeadbandTypeAbsolute:
 			return !deadbandEqualAbsolute(current.Value, previous.Value, dcf.DeadbandValue)
-		case opcua.DeadbandTypePercent:
+		case ua.DeadbandTypePercent:
 			return true
 		}
 	}
 	return true
 }
 
-func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bool {
+func deadbandEqualAbsolute(current, previous ua.Variant, deadband float64) bool {
 	panic("todo")
 	/*
 		if current == nil {
@@ -470,43 +470,43 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 		}
 		if len(a) == 0 {
 			switch current.Type() {
-			case opcua.VariantTypeSByte:
+			case ua.VariantTypeSByte:
 				c := current.Value().(int8)
 				p := previous.Value().(int8)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeByte:
+			case ua.VariantTypeByte:
 				c := current.Value().(byte)
 				p := previous.Value().(byte)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeInt16:
+			case ua.VariantTypeInt16:
 				c := current.Value().(int16)
 				p := previous.Value().(int16)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeUInt16:
+			case ua.VariantTypeUInt16:
 				c := current.Value().(uint16)
 				p := previous.Value().(uint16)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeInt32:
+			case ua.VariantTypeInt32:
 				c := current.Value().(int32)
 				p := previous.Value().(int32)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeUInt32:
+			case ua.VariantTypeUInt32:
 				c := current.Value().(uint32)
 				p := previous.Value().(uint32)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeInt64:
+			case ua.VariantTypeInt64:
 				c := current.Value().(int64)
 				p := previous.Value().(int64)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeUInt64:
+			case ua.VariantTypeUInt64:
 				c := current.Value().(uint64)
 				p := previous.Value().(uint64)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeFloat:
+			case ua.VariantTypeFloat:
 				c := current.Value().(float32)
 				p := previous.Value().(float32)
 				return math.Abs(float64(c)-float64(p)) <= deadband
-			case opcua.VariantTypeDouble:
+			case ua.VariantTypeDouble:
 				c := current.Value().(float64)
 				p := previous.Value().(float64)
 				return math.Abs(float64(c)-float64(p)) <= deadband
@@ -516,7 +516,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 		}
 		if len(a) == 1 {
 			switch current.Type() {
-			case opcua.VariantTypeSByte:
+			case ua.VariantTypeSByte:
 				c := current.Value().([]int8)
 				p := previous.Value().([]int8)
 				for i := 0; i < len(c); i++ {
@@ -525,7 +525,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeByte:
+			case ua.VariantTypeByte:
 				c := current.Value().([]byte)
 				p := previous.Value().([]byte)
 				for i := 0; i < len(c); i++ {
@@ -534,7 +534,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeInt16:
+			case ua.VariantTypeInt16:
 				c := current.Value().([]int16)
 				p := previous.Value().([]int16)
 				for i := 0; i < len(c); i++ {
@@ -543,7 +543,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeUInt16:
+			case ua.VariantTypeUInt16:
 				c := current.Value().([]uint16)
 				p := previous.Value().([]uint16)
 				for i := 0; i < len(c); i++ {
@@ -552,7 +552,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeInt32:
+			case ua.VariantTypeInt32:
 				c := current.Value().([]int32)
 				p := previous.Value().([]int32)
 				for i := 0; i < len(c); i++ {
@@ -561,7 +561,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeUInt32:
+			case ua.VariantTypeUInt32:
 				c := current.Value().([]uint32)
 				p := previous.Value().([]uint32)
 				for i := 0; i < len(c); i++ {
@@ -570,7 +570,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeInt64:
+			case ua.VariantTypeInt64:
 				c := current.Value().([]int64)
 				p := previous.Value().([]int64)
 				for i := 0; i < len(c); i++ {
@@ -579,7 +579,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeUInt64:
+			case ua.VariantTypeUInt64:
 				c := current.Value().([]uint64)
 				p := previous.Value().([]uint64)
 				for i := 0; i < len(c); i++ {
@@ -588,7 +588,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeFloat:
+			case ua.VariantTypeFloat:
 				c := current.Value().([]float32)
 				p := previous.Value().([]float32)
 				for i := 0; i < len(c); i++ {
@@ -597,7 +597,7 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 					}
 				}
 				return true
-			case opcua.VariantTypeDouble:
+			case ua.VariantTypeDouble:
 				c := current.Value().([]float64)
 				p := previous.Value().([]float64)
 				for i := 0; i < len(c); i++ {
@@ -615,14 +615,14 @@ func deadbandEqualAbsolute(current, previous opcua.Variant, deadband float64) bo
 }
 
 // withTimestamps returns a new instance of DataValue with only the selected timestamps.
-func withTimestamps(value opcua.DataValue, timestampsToReturn opcua.TimestampsToReturn) opcua.DataValue {
+func withTimestamps(value ua.DataValue, timestampsToReturn ua.TimestampsToReturn) ua.DataValue {
 	switch timestampsToReturn {
-	case opcua.TimestampsToReturnSource:
-		return opcua.NewDataValue(value.Value, value.StatusCode, value.SourceTimestamp, 0, time.Time{}, 0)
-	case opcua.TimestampsToReturnServer:
-		return opcua.NewDataValue(value.Value, value.StatusCode, time.Time{}, 0, value.ServerTimestamp, 0)
-	case opcua.TimestampsToReturnNeither:
-		return opcua.NewDataValue(value.Value, value.StatusCode, time.Time{}, 0, time.Time{}, 0)
+	case ua.TimestampsToReturnSource:
+		return ua.NewDataValue(value.Value, value.StatusCode, value.SourceTimestamp, 0, time.Time{}, 0)
+	case ua.TimestampsToReturnServer:
+		return ua.NewDataValue(value.Value, value.StatusCode, time.Time{}, 0, value.ServerTimestamp, 0)
+	case ua.TimestampsToReturnNeither:
+		return ua.NewDataValue(value.Value, value.StatusCode, time.Time{}, 0, time.Time{}, 0)
 	default:
 		return value
 	}

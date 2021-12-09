@@ -8,14 +8,14 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 // validateServerCertificate validates the certificate of the server.
 func validateServerCertificate(certificate *x509.Certificate, hostname string, trustedCertsFile string,
 	suppressCertificateHostNameInvalid, suppressCertificateTimeInvalid, suppressCertificateChainIncomplete bool) (bool, error) {
 	if certificate == nil {
-		return false, opcua.BadCertificateInvalid
+		return false, ua.BadCertificateInvalid
 	}
 	var intermediates, roots *x509.CertPool
 	if buf, err := ioutil.ReadFile(trustedCertsFile); err == nil {
@@ -91,18 +91,18 @@ func validateServerCertificate(certificate *x509.Certificate, hostname string, t
 		case x509.CertificateInvalidError:
 			switch se.Reason {
 			case x509.Expired:
-				return false, opcua.BadCertificateTimeInvalid
+				return false, ua.BadCertificateTimeInvalid
 			case x509.IncompatibleUsage:
-				return false, opcua.BadCertificateUseNotAllowed
+				return false, ua.BadCertificateUseNotAllowed
 			default:
-				return false, opcua.BadSecurityChecksFailed
+				return false, ua.BadSecurityChecksFailed
 			}
 		case x509.HostnameError:
-			return false, opcua.BadCertificateHostNameInvalid
+			return false, ua.BadCertificateHostNameInvalid
 		case x509.UnknownAuthorityError:
-			return false, opcua.BadCertificateChainIncomplete
+			return false, ua.BadCertificateChainIncomplete
 		default:
-			return false, opcua.BadSecurityChecksFailed
+			return false, ua.BadSecurityChecksFailed
 		}
 	}
 	return true, nil

@@ -6,31 +6,31 @@ import (
 	"context"
 	"sync"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 // MethodNode is a Node class that describes the syntax of a object's Method.
 type MethodNode struct {
 	sync.RWMutex
-	nodeID             opcua.NodeID
-	nodeClass          opcua.NodeClass
-	browseName         opcua.QualifiedName
-	displayName        opcua.LocalizedText
-	description        opcua.LocalizedText
-	rolePermissions    []opcua.RolePermissionType
+	nodeID             ua.NodeID
+	nodeClass          ua.NodeClass
+	browseName         ua.QualifiedName
+	displayName        ua.LocalizedText
+	description        ua.LocalizedText
+	rolePermissions    []ua.RolePermissionType
 	accessRestrictions uint16
-	references         []opcua.Reference
+	references         []ua.Reference
 	executable         bool
-	callMethodHandler  func(context.Context, opcua.CallMethodRequest) opcua.CallMethodResult
+	callMethodHandler  func(context.Context, ua.CallMethodRequest) ua.CallMethodResult
 }
 
 var _ Node = (*MethodNode)(nil)
 
 // NewMethodNode constructs a new MethodNode.
-func NewMethodNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displayName opcua.LocalizedText, description opcua.LocalizedText, rolePermissions []opcua.RolePermissionType, references []opcua.Reference, executable bool) *MethodNode {
+func NewMethodNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, executable bool) *MethodNode {
 	return &MethodNode{
 		nodeID:             nodeID,
-		nodeClass:          opcua.NodeClassMethod,
+		nodeClass:          ua.NodeClassMethod,
 		browseName:         browseName,
 		displayName:        displayName,
 		description:        description,
@@ -42,38 +42,38 @@ func NewMethodNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displayN
 }
 
 // NodeID returns the NodeID attribute of this node.
-func (n *MethodNode) NodeID() opcua.NodeID {
+func (n *MethodNode) NodeID() ua.NodeID {
 	return n.nodeID
 }
 
 // NodeClass returns the NodeClass attribute of this node.
-func (n *MethodNode) NodeClass() opcua.NodeClass {
+func (n *MethodNode) NodeClass() ua.NodeClass {
 	return n.nodeClass
 }
 
 // BrowseName returns the BrowseName attribute of this node.
-func (n *MethodNode) BrowseName() opcua.QualifiedName {
+func (n *MethodNode) BrowseName() ua.QualifiedName {
 	return n.browseName
 }
 
 // DisplayName returns the DisplayName attribute of this node.
-func (n *MethodNode) DisplayName() opcua.LocalizedText {
+func (n *MethodNode) DisplayName() ua.LocalizedText {
 	return n.displayName
 }
 
 // Description returns the Description attribute of this node.
-func (n *MethodNode) Description() opcua.LocalizedText {
+func (n *MethodNode) Description() ua.LocalizedText {
 	return n.description
 }
 
 // RolePermissions returns the RolePermissions attribute of this node.
-func (n *MethodNode) RolePermissions() []opcua.RolePermissionType {
+func (n *MethodNode) RolePermissions() []ua.RolePermissionType {
 	return n.rolePermissions
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *MethodNode) UserRolePermissions(ctx context.Context) []opcua.RolePermissionType {
-	filteredPermissions := []opcua.RolePermissionType{}
+func (n *MethodNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+	filteredPermissions := []ua.RolePermissionType{}
 	session, ok := ctx.Value(SessionKey).(*Session)
 	if !ok {
 		return filteredPermissions
@@ -97,7 +97,7 @@ func (n *MethodNode) UserRolePermissions(ctx context.Context) []opcua.RolePermis
 }
 
 // References returns the References of this node.
-func (n *MethodNode) References() []opcua.Reference {
+func (n *MethodNode) References() []ua.Reference {
 	n.RLock()
 	res := n.references
 	n.RUnlock()
@@ -105,7 +105,7 @@ func (n *MethodNode) References() []opcua.Reference {
 }
 
 // SetReferences sets the References of the Variable.
-func (n *MethodNode) SetReferences(value []opcua.Reference) {
+func (n *MethodNode) SetReferences(value []ua.Reference) {
 	n.Lock()
 	n.references = value
 	n.Unlock()
@@ -132,7 +132,7 @@ func (n *MethodNode) UserExecutable(ctx context.Context) bool {
 	}
 	for _, role := range roles {
 		for _, rp := range rolePermissions {
-			if rp.RoleID == role && rp.Permissions&opcua.PermissionTypeCall != 0 {
+			if rp.RoleID == role && rp.Permissions&ua.PermissionTypeCall != 0 {
 				return true
 			}
 		}
@@ -141,7 +141,7 @@ func (n *MethodNode) UserExecutable(ctx context.Context) bool {
 }
 
 // SetCallMethodHandler sets the CallMethod of the Variable.
-func (n *MethodNode) SetCallMethodHandler(value func(context.Context, opcua.CallMethodRequest) opcua.CallMethodResult) {
+func (n *MethodNode) SetCallMethodHandler(value func(context.Context, ua.CallMethodRequest) ua.CallMethodResult) {
 	n.Lock()
 	n.callMethodHandler = value
 	n.Unlock()
@@ -150,9 +150,9 @@ func (n *MethodNode) SetCallMethodHandler(value func(context.Context, opcua.Call
 // IsAttributeIDValid returns true if attributeId is supported for the node.
 func (n *MethodNode) IsAttributeIDValid(attributeID uint32) bool {
 	switch attributeID {
-	case opcua.AttributeIDNodeID, opcua.AttributeIDNodeClass, opcua.AttributeIDBrowseName,
-		opcua.AttributeIDDisplayName, opcua.AttributeIDDescription, opcua.AttributeIDRolePermissions,
-		opcua.AttributeIDUserRolePermissions, opcua.AttributeIDExecutable, opcua.AttributeIDUserExecutable:
+	case ua.AttributeIDNodeID, ua.AttributeIDNodeClass, ua.AttributeIDBrowseName,
+		ua.AttributeIDDisplayName, ua.AttributeIDDescription, ua.AttributeIDRolePermissions,
+		ua.AttributeIDUserRolePermissions, ua.AttributeIDExecutable, ua.AttributeIDUserExecutable:
 		return true
 	default:
 		return false

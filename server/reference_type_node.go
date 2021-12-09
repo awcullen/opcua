@@ -4,32 +4,32 @@ import (
 	"context"
 	"sync"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 // ReferenceTypeNode ...
 type ReferenceTypeNode struct {
 	sync.RWMutex
-	nodeID             opcua.NodeID
-	nodeClass          opcua.NodeClass
-	browseName         opcua.QualifiedName
-	displayName        opcua.LocalizedText
-	description        opcua.LocalizedText
-	rolePermissions    []opcua.RolePermissionType
+	nodeID             ua.NodeID
+	nodeClass          ua.NodeClass
+	browseName         ua.QualifiedName
+	displayName        ua.LocalizedText
+	description        ua.LocalizedText
+	rolePermissions    []ua.RolePermissionType
 	accessRestrictions uint16
-	references         []opcua.Reference
+	references         []ua.Reference
 	isAbstract         bool
 	symmetric          bool
-	inverseName        opcua.LocalizedText
+	inverseName        ua.LocalizedText
 }
 
 var _ Node = (*ReferenceTypeNode)(nil)
 
 // NewReferenceTypeNode ...
-func NewReferenceTypeNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displayName opcua.LocalizedText, description opcua.LocalizedText, rolePermissions []opcua.RolePermissionType, references []opcua.Reference, isAbstract bool, symmetric bool, inverseName opcua.LocalizedText) *ReferenceTypeNode {
+func NewReferenceTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool, symmetric bool, inverseName ua.LocalizedText) *ReferenceTypeNode {
 	return &ReferenceTypeNode{
 		nodeID:             nodeID,
-		nodeClass:          opcua.NodeClassReferenceType,
+		nodeClass:          ua.NodeClassReferenceType,
 		browseName:         browseName,
 		displayName:        displayName,
 		description:        description,
@@ -43,38 +43,38 @@ func NewReferenceTypeNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, d
 }
 
 // NodeID returns the NodeID attribute of this node.
-func (n *ReferenceTypeNode) NodeID() opcua.NodeID {
+func (n *ReferenceTypeNode) NodeID() ua.NodeID {
 	return n.nodeID
 }
 
 // NodeClass returns the NodeClass attribute of this node.
-func (n *ReferenceTypeNode) NodeClass() opcua.NodeClass {
+func (n *ReferenceTypeNode) NodeClass() ua.NodeClass {
 	return n.nodeClass
 }
 
 // BrowseName returns the BrowseName attribute of this node.
-func (n *ReferenceTypeNode) BrowseName() opcua.QualifiedName {
+func (n *ReferenceTypeNode) BrowseName() ua.QualifiedName {
 	return n.browseName
 }
 
 // DisplayName returns the DisplayName attribute of this node.
-func (n *ReferenceTypeNode) DisplayName() opcua.LocalizedText {
+func (n *ReferenceTypeNode) DisplayName() ua.LocalizedText {
 	return n.displayName
 }
 
 // Description returns the Description attribute of this node.
-func (n *ReferenceTypeNode) Description() opcua.LocalizedText {
+func (n *ReferenceTypeNode) Description() ua.LocalizedText {
 	return n.description
 }
 
 // RolePermissions returns the RolePermissions attribute of this node.
-func (n *ReferenceTypeNode) RolePermissions() []opcua.RolePermissionType {
+func (n *ReferenceTypeNode) RolePermissions() []ua.RolePermissionType {
 	return n.rolePermissions
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *ReferenceTypeNode) UserRolePermissions(ctx context.Context) []opcua.RolePermissionType {
-	filteredPermissions := []opcua.RolePermissionType{}
+func (n *ReferenceTypeNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+	filteredPermissions := []ua.RolePermissionType{}
 	session, ok := ctx.Value(SessionKey).(*Session)
 	if !ok {
 		return filteredPermissions
@@ -95,7 +95,7 @@ func (n *ReferenceTypeNode) UserRolePermissions(ctx context.Context) []opcua.Rol
 }
 
 // References returns the References of this node.
-func (n *ReferenceTypeNode) References() []opcua.Reference {
+func (n *ReferenceTypeNode) References() []ua.Reference {
 	n.RLock()
 	res := n.references
 	n.RUnlock()
@@ -103,7 +103,7 @@ func (n *ReferenceTypeNode) References() []opcua.Reference {
 }
 
 // SetReferences sets the References of the Variable.
-func (n *ReferenceTypeNode) SetReferences(value []opcua.Reference) {
+func (n *ReferenceTypeNode) SetReferences(value []ua.Reference) {
 	n.Lock()
 	n.references = value
 	n.Unlock()
@@ -120,17 +120,17 @@ func (n *ReferenceTypeNode) Symmetric() bool {
 }
 
 // InverseName returns the InverseName attribute of this node.
-func (n *ReferenceTypeNode) InverseName() opcua.LocalizedText {
+func (n *ReferenceTypeNode) InverseName() ua.LocalizedText {
 	return n.inverseName
 }
 
 // IsAttributeIDValid returns true if attributeId is supported for the node.
 func (n *ReferenceTypeNode) IsAttributeIDValid(attributeID uint32) bool {
 	switch attributeID {
-	case opcua.AttributeIDNodeID, opcua.AttributeIDNodeClass, opcua.AttributeIDBrowseName,
-		opcua.AttributeIDDisplayName, opcua.AttributeIDDescription, opcua.AttributeIDRolePermissions,
-		opcua.AttributeIDUserRolePermissions, opcua.AttributeIDIsAbstract, opcua.AttributeIDSymmetric,
-		opcua.AttributeIDInverseName:
+	case ua.AttributeIDNodeID, ua.AttributeIDNodeClass, ua.AttributeIDBrowseName,
+		ua.AttributeIDDisplayName, ua.AttributeIDDescription, ua.AttributeIDRolePermissions,
+		ua.AttributeIDUserRolePermissions, ua.AttributeIDIsAbstract, ua.AttributeIDSymmetric,
+		ua.AttributeIDInverseName:
 		return true
 	default:
 		return false

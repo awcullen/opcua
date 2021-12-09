@@ -14,14 +14,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awcullen/opcua"
-
+	"github.com/awcullen/opcua/ua"
 	"github.com/gammazero/deque"
 	"github.com/google/uuid"
 )
 
 var (
-	hasChildandSubtypes = []opcua.NodeID{opcua.ReferenceTypeIDHasComponent, opcua.ReferenceTypeIDHasProperty, opcua.ReferenceTypeIDHasSubtype, opcua.ReferenceTypeIDHasOrderedComponent}
+	hasChildandSubtypes = []ua.NodeID{ua.ReferenceTypeIDHasComponent, ua.ReferenceTypeIDHasProperty, ua.ReferenceTypeIDHasSubtype, ua.ReferenceTypeIDHasOrderedComponent}
 )
 
 // NamespaceManager manages the namespaces for a server.
@@ -29,8 +28,8 @@ type NamespaceManager struct {
 	sync.RWMutex
 	server         *Server
 	namespaces     []string
-	nodes          map[opcua.NodeID]Node
-	variantTypeMap map[opcua.NodeID]byte
+	nodes          map[ua.NodeID]Node
+	variantTypeMap map[ua.NodeID]byte
 }
 
 // NewNamespaceManager instantiates a new NamespaceManager.
@@ -38,8 +37,8 @@ func NewNamespaceManager(server *Server) *NamespaceManager {
 	return &NamespaceManager{
 		server:         server,
 		namespaces:     []string{"http://opcfoundation.org/UA/", server.LocalDescription().ApplicationURI},
-		nodes:          make(map[opcua.NodeID]Node, 4096),
-		variantTypeMap: make(map[opcua.NodeID]byte, 32),
+		nodes:          make(map[ua.NodeID]Node, 4096),
+		variantTypeMap: make(map[ua.NodeID]byte, 32),
 	}
 }
 
@@ -72,7 +71,7 @@ func (m *NamespaceManager) NamespaceUris() []string {
 }
 
 // FindNode returns the node with the given NodeID from the namespace.
-func (m *NamespaceManager) FindNode(id opcua.NodeID) (node Node, ok bool) {
+func (m *NamespaceManager) FindNode(id ua.NodeID) (node Node, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
 	node, ok = m.nodes[id]
@@ -80,7 +79,7 @@ func (m *NamespaceManager) FindNode(id opcua.NodeID) (node Node, ok bool) {
 }
 
 // FindObject returns the node with the given NodeID from the namespace.
-func (m *NamespaceManager) FindObject(id opcua.NodeID) (node *ObjectNode, ok bool) {
+func (m *NamespaceManager) FindObject(id ua.NodeID) (node *ObjectNode, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
 	if node1, ok1 := m.nodes[id]; ok1 {
@@ -90,7 +89,7 @@ func (m *NamespaceManager) FindObject(id opcua.NodeID) (node *ObjectNode, ok boo
 }
 
 // FindVariable returns the node with the given NodeID from the namespace.
-func (m *NamespaceManager) FindVariable(id opcua.NodeID) (node *VariableNode, ok bool) {
+func (m *NamespaceManager) FindVariable(id ua.NodeID) (node *VariableNode, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
 	if node1, ok1 := m.nodes[id]; ok1 {
@@ -100,12 +99,12 @@ func (m *NamespaceManager) FindVariable(id opcua.NodeID) (node *VariableNode, ok
 }
 
 // FindProperty returns the property with the given browseName from the namespace.
-func (m *NamespaceManager) FindProperty(startNode Node, browseName opcua.QualifiedName) (node *VariableNode, ok bool) {
+func (m *NamespaceManager) FindProperty(startNode Node, browseName ua.QualifiedName) (node *VariableNode, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
 	for _, r := range startNode.References() {
-		if !r.IsInverse && opcua.ReferenceTypeIDHasProperty == r.ReferenceTypeID {
-			id := opcua.ToNodeID(r.TargetID, m.namespaces)
+		if !r.IsInverse && ua.ReferenceTypeIDHasProperty == r.ReferenceTypeID {
+			id := ua.ToNodeID(r.TargetID, m.namespaces)
 			if node1, ok1 := m.nodes[id]; ok1 {
 				if browseName == node1.BrowseName() {
 					node, ok = node1.(*VariableNode)
@@ -118,12 +117,12 @@ func (m *NamespaceManager) FindProperty(startNode Node, browseName opcua.Qualifi
 }
 
 // FindComponent returns the component with the given browseName from the namespace.
-func (m *NamespaceManager) FindComponent(startNode Node, browseName opcua.QualifiedName) (node Node, ok bool) {
+func (m *NamespaceManager) FindComponent(startNode Node, browseName ua.QualifiedName) (node Node, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
 	for _, r := range startNode.References() {
-		if !r.IsInverse && opcua.ReferenceTypeIDHasComponent == r.ReferenceTypeID {
-			id := opcua.ToNodeID(r.TargetID, m.namespaces)
+		if !r.IsInverse && ua.ReferenceTypeIDHasComponent == r.ReferenceTypeID {
+			id := ua.ToNodeID(r.TargetID, m.namespaces)
 			if node1, ok1 := m.nodes[id]; ok1 {
 				if browseName == node1.BrowseName() {
 					node, ok = node1, true
@@ -136,7 +135,7 @@ func (m *NamespaceManager) FindComponent(startNode Node, browseName opcua.Qualif
 }
 
 // FindMethod returns the node with the given NodeID from the namespace.
-func (m *NamespaceManager) FindMethod(id opcua.NodeID) (node *MethodNode, ok bool) {
+func (m *NamespaceManager) FindMethod(id ua.NodeID) (node *MethodNode, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
 	if node1, ok1 := m.nodes[id]; ok1 {
@@ -146,7 +145,7 @@ func (m *NamespaceManager) FindMethod(id opcua.NodeID) (node *MethodNode, ok boo
 }
 
 // IsSubtype returns whether the subtype is derived from the given supertype in the namespace.
-func (m *NamespaceManager) IsSubtype(subtype, supertype opcua.NodeID) bool {
+func (m *NamespaceManager) IsSubtype(subtype, supertype ua.NodeID) bool {
 	id := subtype
 	i := 0
 loop:
@@ -157,8 +156,8 @@ loop:
 	i++
 	if n, ok := m.FindNode(id); ok {
 		for _, r := range n.References() {
-			if r.IsInverse && opcua.ReferenceTypeIDHasSubtype == r.ReferenceTypeID {
-				id = opcua.ToNodeID(r.TargetID, m.NamespaceUris())
+			if r.IsInverse && ua.ReferenceTypeIDHasSubtype == r.ReferenceTypeID {
+				id = ua.ToNodeID(r.TargetID, m.NamespaceUris())
 				if supertype == id {
 					return true
 				}
@@ -170,11 +169,11 @@ loop:
 }
 
 // FindSuperType returns the immediate supertype for the type.
-func (m *NamespaceManager) FindSuperType(typeid opcua.NodeID) opcua.NodeID {
+func (m *NamespaceManager) FindSuperType(typeid ua.NodeID) ua.NodeID {
 	if n, ok := m.FindNode(typeid); ok {
 		for _, r := range n.References() {
-			if r.IsInverse && opcua.ReferenceTypeIDHasSubtype == r.ReferenceTypeID {
-				return opcua.ToNodeID(r.TargetID, m.NamespaceUris())
+			if r.IsInverse && ua.ReferenceTypeIDHasSubtype == r.ReferenceTypeID {
+				return ua.ToNodeID(r.TargetID, m.NamespaceUris())
 			}
 		}
 	}
@@ -182,7 +181,7 @@ func (m *NamespaceManager) FindSuperType(typeid opcua.NodeID) opcua.NodeID {
 }
 
 // FindVariantType gets the variant type for the variable
-func (m *NamespaceManager) FindVariantType(dataType opcua.NodeID) byte {
+func (m *NamespaceManager) FindVariantType(dataType ua.NodeID) byte {
 	m.RLock()
 	vt, ok := m.variantTypeMap[dataType]
 	if ok {
@@ -193,86 +192,86 @@ func (m *NamespaceManager) FindVariantType(dataType opcua.NodeID) byte {
 	t := dataType
 	for {
 		switch t {
-		case opcua.DataTypeIDBoolean:
-			vt = opcua.VariantTypeBoolean
+		case ua.DataTypeIDBoolean:
+			vt = ua.VariantTypeBoolean
 			goto exit
-		case opcua.DataTypeIDSByte:
-			vt = opcua.VariantTypeSByte
+		case ua.DataTypeIDSByte:
+			vt = ua.VariantTypeSByte
 			goto exit
-		case opcua.DataTypeIDByte:
-			vt = opcua.VariantTypeByte
+		case ua.DataTypeIDByte:
+			vt = ua.VariantTypeByte
 			goto exit
-		case opcua.DataTypeIDInt16:
-			vt = opcua.VariantTypeInt16
+		case ua.DataTypeIDInt16:
+			vt = ua.VariantTypeInt16
 			goto exit
-		case opcua.DataTypeIDUInt16:
-			vt = opcua.VariantTypeUInt16
+		case ua.DataTypeIDUInt16:
+			vt = ua.VariantTypeUInt16
 			goto exit
-		case opcua.DataTypeIDInt32:
-			vt = opcua.VariantTypeInt32
+		case ua.DataTypeIDInt32:
+			vt = ua.VariantTypeInt32
 			goto exit
-		case opcua.DataTypeIDUInt32:
-			vt = opcua.VariantTypeUInt32
+		case ua.DataTypeIDUInt32:
+			vt = ua.VariantTypeUInt32
 			goto exit
-		case opcua.DataTypeIDInt64:
-			vt = opcua.VariantTypeInt64
+		case ua.DataTypeIDInt64:
+			vt = ua.VariantTypeInt64
 			goto exit
-		case opcua.DataTypeIDUInt64:
-			vt = opcua.VariantTypeUInt64
+		case ua.DataTypeIDUInt64:
+			vt = ua.VariantTypeUInt64
 			goto exit
-		case opcua.DataTypeIDFloat:
-			vt = opcua.VariantTypeFloat
+		case ua.DataTypeIDFloat:
+			vt = ua.VariantTypeFloat
 			goto exit
-		case opcua.DataTypeIDDouble:
-			vt = opcua.VariantTypeDouble
+		case ua.DataTypeIDDouble:
+			vt = ua.VariantTypeDouble
 			goto exit
-		case opcua.DataTypeIDString:
-			vt = opcua.VariantTypeString
+		case ua.DataTypeIDString:
+			vt = ua.VariantTypeString
 			goto exit
-		case opcua.DataTypeIDDateTime:
-			vt = opcua.VariantTypeDateTime
+		case ua.DataTypeIDDateTime:
+			vt = ua.VariantTypeDateTime
 			goto exit
-		case opcua.DataTypeIDGUID:
-			vt = opcua.VariantTypeGUID
+		case ua.DataTypeIDGUID:
+			vt = ua.VariantTypeGUID
 			goto exit
-		case opcua.DataTypeIDByteString:
-			vt = opcua.VariantTypeByteString
+		case ua.DataTypeIDByteString:
+			vt = ua.VariantTypeByteString
 			goto exit
-		case opcua.DataTypeIDXMLElement:
-			vt = opcua.VariantTypeXMLElement
+		case ua.DataTypeIDXMLElement:
+			vt = ua.VariantTypeXMLElement
 			goto exit
-		case opcua.DataTypeIDNodeID:
-			vt = opcua.VariantTypeNodeID
+		case ua.DataTypeIDNodeID:
+			vt = ua.VariantTypeNodeID
 			goto exit
-		case opcua.DataTypeIDExpandedNodeID:
-			vt = opcua.VariantTypeExpandedNodeID
+		case ua.DataTypeIDExpandedNodeID:
+			vt = ua.VariantTypeExpandedNodeID
 			goto exit
-		case opcua.DataTypeIDStatusCode:
-			vt = opcua.VariantTypeStatusCode
+		case ua.DataTypeIDStatusCode:
+			vt = ua.VariantTypeStatusCode
 			goto exit
-		case opcua.DataTypeIDQualifiedName:
-			vt = opcua.VariantTypeQualifiedName
+		case ua.DataTypeIDQualifiedName:
+			vt = ua.VariantTypeQualifiedName
 			goto exit
-		case opcua.DataTypeIDLocalizedText:
-			vt = opcua.VariantTypeLocalizedText
+		case ua.DataTypeIDLocalizedText:
+			vt = ua.VariantTypeLocalizedText
 			goto exit
-		case opcua.DataTypeIDStructure:
-			vt = opcua.VariantTypeExtensionObject
+		case ua.DataTypeIDStructure:
+			vt = ua.VariantTypeExtensionObject
 			goto exit
-		case opcua.DataTypeIDDataValue:
-			vt = opcua.VariantTypeDataValue
+		case ua.DataTypeIDDataValue:
+			vt = ua.VariantTypeDataValue
 			goto exit
-		case opcua.DataTypeIDBaseDataType:
-			vt = opcua.VariantTypeVariant
+		case ua.DataTypeIDBaseDataType:
+			vt = ua.VariantTypeVariant
 			goto exit
-		case opcua.DataTypeIDDiagnosticInfo:
-			vt = opcua.VariantTypeDiagnosticInfo
+		case ua.DataTypeIDDiagnosticInfo:
+			vt = ua.VariantTypeDiagnosticInfo
 			goto exit
-		case opcua.DataTypeIDEnumeration:
-			vt = opcua.VariantTypeInt32 // enum?
+		case ua.DataTypeIDEnumeration:
+			vt = ua.VariantTypeInt32 // enum?
 			goto exit
 		case nil:
-			vt = opcua.VariantTypeNull
+			vt = ua.VariantTypeNull
 			goto exit
 		}
 		t = m.FindSuperType(t)
@@ -291,15 +290,15 @@ func (m *NamespaceManager) SetAnalogTypeBehavior(node *VariableNode) error {
 
 // SetMultiStateValueDiscreteTypeBehavior sets the behavoir of a variable of type MultiStateValueDiscreteType.
 func (m *NamespaceManager) SetMultiStateValueDiscreteTypeBehavior(node *VariableNode) error {
-	enumValuesNode, ok := m.FindProperty(node, opcua.ParseQualifiedName("0:EnumValues"))
+	enumValuesNode, ok := m.FindProperty(node, ua.ParseQualifiedName("0:EnumValues"))
 	if !ok {
-		return opcua.BadNodeIDUnknown
+		return ua.BadNodeIDUnknown
 	}
-	valueAsTextNode, ok := m.FindProperty(node, opcua.ParseQualifiedName("0:ValueAsText"))
+	valueAsTextNode, ok := m.FindProperty(node, ua.ParseQualifiedName("0:ValueAsText"))
 	if !ok {
-		return opcua.BadNodeIDUnknown
+		return ua.BadNodeIDUnknown
 	}
-	node.SetWriteValueHandler(func(ctx context.Context, req opcua.WriteValue) opcua.StatusCode {
+	node.SetWriteValueHandler(func(ctx context.Context, req ua.WriteValue) ua.StatusCode {
 		var value int64
 		switch v := req.Value.Value.(type) {
 		case uint8:
@@ -323,26 +322,26 @@ func (m *NamespaceManager) SetMultiStateValueDiscreteTypeBehavior(node *Variable
 		case float64:
 			value = int64(v)
 		default:
-			return opcua.Good
+			return ua.Good
 		}
 		// validate
-		enumValues := toEnumValues(enumValuesNode.Value().Value.([]opcua.ExtensionObject))
+		enumValues := toEnumValues(enumValuesNode.Value().Value.([]ua.ExtensionObject))
 		for _, ev := range enumValues {
 			if ev.Value == value {
-				node.SetValue(opcua.NewDataValue(req.Value.Value, req.Value.StatusCode, time.Now(), 0, time.Now(), 0))
-				valueAsTextNode.SetValue(opcua.NewDataValue(ev.DisplayName, 0, time.Now(), 0, time.Now(), 0))
+				node.SetValue(ua.NewDataValue(req.Value.Value, req.Value.StatusCode, time.Now(), 0, time.Now(), 0))
+				valueAsTextNode.SetValue(ua.NewDataValue(ev.DisplayName, 0, time.Now(), 0, time.Now(), 0))
 				break
 			}
 		}
-		return opcua.Good
+		return ua.Good
 	})
 	return nil
 }
 
-func toEnumValues(v []opcua.ExtensionObject) []opcua.EnumValueType {
-	ret := make([]opcua.EnumValueType, len(v))
+func toEnumValues(v []ua.ExtensionObject) []ua.EnumValueType {
+	ret := make([]ua.EnumValueType, len(v))
 	for i, v := range v {
-		ret[i] = v.(opcua.EnumValueType)
+		ret[i] = v.(ua.EnumValueType)
 	}
 	return ret
 }
@@ -355,24 +354,24 @@ func (m *NamespaceManager) addNodes(nodes []Node) error {
 	for _, node := range nodes {
 		id := node.NodeID()
 		for _, r := range node.References() {
-			if r.ReferenceTypeID == opcua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == opcua.ReferenceTypeIDHasModellingRule {
+			if r.ReferenceTypeID == ua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == ua.ReferenceTypeIDHasModellingRule {
 				continue
 			}
-			t, ok := m.nodes[opcua.ToNodeID(r.TargetID, m.namespaces)]
+			t, ok := m.nodes[ua.ToNodeID(r.TargetID, m.namespaces)]
 			if ok {
 				flag := false
 				for _, tr := range t.References() {
-					if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && opcua.ToNodeID(tr.TargetID, m.namespaces) == id {
+					if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && ua.ToNodeID(tr.TargetID, m.namespaces) == id {
 						flag = true
 						break
 					}
 				}
 				if !flag {
 					// log.Printf("Adding reference source: %s, target: %s, type: %s, isInverse: %t\n", t.NodeID(), id, r.ReferenceTypeID, !r.IsInverse)
-					inverseRef := opcua.Reference{
+					inverseRef := ua.Reference{
 						ReferenceTypeID: r.ReferenceTypeID,
 						IsInverse:       !r.IsInverse,
-						TargetID:        opcua.NewExpandedNodeID(id)}
+						TargetID:        ua.NewExpandedNodeID(id)}
 					t.SetReferences(append(t.References(), inverseRef))
 				}
 			} else {
@@ -421,14 +420,14 @@ func (m *NamespaceManager) deleteNodeandInverseReferences(node Node, uris []stri
 	id := node.NodeID()
 	// delete inverse references from target nodes.
 	for _, r := range node.References() {
-		if r.ReferenceTypeID == opcua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == opcua.ReferenceTypeIDHasModellingRule {
+		if r.ReferenceTypeID == ua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == ua.ReferenceTypeIDHasModellingRule {
 			continue
 		}
-		t, ok := m.nodes[opcua.ToNodeID(r.TargetID, uris)]
+		t, ok := m.nodes[ua.ToNodeID(r.TargetID, uris)]
 		if ok {
-			refs := []opcua.Reference{}
+			refs := []ua.Reference{}
 			for _, tr := range t.References() {
-				if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && opcua.ToNodeID(tr.TargetID, uris) == id {
+				if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && ua.ToNodeID(tr.TargetID, uris) == id {
 					continue
 				}
 				refs = append(refs, tr)
@@ -458,7 +457,7 @@ func (m *NamespaceManager) GetSubTypes(node Node) []Node {
 	for queue.Len() > 0 {
 		node := queue.PopFront().(Node)
 		for _, r := range node.References() {
-			if !r.IsInverse && r.ReferenceTypeID == opcua.ReferenceTypeIDHasSubtype {
+			if !r.IsInverse && r.ReferenceTypeID == ua.ReferenceTypeIDHasSubtype {
 				queue.PushBack(node)
 				children = append(children, node)
 			}
@@ -468,7 +467,7 @@ func (m *NamespaceManager) GetSubTypes(node Node) []Node {
 }
 
 // GetChildren traverses the tree to get all target nodes with the given reference types.
-func (m *NamespaceManager) GetChildren(node Node, uris []string, withRefTypes []opcua.NodeID) []Node {
+func (m *NamespaceManager) GetChildren(node Node, uris []string, withRefTypes []ua.NodeID) []Node {
 	children := []Node{}
 	type queuedItem struct {
 		Node    Node
@@ -483,7 +482,7 @@ func (m *NamespaceManager) GetChildren(node Node, uris []string, withRefTypes []
 		}
 		for _, r := range item.Node.References() {
 			if !r.IsInverse && (withRefTypes == nil || Contains(withRefTypes, r.ReferenceTypeID)) {
-				if target, ok := m.nodes[opcua.ToNodeID(r.TargetID, uris)]; ok {
+				if target, ok := m.nodes[ua.ToNodeID(r.TargetID, uris)]; ok {
 					queue.PushBack(queuedItem{target, false})
 					children = append(children, target)
 				}
@@ -494,7 +493,7 @@ func (m *NamespaceManager) GetChildren(node Node, uris []string, withRefTypes []
 }
 
 // Any returns true if the given function returns true for any of the given nodes.
-func Any(nodes []opcua.NodeID, f func(n opcua.NodeID) bool) bool {
+func Any(nodes []ua.NodeID, f func(n ua.NodeID) bool) bool {
 	for _, n := range nodes {
 		if f(n) {
 			return true
@@ -504,7 +503,7 @@ func Any(nodes []opcua.NodeID, f func(n opcua.NodeID) bool) bool {
 }
 
 // Contains returns true if the given node is found to equal any of the given nodes.
-func Contains(nodes []opcua.NodeID, node opcua.NodeID) bool {
+func Contains(nodes []ua.NodeID, node ua.NodeID) bool {
 	for _, n := range nodes {
 		if n == node {
 			return true
@@ -525,7 +524,7 @@ func (m *NamespaceManager) LoadNodeSetFromFile(path string) error {
 
 // LoadNodeSetFromBuffer loads the UANodeSet XML from a buffer into the namespace.
 func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
-	set := &opcua.UANodeSet{}
+	set := &ua.UANodeSet{}
 	err := xml.Unmarshal(buf, &set)
 	if err != nil {
 		log.Printf("Error decoding nodeset. %s\n", err)
@@ -598,7 +597,7 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 				toRefs(n.References, aliases, nsMap),
 				n.IsAbstract,
 				n.Symmetric,
-				opcua.LocalizedText{Text: n.InverseName},
+				ua.LocalizedText{Text: n.InverseName},
 			)
 		case "UAObject":
 			nodes[i] = NewObjectNode(
@@ -657,7 +656,7 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 	return nil
 }
 
-func toNodeID(s string, aliases map[string]string, nsMap map[uint16]uint16) opcua.NodeID {
+func toNodeID(s string, aliases map[string]string, nsMap map[uint16]uint16) ua.NodeID {
 	if alias, exists := aliases[s]; exists {
 		s = alias
 	}
@@ -678,19 +677,19 @@ func toNodeID(s string, aliases map[string]string, nsMap map[uint16]uint16) opcu
 	switch {
 	case strings.HasPrefix(s, "i="):
 		if id, err := strconv.ParseUint(s[2:], 10, 32); err == nil {
-			return opcua.NewNodeIDNumeric(ns, uint32(id))
+			return ua.NewNodeIDNumeric(ns, uint32(id))
 		}
 		return nil
 	case strings.HasPrefix(s, "s="):
-		return opcua.NewNodeIDString(ns, s[2:])
+		return ua.NewNodeIDString(ns, s[2:])
 	case strings.HasPrefix(s, "g="):
 		if id, err := uuid.Parse(s[2:]); err == nil {
-			return opcua.NewNodeIDGUID(ns, id)
+			return ua.NewNodeIDGUID(ns, id)
 		}
 		return nil
 	case strings.HasPrefix(s, "b="):
 		if id, err := base64.StdEncoding.DecodeString(s[2:]); err == nil {
-			return opcua.NewNodeIDOpaque(ns, opcua.ByteString(id))
+			return ua.NewNodeIDOpaque(ns, ua.ByteString(id))
 		}
 		return nil
 	}
@@ -714,43 +713,43 @@ func toDims(dims string, rank int32) []uint32 {
 	return ia
 }
 
-func toRefs(refs []*opcua.UAReference, aliases map[string]string, nsMap map[uint16]uint16) []opcua.Reference {
+func toRefs(refs []*ua.UAReference, aliases map[string]string, nsMap map[uint16]uint16) []ua.Reference {
 	if len(refs) == 0 {
-		return []opcua.Reference{}
+		return []ua.Reference{}
 	}
-	ra := make([]opcua.Reference, len(refs))
+	ra := make([]ua.Reference, len(refs))
 	for i, r := range refs {
-		ra[i] = opcua.Reference{
+		ra[i] = ua.Reference{
 			ReferenceTypeID: toNodeID(r.ReferenceType, aliases, nsMap),
 			IsInverse:       r.IsForward == "false",
-			TargetID:        opcua.NewExpandedNodeID(toNodeID(r.TargetNodeID, aliases, nsMap)),
+			TargetID:        ua.NewExpandedNodeID(toNodeID(r.TargetNodeID, aliases, nsMap)),
 		}
 	}
 	return ra
 }
 
-func toBrowseName(s string, nsMap map[uint16]uint16) opcua.QualifiedName {
+func toBrowseName(s string, nsMap map[uint16]uint16) ua.QualifiedName {
 	var ns uint64
 	var pos = strings.Index(s, ":")
 	if pos == -1 {
-		return opcua.NewQualifiedName(uint16(ns), s)
+		return ua.NewQualifiedName(uint16(ns), s)
 	}
 	ns, err := strconv.ParseUint(s[:pos], 10, 16)
 	if err != nil {
-		return opcua.NewQualifiedName(uint16(ns), s)
+		return ua.NewQualifiedName(uint16(ns), s)
 	}
 	s = s[pos+1:]
 	if ns2, exists := nsMap[uint16(ns)]; exists {
 		ns = uint64(ns2)
 	}
-	return opcua.NewQualifiedName(uint16(ns), s)
+	return ua.NewQualifiedName(uint16(ns), s)
 }
 
-func toLocalizedText(s opcua.UALocalizedText) opcua.LocalizedText {
+func toLocalizedText(s ua.UALocalizedText) ua.LocalizedText {
 	if len(s.Text) > 0 {
-		return opcua.NewLocalizedText(s.Text, s.Locale)
+		return ua.NewLocalizedText(s.Text, s.Locale)
 	}
-	return opcua.NewLocalizedText(s.Content, "")
+	return ua.NewLocalizedText(s.Content, "")
 }
 
 func indexOfString(data []string, element string) int {
@@ -784,10 +783,10 @@ func toBool(s string, def bool) bool {
 }
 
 // func (m *NamespaceManager) isEnum(dataType string) bool {
-// 	return m.IsSubtype(opcua.ParseNodeID(dataType), opcua.DataTypeIDEnumeration)
+// 	return m.IsSubtype(ua.ParseNodeID(dataType), ua.DataTypeIDEnumeration)
 // }
 
-func toDataValue(s opcua.UAVariant, dataType string, aliases map[string]string, nsMap map[uint16]uint16, rank int32, m *NamespaceManager) opcua.DataValue {
+func toDataValue(s ua.UAVariant, dataType string, aliases map[string]string, nsMap map[uint16]uint16, rank int32, m *NamespaceManager) ua.DataValue {
 	if alias, exists := aliases[dataType]; exists {
 		dataType = alias
 	}
@@ -795,227 +794,227 @@ func toDataValue(s opcua.UAVariant, dataType string, aliases map[string]string, 
 	if true {
 		switch rank {
 		case -1:
-			switch opcua.ParseNodeID(dataType) {
-			case opcua.DataTypeIDBoolean:
+			switch ua.ParseNodeID(dataType) {
+			case ua.DataTypeIDBoolean:
 				if s.Bool != nil {
-					return opcua.NewDataValue(*s.Bool, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Bool, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDByte:
+			case ua.DataTypeIDByte:
 				if s.Byte != nil {
-					return opcua.NewDataValue(*s.Byte, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Byte, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDInt16:
+			case ua.DataTypeIDInt16:
 				if s.Int16 != nil {
-					return opcua.NewDataValue(*s.Int16, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int16, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDUInt16:
+			case ua.DataTypeIDUInt16:
 				if s.UInt16 != nil {
-					return opcua.NewDataValue(*s.UInt16, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt16, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDInt32:
+			case ua.DataTypeIDInt32:
 				if s.Int32 != nil {
-					return opcua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
 				}
-				return opcua.NewDataValue(int32(0), 0, now, 0, now, 0)
-			case opcua.DataTypeIDUInt32:
+				return ua.NewDataValue(int32(0), 0, now, 0, now, 0)
+			case ua.DataTypeIDUInt32:
 				if s.UInt32 != nil {
-					return opcua.NewDataValue(*s.UInt32, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt32, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDSByte:
+			case ua.DataTypeIDSByte:
 				if s.SByte != nil {
-					return opcua.NewDataValue(*s.SByte, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.SByte, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDInt64:
+			case ua.DataTypeIDInt64:
 				if s.Int64 != nil {
-					return opcua.NewDataValue(*s.Int64, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int64, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDUInt64:
+			case ua.DataTypeIDUInt64:
 				if s.UInt64 != nil {
-					return opcua.NewDataValue(*s.UInt64, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt64, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDFloat:
+			case ua.DataTypeIDFloat:
 				if s.Float != nil {
-					return opcua.NewDataValue(*s.Float, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Float, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDDouble:
+			case ua.DataTypeIDDouble:
 				if s.Double != nil {
-					return opcua.NewDataValue(*s.Double, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Double, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDString:
+			case ua.DataTypeIDString:
 				if s.String != nil {
-					return opcua.NewDataValue(*s.String, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.String, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDDateTime:
+			case ua.DataTypeIDDateTime:
 				if s.DateTime != nil {
-					return opcua.NewDataValue(*s.DateTime, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.DateTime, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDGUID:
+			case ua.DataTypeIDGUID:
 				if s.GUID != nil {
 					item := *s.GUID
 					if g, err := uuid.Parse(item.String); err == nil {
-						return opcua.NewDataValue(g, 0, now, 0, now, 0)
+						return ua.NewDataValue(g, 0, now, 0, now, 0)
 					}
 				}
-			case opcua.DataTypeIDByteString:
+			case ua.DataTypeIDByteString:
 				if s.ByteString != nil {
-					return opcua.NewDataValue(*s.ByteString, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.ByteString, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDXMLElement:
+			case ua.DataTypeIDXMLElement:
 				if s.XMLElement != nil {
 					item := *s.XMLElement
-					return opcua.NewDataValue(opcua.XMLElement(item.InnerXML), 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.XMLElement(item.InnerXML), 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDLocalizedText:
+			case ua.DataTypeIDLocalizedText:
 				if s.LocalizedText != nil {
 					item := *s.LocalizedText
-					return opcua.NewDataValue(opcua.LocalizedText{Text: strings.TrimSpace(item.Text), Locale: strings.TrimSpace(item.Locale)}, 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.LocalizedText{Text: strings.TrimSpace(item.Text), Locale: strings.TrimSpace(item.Locale)}, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDQualifiedName:
+			case ua.DataTypeIDQualifiedName:
 				if s.QualifiedName != nil {
 					item := *s.QualifiedName
-					return opcua.NewDataValue(opcua.QualifiedName{NamespaceIndex: item.NamespaceIndex, Name: strings.TrimSpace(item.Name)}, 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.QualifiedName{NamespaceIndex: item.NamespaceIndex, Name: strings.TrimSpace(item.Name)}, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDDuration:
+			case ua.DataTypeIDDuration:
 				if s.Double != nil {
-					return opcua.NewDataValue(*s.Double, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Double, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDNodeID:
+			case ua.DataTypeIDNodeID:
 				if s.NodeID != nil {
 					item := *s.NodeID
-					return opcua.NewDataValue(opcua.ParseNodeID(strings.TrimSpace(item.Identifier)), 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.ParseNodeID(strings.TrimSpace(item.Identifier)), 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDExpandedNodeID:
+			case ua.DataTypeIDExpandedNodeID:
 				if s.ExpandedNodeID != nil {
 					item := *s.ExpandedNodeID
-					return opcua.NewDataValue(opcua.ParseExpandedNodeID(strings.TrimSpace(item.Identifier)), 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.ParseExpandedNodeID(strings.TrimSpace(item.Identifier)), 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDInteger:
+			case ua.DataTypeIDInteger:
 				switch {
 				case s.SByte != nil:
-					return opcua.NewDataValue(*s.SByte, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.SByte, 0, now, 0, now, 0)
 				case s.Int16 != nil:
-					return opcua.NewDataValue(*s.Int16, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int16, 0, now, 0, now, 0)
 				case s.Int32 != nil:
-					return opcua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
 				case s.Int64 != nil:
-					return opcua.NewDataValue(*s.Int64, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int64, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDUInteger:
+			case ua.DataTypeIDUInteger:
 				switch {
 				case s.Byte != nil:
-					return opcua.NewDataValue(*s.Byte, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Byte, 0, now, 0, now, 0)
 				case s.UInt16 != nil:
-					return opcua.NewDataValue(*s.UInt16, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt16, 0, now, 0, now, 0)
 				case s.UInt32 != nil:
-					return opcua.NewDataValue(*s.UInt32, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt32, 0, now, 0, now, 0)
 				case s.UInt64 != nil:
-					return opcua.NewDataValue(*s.UInt64, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt64, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDNumber:
+			case ua.DataTypeIDNumber:
 				switch {
 				case s.Byte != nil:
-					return opcua.NewDataValue(*s.Byte, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Byte, 0, now, 0, now, 0)
 				case s.UInt16 != nil:
-					return opcua.NewDataValue(*s.UInt16, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt16, 0, now, 0, now, 0)
 				case s.UInt32 != nil:
-					return opcua.NewDataValue(*s.UInt32, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt32, 0, now, 0, now, 0)
 				case s.UInt64 != nil:
-					return opcua.NewDataValue(*s.UInt64, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt64, 0, now, 0, now, 0)
 				case s.SByte != nil:
-					return opcua.NewDataValue(*s.SByte, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.SByte, 0, now, 0, now, 0)
 				case s.Int16 != nil:
-					return opcua.NewDataValue(*s.Int16, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int16, 0, now, 0, now, 0)
 				case s.Int32 != nil:
-					return opcua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
 				case s.Int64 != nil:
-					return opcua.NewDataValue(*s.Int64, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int64, 0, now, 0, now, 0)
 				case s.Float != nil:
-					return opcua.NewDataValue(*s.Float, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Float, 0, now, 0, now, 0)
 				case s.Double != nil:
-					return opcua.NewDataValue(*s.Double, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Double, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDBaseDataType:
+			case ua.DataTypeIDBaseDataType:
 				switch {
 				case s.Bool != nil:
-					return opcua.NewDataValue(*s.Bool, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Bool, 0, now, 0, now, 0)
 				case s.Byte != nil:
-					return opcua.NewDataValue(*s.Byte, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Byte, 0, now, 0, now, 0)
 				case s.UInt16 != nil:
-					return opcua.NewDataValue(*s.UInt16, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt16, 0, now, 0, now, 0)
 				case s.UInt32 != nil:
-					return opcua.NewDataValue(*s.UInt32, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt32, 0, now, 0, now, 0)
 				case s.UInt64 != nil:
-					return opcua.NewDataValue(*s.UInt64, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.UInt64, 0, now, 0, now, 0)
 				case s.SByte != nil:
-					return opcua.NewDataValue(*s.SByte, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.SByte, 0, now, 0, now, 0)
 				case s.Int16 != nil:
-					return opcua.NewDataValue(*s.Int16, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int16, 0, now, 0, now, 0)
 				case s.Int32 != nil:
-					return opcua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
 				case s.Int64 != nil:
-					return opcua.NewDataValue(*s.Int64, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Int64, 0, now, 0, now, 0)
 				case s.Float != nil:
-					return opcua.NewDataValue(*s.Float, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Float, 0, now, 0, now, 0)
 				case s.Double != nil:
-					return opcua.NewDataValue(*s.Double, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.Double, 0, now, 0, now, 0)
 				case s.String != nil:
-					return opcua.NewDataValue(*s.String, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.String, 0, now, 0, now, 0)
 				case s.DateTime != nil:
-					return opcua.NewDataValue(*s.DateTime, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.DateTime, 0, now, 0, now, 0)
 				case s.GUID != nil:
 					if g, err := uuid.Parse(s.GUID.String); err == nil {
-						return opcua.NewDataValue(g, 0, now, 0, now, 0)
+						return ua.NewDataValue(g, 0, now, 0, now, 0)
 					}
 				case s.ByteString != nil:
-					return opcua.NewDataValue(*s.ByteString, 0, now, 0, now, 0)
+					return ua.NewDataValue(*s.ByteString, 0, now, 0, now, 0)
 				case s.XMLElement != nil:
-					return opcua.NewDataValue(opcua.XMLElement(s.XMLElement.InnerXML), 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.XMLElement(s.XMLElement.InnerXML), 0, now, 0, now, 0)
 				case s.LocalizedText != nil:
 					item := *s.LocalizedText
-					return opcua.NewDataValue(opcua.LocalizedText{Text: strings.TrimSpace(item.Text), Locale: strings.TrimSpace(item.Locale)}, 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.LocalizedText{Text: strings.TrimSpace(item.Text), Locale: strings.TrimSpace(item.Locale)}, 0, now, 0, now, 0)
 				case s.QualifiedName != nil:
 					item := *s.QualifiedName
-					return opcua.NewDataValue(opcua.QualifiedName{NamespaceIndex: item.NamespaceIndex, Name: strings.TrimSpace(item.Name)}, 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.QualifiedName{NamespaceIndex: item.NamespaceIndex, Name: strings.TrimSpace(item.Name)}, 0, now, 0, now, 0)
 				case s.NodeID != nil:
-					return opcua.NewDataValue(opcua.ParseNodeID(strings.TrimSpace(s.NodeID.Identifier)), 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.ParseNodeID(strings.TrimSpace(s.NodeID.Identifier)), 0, now, 0, now, 0)
 				case s.ExpandedNodeID != nil:
-					return opcua.NewDataValue(opcua.ParseExpandedNodeID(strings.TrimSpace(s.ExpandedNodeID.Identifier)), 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.ParseExpandedNodeID(strings.TrimSpace(s.ExpandedNodeID.Identifier)), 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDRange:
+			case ua.DataTypeIDRange:
 				if s.ExtensionObject != nil {
 					item := s.ExtensionObject.Range
-					return opcua.NewDataValue(opcua.Range{Low: item.Low, High: item.High}, 0, now, 0, now, 0)
+					return ua.NewDataValue(ua.Range{Low: item.Low, High: item.High}, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDEUInformation:
+			case ua.DataTypeIDEUInformation:
 				if s.ExtensionObject != nil {
 					item := s.ExtensionObject.EUInformation
-					return opcua.NewDataValue(opcua.EUInformation{
+					return ua.NewDataValue(ua.EUInformation{
 						NamespaceURI: item.NamespaceURI,
 						UnitID:       item.UnitID,
-						DisplayName:  opcua.LocalizedText{Text: item.DisplayName.Text, Locale: item.DisplayName.Locale},
-						Description:  opcua.LocalizedText{Text: item.Description.Text, Locale: item.Description.Locale},
+						DisplayName:  ua.LocalizedText{Text: item.DisplayName.Text, Locale: item.DisplayName.Locale},
+						Description:  ua.LocalizedText{Text: item.Description.Text, Locale: item.Description.Locale},
 					}, 0, now, 0, now, 0)
 				}
 			default:
 				n2 := toNodeID(dataType, aliases, nsMap)
-				if m.IsSubtype(n2, opcua.DataTypeIDEnumeration) {
+				if m.IsSubtype(n2, ua.DataTypeIDEnumeration) {
 					if s.Int32 != nil {
-						return opcua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
+						return ua.NewDataValue(*s.Int32, 0, now, 0, now, 0)
 					}
 				}
-				return opcua.NewDataValue(nil, 0, now, 0, now, 0)
+				return ua.NewDataValue(nil, 0, now, 0, now, 0)
 			}
 		case 1:
-			switch opcua.ParseNodeID(dataType) {
-			case opcua.DataTypeIDBoolean:
+			switch ua.ParseNodeID(dataType) {
+			case ua.DataTypeIDBoolean:
 				if s.ListOfBoolean != nil {
-					return opcua.NewDataValue(s.ListOfBoolean.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfBoolean.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDSByte:
+			case ua.DataTypeIDSByte:
 				if s.ListOfSByte != nil {
-					return opcua.NewDataValue(s.ListOfSByte.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfSByte.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDByte:
+			case ua.DataTypeIDByte:
 				if s.ListOfByte != nil {
 					// bugfix: xml.Encoding can't decode directly into []byte
 					list := s.ListOfByte.List
@@ -1023,49 +1022,49 @@ func toDataValue(s opcua.UAVariant, dataType string, aliases map[string]string, 
 					for i, item := range list {
 						list2[i] = byte(item)
 					}
-					return opcua.NewDataValue(list2, 0, now, 0, now, 0)
+					return ua.NewDataValue(list2, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDInt16:
+			case ua.DataTypeIDInt16:
 				if s.ListOfInt16 != nil {
-					return opcua.NewDataValue(s.ListOfInt16.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfInt16.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDUInt16:
+			case ua.DataTypeIDUInt16:
 				if s.ListOfUInt16 != nil {
-					return opcua.NewDataValue(s.ListOfUInt16.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfUInt16.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDInt32:
+			case ua.DataTypeIDInt32:
 				if s.ListOfInt32 != nil {
-					return opcua.NewDataValue(s.ListOfInt32.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfInt32.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDUInt32:
+			case ua.DataTypeIDUInt32:
 				if s.ListOfUInt32 != nil {
-					return opcua.NewDataValue(s.ListOfUInt32.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfUInt32.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDInt64:
+			case ua.DataTypeIDInt64:
 				if s.ListOfInt64 != nil {
-					return opcua.NewDataValue(s.ListOfInt64.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfInt64.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDUInt64:
+			case ua.DataTypeIDUInt64:
 				if s.ListOfUInt64 != nil {
-					return opcua.NewDataValue(s.ListOfUInt64.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfUInt64.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDFloat:
+			case ua.DataTypeIDFloat:
 				if s.ListOfFloat != nil {
-					return opcua.NewDataValue(s.ListOfFloat.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfFloat.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDDouble:
+			case ua.DataTypeIDDouble:
 				if s.ListOfDouble != nil {
-					return opcua.NewDataValue(s.ListOfDouble.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfDouble.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDString:
+			case ua.DataTypeIDString:
 				if s.ListOfString != nil {
-					return opcua.NewDataValue(s.ListOfString.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfString.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDDateTime:
+			case ua.DataTypeIDDateTime:
 				if s.ListOfDateTime != nil {
-					return opcua.NewDataValue(s.ListOfDateTime.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfDateTime.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDGUID:
+			case ua.DataTypeIDGUID:
 				if s.ListOfGUID != nil {
 					list := s.ListOfGUID.List
 					list2 := make([]uuid.UUID, len(list))
@@ -1073,52 +1072,52 @@ func toDataValue(s opcua.UAVariant, dataType string, aliases map[string]string, 
 						item2, err := uuid.Parse(*item)
 						if err != nil {
 							log.Printf("Error decoding Guid. %s\n", err)
-							return opcua.NewDataValue(nil, 0, now, 0, now, 0)
+							return ua.NewDataValue(nil, 0, now, 0, now, 0)
 						}
 						list2[i] = item2
 					}
-					return opcua.NewDataValue(list2, 0, now, 0, now, 0)
+					return ua.NewDataValue(list2, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDByteString:
+			case ua.DataTypeIDByteString:
 				if s.ListOfByteString != nil {
-					return opcua.NewDataValue(s.ListOfByteString.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfByteString.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDXMLElement:
+			case ua.DataTypeIDXMLElement:
 				if s.ListOfXMLElement != nil {
 					list := s.ListOfXMLElement.List
-					list2 := make([]opcua.XMLElement, len(list))
+					list2 := make([]ua.XMLElement, len(list))
 					for i, item := range list {
-						item2 := opcua.XMLElement(item.InnerXML)
+						item2 := ua.XMLElement(item.InnerXML)
 						list2[i] = item2
 					}
-					return opcua.NewDataValue(list2, 0, now, 0, now, 0)
+					return ua.NewDataValue(list2, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDLocalizedText:
+			case ua.DataTypeIDLocalizedText:
 				if s.ListOfLocalizedText != nil {
 					list := s.ListOfLocalizedText.List
-					list2 := make([]opcua.LocalizedText, len(list))
+					list2 := make([]ua.LocalizedText, len(list))
 					for i, item := range list {
-						list2[i] = opcua.LocalizedText{Text: strings.TrimSpace(item.Text), Locale: strings.TrimSpace(item.Locale)}
+						list2[i] = ua.LocalizedText{Text: strings.TrimSpace(item.Text), Locale: strings.TrimSpace(item.Locale)}
 					}
-					return opcua.NewDataValue(list2, 0, now, 0, now, 0)
+					return ua.NewDataValue(list2, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDQualifiedName:
+			case ua.DataTypeIDQualifiedName:
 				if s.ListOfQualifiedName != nil {
 					list := s.ListOfQualifiedName.List
-					list2 := make([]opcua.QualifiedName, len(list))
+					list2 := make([]ua.QualifiedName, len(list))
 					for i, item := range list {
-						list2[i] = opcua.QualifiedName{NamespaceIndex: item.NamespaceIndex, Name: strings.TrimSpace(item.Name)}
+						list2[i] = ua.QualifiedName{NamespaceIndex: item.NamespaceIndex, Name: strings.TrimSpace(item.Name)}
 					}
-					return opcua.NewDataValue(list2, 0, now, 0, now, 0)
+					return ua.NewDataValue(list2, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDDuration:
+			case ua.DataTypeIDDuration:
 				if s.ListOfDouble != nil {
-					return opcua.NewDataValue(s.ListOfDouble.List, 0, now, 0, now, 0)
+					return ua.NewDataValue(s.ListOfDouble.List, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDBaseDataType:
+			case ua.DataTypeIDBaseDataType:
 				if s.ListOfVariant != nil {
 					list := s.ListOfVariant.List
-					list2 := make([]opcua.Variant, len(list))
+					list2 := make([]ua.Variant, len(list))
 					for i, v := range list {
 						src := v.InnerXML
 						switch v.XMLName.Local {
@@ -1171,25 +1170,25 @@ func toDataValue(s opcua.UAVariant, dataType string, aliases map[string]string, 
 							}
 							list2[i] = dst
 						case "ByteString":
-							list2[i] = opcua.ByteString(src)
+							list2[i] = ua.ByteString(src)
 						case "XMLElement":
-							list2[i] = opcua.XMLElement(src)
+							list2[i] = ua.XMLElement(src)
 						case "LocalizedText":
-							item := &opcua.UALocalizedText{}
+							item := &ua.UALocalizedText{}
 							hack := fmt.Sprintf("<uax:LocalizedText>%s</uax:LocalizedText>", src)
 							xml.Unmarshal([]byte(hack), item)
-							list2[i] = opcua.LocalizedText{Text: item.Text, Locale: item.Locale}
+							list2[i] = ua.LocalizedText{Text: item.Text, Locale: item.Locale}
 						case "QualifiedName":
-							item := &opcua.UAQualifiedName{}
+							item := &ua.UAQualifiedName{}
 							hack := fmt.Sprintf("<uax:QualifiedName>%s</uax:QualifiedName>", src)
 							xml.Unmarshal([]byte(hack), item)
-							list2[i] = opcua.QualifiedName{NamespaceIndex: item.NamespaceIndex, Name: item.Name}
+							list2[i] = ua.QualifiedName{NamespaceIndex: item.NamespaceIndex, Name: item.Name}
 						case "NodeID":
-							list2[i] = opcua.ParseNodeID(strings.TrimSpace(src))
+							list2[i] = ua.ParseNodeID(strings.TrimSpace(src))
 						case "ExpandedNodeID":
-							list2[i] = opcua.ParseExpandedNodeID(strings.TrimSpace(src))
+							list2[i] = ua.ParseExpandedNodeID(strings.TrimSpace(src))
 						case "ExtensionObject":
-							item := &opcua.UAExtensionObject{}
+							item := &ua.UAExtensionObject{}
 							hack := fmt.Sprintf("<uax:ExtensionObject>%s</uax:ExtensionObject>", src)
 							xml.Unmarshal([]byte(hack), item)
 							list2[i] = nil
@@ -1197,45 +1196,45 @@ func toDataValue(s opcua.UAVariant, dataType string, aliases map[string]string, 
 							list2[i] = nil
 						}
 					}
-					return opcua.NewDataValue(list2, 0, now, 0, now, 0)
+					return ua.NewDataValue(list2, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDArgument:
+			case ua.DataTypeIDArgument:
 				if s.ListOfExtensionObject != nil {
 					list := s.ListOfExtensionObject.List
-					list2 := make([]opcua.ExtensionObject, len(list))
+					list2 := make([]ua.ExtensionObject, len(list))
 					for i, item := range list {
 						arg := item.Argument
-						list2[i] = opcua.Argument{
+						list2[i] = ua.Argument{
 							Name:            arg.Name,
 							DataType:        toNodeID(arg.DataType, aliases, nsMap),
 							ValueRank:       toInt32(arg.ValueRank, -1),
 							ArrayDimensions: toDims(arg.ArrayDimensions, toInt32(arg.ValueRank, -1)),
-							Description:     opcua.LocalizedText{Text: arg.Description.Text, Locale: arg.Description.Locale},
+							Description:     ua.LocalizedText{Text: arg.Description.Text, Locale: arg.Description.Locale},
 						}
 					}
-					return opcua.NewDataValue(list2, 0, now, 0, now, 0)
+					return ua.NewDataValue(list2, 0, now, 0, now, 0)
 				}
-			case opcua.DataTypeIDEnumValueType:
+			case ua.DataTypeIDEnumValueType:
 				if s.ListOfExtensionObject != nil {
 					list := s.ListOfExtensionObject.List
-					list2 := make([]opcua.ExtensionObject, len(list))
+					list2 := make([]ua.ExtensionObject, len(list))
 					for i, item := range list {
 						arg := item.EnumValueType
-						list2[i] = opcua.EnumValueType{
+						list2[i] = ua.EnumValueType{
 							Value:       arg.Value,
-							DisplayName: opcua.LocalizedText{Text: arg.DisplayName.Text, Locale: arg.DisplayName.Locale},
-							Description: opcua.LocalizedText{Text: arg.Description.Text, Locale: arg.Description.Locale},
+							DisplayName: ua.LocalizedText{Text: arg.DisplayName.Text, Locale: arg.DisplayName.Locale},
+							Description: ua.LocalizedText{Text: arg.Description.Text, Locale: arg.Description.Locale},
 						}
 					}
-					return opcua.NewDataValue(list2, 0, now, 0, now, 0)
+					return ua.NewDataValue(list2, 0, now, 0, now, 0)
 				}
 
 			default:
-				return opcua.NewDataValue(nil, 0, now, 0, now, 0)
+				return ua.NewDataValue(nil, 0, now, 0, now, 0)
 			}
 		default:
-			return opcua.NewDataValue(nil, 0, now, 0, now, 0)
+			return ua.NewDataValue(nil, 0, now, 0, now, 0)
 		}
 	}
-	return opcua.NewDataValue(nil, 0, now, 0, now, 0)
+	return ua.NewDataValue(nil, 0, now, 0, now, 0)
 }

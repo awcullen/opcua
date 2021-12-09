@@ -6,30 +6,30 @@ import (
 	"context"
 	"sync"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 // ObjectNode ...
 type ObjectNode struct {
 	sync.RWMutex
-	nodeID             opcua.NodeID
-	nodeClass          opcua.NodeClass
-	browseName         opcua.QualifiedName
-	displayName        opcua.LocalizedText
-	description        opcua.LocalizedText
-	rolePermissions    []opcua.RolePermissionType
+	nodeID             ua.NodeID
+	nodeClass          ua.NodeClass
+	browseName         ua.QualifiedName
+	displayName        ua.LocalizedText
+	description        ua.LocalizedText
+	rolePermissions    []ua.RolePermissionType
 	accessRestrictions uint16
-	references         []opcua.Reference
+	references         []ua.Reference
 	eventNotifier      byte
 }
 
 var _ Node = (*ObjectNode)(nil)
 
 // NewObjectNode ...
-func NewObjectNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displayName opcua.LocalizedText, description opcua.LocalizedText, rolePermissions []opcua.RolePermissionType, references []opcua.Reference, eventNotifier byte) *ObjectNode {
+func NewObjectNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, eventNotifier byte) *ObjectNode {
 	return &ObjectNode{
 		nodeID:             nodeID,
-		nodeClass:          opcua.NodeClassObject,
+		nodeClass:          ua.NodeClassObject,
 		browseName:         browseName,
 		displayName:        displayName,
 		description:        description,
@@ -41,38 +41,38 @@ func NewObjectNode(nodeID opcua.NodeID, browseName opcua.QualifiedName, displayN
 }
 
 // NodeID returns the NodeID attribute of this node.
-func (n *ObjectNode) NodeID() opcua.NodeID {
+func (n *ObjectNode) NodeID() ua.NodeID {
 	return n.nodeID
 }
 
 // NodeClass returns the NodeClass attribute of this node.
-func (n *ObjectNode) NodeClass() opcua.NodeClass {
+func (n *ObjectNode) NodeClass() ua.NodeClass {
 	return n.nodeClass
 }
 
 // BrowseName returns the BrowseName attribute of this node.
-func (n *ObjectNode) BrowseName() opcua.QualifiedName {
+func (n *ObjectNode) BrowseName() ua.QualifiedName {
 	return n.browseName
 }
 
 // DisplayName returns the DisplayName attribute of this node.
-func (n *ObjectNode) DisplayName() opcua.LocalizedText {
+func (n *ObjectNode) DisplayName() ua.LocalizedText {
 	return n.displayName
 }
 
 // Description returns the Description attribute of this node.
-func (n *ObjectNode) Description() opcua.LocalizedText {
+func (n *ObjectNode) Description() ua.LocalizedText {
 	return n.description
 }
 
 // RolePermissions returns the RolePermissions attribute of this node.
-func (n *ObjectNode) RolePermissions() []opcua.RolePermissionType {
+func (n *ObjectNode) RolePermissions() []ua.RolePermissionType {
 	return n.rolePermissions
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *ObjectNode) UserRolePermissions(ctx context.Context) []opcua.RolePermissionType {
-	filteredPermissions := []opcua.RolePermissionType{}
+func (n *ObjectNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+	filteredPermissions := []ua.RolePermissionType{}
 	session, ok := ctx.Value(SessionKey).(*Session)
 	if !ok {
 		return filteredPermissions
@@ -93,7 +93,7 @@ func (n *ObjectNode) UserRolePermissions(ctx context.Context) []opcua.RolePermis
 }
 
 // References returns the References of this node.
-func (n *ObjectNode) References() []opcua.Reference {
+func (n *ObjectNode) References() []ua.Reference {
 	n.RLock()
 	res := n.references
 	n.RUnlock()
@@ -101,7 +101,7 @@ func (n *ObjectNode) References() []opcua.Reference {
 }
 
 // SetReferences sets the References of the Variable.
-func (n *ObjectNode) SetReferences(value []opcua.Reference) {
+func (n *ObjectNode) SetReferences(value []ua.Reference) {
 	n.Lock()
 	n.references = value
 	n.Unlock()
@@ -115,9 +115,9 @@ func (n *ObjectNode) EventNotifier() byte {
 // IsAttributeIDValid returns true if attributeId is supported for the node.
 func (n *ObjectNode) IsAttributeIDValid(attributeID uint32) bool {
 	switch attributeID {
-	case opcua.AttributeIDNodeID, opcua.AttributeIDNodeClass, opcua.AttributeIDBrowseName,
-		opcua.AttributeIDDisplayName, opcua.AttributeIDDescription, opcua.AttributeIDRolePermissions,
-		opcua.AttributeIDUserRolePermissions, opcua.AttributeIDEventNotifier:
+	case ua.AttributeIDNodeID, ua.AttributeIDNodeClass, ua.AttributeIDBrowseName,
+		ua.AttributeIDDisplayName, ua.AttributeIDDescription, ua.AttributeIDRolePermissions,
+		ua.AttributeIDUserRolePermissions, ua.AttributeIDEventNotifier:
 		return true
 	default:
 		return false

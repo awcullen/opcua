@@ -8,14 +8,14 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 // validateClientCertificate validates the certificate of the client.
 func validateClientCertificate(certificate *x509.Certificate, trustedCertsFile string,
 	suppressCertificateTimeInvalid, suppressCertificateChainIncomplete bool) (bool, error) {
 	if certificate == nil {
-		return false, opcua.BadCertificateInvalid
+		return false, ua.BadCertificateInvalid
 	}
 	var intermediates, roots *x509.CertPool
 	if buf, err := ioutil.ReadFile(trustedCertsFile); err == nil {
@@ -86,16 +86,16 @@ func validateClientCertificate(certificate *x509.Certificate, trustedCertsFile s
 		case x509.CertificateInvalidError:
 			switch se.Reason {
 			case x509.Expired:
-				return false, opcua.BadCertificateTimeInvalid
+				return false, ua.BadCertificateTimeInvalid
 			case x509.IncompatibleUsage:
-				return false, opcua.BadCertificateUseNotAllowed
+				return false, ua.BadCertificateUseNotAllowed
 			default:
-				return false, opcua.BadSecurityChecksFailed
+				return false, ua.BadSecurityChecksFailed
 			}
 		case x509.UnknownAuthorityError:
-			return false, opcua.BadSecurityChecksFailed
+			return false, ua.BadSecurityChecksFailed
 		default:
-			return false, opcua.BadSecurityChecksFailed
+			return false, ua.BadSecurityChecksFailed
 		}
 	}
 	return true, nil

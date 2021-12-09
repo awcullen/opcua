@@ -14,8 +14,7 @@ import (
 	"encoding/binary"
 	"sort"
 
-	"github.com/awcullen/opcua"
-
+	"github.com/awcullen/opcua/ua"
 	"github.com/djherbis/buffer"
 )
 
@@ -23,10 +22,10 @@ import (
 func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, err error) {
 
 	cli := &Client{
-		userIdentity:      opcua.AnonymousIdentity{},
+		userIdentity:      ua.AnonymousIdentity{},
 		applicationName:   "awcullen/opcua",
 		sessionTimeout:    defaultSessionTimeout,
-		securityPolicyURI: opcua.SecurityPolicyURIBestAvailable,
+		securityPolicyURI: ua.SecurityPolicyURIBestAvailable,
 		timeoutHint:       defaultTimeoutHint,
 		diagnosticsHint:   defaultDiagnosticsHint,
 		tokenLifetime:     defaultTokenRequestedLifetime,
@@ -42,9 +41,9 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 	}
 
 	// get endpoints from discovery url
-	req := &opcua.GetEndpointsRequest{
+	req := &ua.GetEndpointsRequest{
 		EndpointURL: endpointURL,
-		ProfileURIs: []string{opcua.TransportProfileURIUaTcpTransport},
+		ProfileURIs: []string{ua.TransportProfileURIUaTcpTransport},
 	}
 	res, err := GetEndpoints(ctx, req)
 	if err != nil {
@@ -59,18 +58,18 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 
 	// if client certificate is not set then limit secuity policy to none
 	securityPolicyURI := cli.securityPolicyURI
-	if securityPolicyURI == opcua.SecurityPolicyURIBestAvailable && len(cli.applicationCertificate.Certificate) == 0 {
-		securityPolicyURI = opcua.SecurityPolicyURINone
+	if securityPolicyURI == ua.SecurityPolicyURIBestAvailable && len(cli.applicationCertificate.Certificate) == 0 {
+		securityPolicyURI = ua.SecurityPolicyURINone
 	}
 
 	// select first endpoint with matching policy uri.
-	var selectedEndpoint *opcua.EndpointDescription
+	var selectedEndpoint *ua.EndpointDescription
 	for _, e := range orderedEndpoints {
 		// filter out unsupported policy uri
 		switch e.SecurityPolicyURI {
-		case opcua.SecurityPolicyURINone, opcua.SecurityPolicyURIBasic128Rsa15,
-			opcua.SecurityPolicyURIBasic256, opcua.SecurityPolicyURIBasic256Sha256,
-			opcua.SecurityPolicyURIAes128Sha256RsaOaep, opcua.SecurityPolicyURIAes256Sha256RsaPss:
+		case ua.SecurityPolicyURINone, ua.SecurityPolicyURIBasic128Rsa15,
+			ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256,
+			ua.SecurityPolicyURIAes128Sha256RsaOaep, ua.SecurityPolicyURIAes256Sha256RsaPss:
 		default:
 			continue
 		}
@@ -86,7 +85,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		}
 	}
 	if selectedEndpoint == nil {
-		return nil, opcua.BadUnexpectedError
+		return nil, ua.BadUnexpectedError
 	}
 	cli.endpointURL = selectedEndpoint.EndpointURL
 	cli.securityPolicyURI = selectedEndpoint.SecurityPolicyURI
@@ -94,9 +93,9 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 	cli.serverCertificate = selectedEndpoint.ServerCertificate
 	cli.userTokenPolicies = selectedEndpoint.UserIdentityTokens
 
-	cli.localDescription = opcua.ApplicationDescription{
-		ApplicationName: opcua.LocalizedText{Text: cli.applicationName},
-		ApplicationType: opcua.ApplicationTypeClient,
+	cli.localDescription = ua.ApplicationDescription{
+		ApplicationName: ua.LocalizedText{Text: cli.applicationName},
+		ApplicationType: ua.ApplicationTypeClient,
 	}
 
 	var localCertificate []byte
@@ -144,20 +143,20 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 // Uses TCP with the binary security protocol UA-SecureConversation 1.0 and the binary message encoding UA-Binary 1.0.
 type Client struct {
 	channel                            *clientSecureChannel
-	localDescription                   opcua.ApplicationDescription
+	localDescription                   ua.ApplicationDescription
 	endpointURL                        string
 	securityPolicyURI                  string
-	securityMode                       opcua.MessageSecurityMode
-	serverCertificate                  opcua.ByteString
-	userTokenPolicies                  []opcua.UserTokenPolicy
+	securityMode                       ua.MessageSecurityMode
+	serverCertificate                  ua.ByteString
+	userTokenPolicies                  []ua.UserTokenPolicy
 	userIdentity                       interface{}
-	sessionID                          opcua.NodeID
+	sessionID                          ua.NodeID
 	sessionName                        string
 	applicationName                    string
 	sessionTimeout                     float64
-	clientSignature                    opcua.SignatureData
+	clientSignature                    ua.SignatureData
 	identityToken                      interface{}
-	identityTokenSignature             opcua.SignatureData
+	identityTokenSignature             ua.SignatureData
 	timeoutHint                        uint32
 	diagnosticsHint                    uint32
 	tokenLifetime                      uint32
@@ -181,17 +180,17 @@ func (ch *Client) SecurityPolicyURI() string {
 }
 
 // SecurityMode gets the MessageSecurityMode of the secure channel.
-func (ch *Client) SecurityMode() opcua.MessageSecurityMode {
+func (ch *Client) SecurityMode() ua.MessageSecurityMode {
 	return ch.securityMode
 }
 
 // SessionID gets the id of the current session.
-func (ch *Client) SessionID() opcua.NodeID {
+func (ch *Client) SessionID() ua.NodeID {
 	return ch.sessionID
 }
 
 // Request sends a service request to the server and returns the response.
-func (ch *Client) request(ctx context.Context, req opcua.ServiceRequest) (opcua.ServiceResponse, error) {
+func (ch *Client) request(ctx context.Context, req ua.ServiceRequest) (ua.ServiceResponse, error) {
 	return ch.channel.Request(ctx, req)
 }
 
@@ -205,12 +204,12 @@ func (ch *Client) open(ctx context.Context) error {
 	localNonce = getNextNonce(nonceLength)
 	localCertificate = ch.channel.localCertificate
 
-	var createSessionRequest = &opcua.CreateSessionRequest{
+	var createSessionRequest = &ua.CreateSessionRequest{
 		ClientDescription:       ch.localDescription,
 		EndpointURL:             ch.endpointURL,
 		SessionName:             ch.sessionName,
-		ClientNonce:             opcua.ByteString(localNonce),
-		ClientCertificate:       opcua.ByteString(localCertificate),
+		ClientNonce:             ua.ByteString(localNonce),
+		ClientCertificate:       ua.ByteString(localCertificate),
 		RequestedSessionTimeout: ch.sessionTimeout,
 		MaxResponseMessageSize:  defaultMaxMessageSize,
 	}
@@ -225,47 +224,47 @@ func (ch *Client) open(ctx context.Context) error {
 
 	// verify the server's certificate is the same as the certificate from the selected endpoint.
 	if ch.serverCertificate != "" && ch.serverCertificate != createSessionResponse.ServerCertificate {
-		return opcua.BadCertificateInvalid
+		return ua.BadCertificateInvalid
 	}
 
 	// verify the server's signature.
 	switch ch.securityPolicyURI {
-	case opcua.SecurityPolicyURIBasic128Rsa15, opcua.SecurityPolicyURIBasic256:
+	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 		hash := crypto.SHA1.New()
 		hash.Write(localCertificate)
 		hash.Write(localNonce)
 		hashed := hash.Sum(nil)
 		err := rsa.VerifyPKCS1v15(ch.channel.remotePublicKey, crypto.SHA1, hashed, []byte(createSessionResponse.ServerSignature.Signature))
 		if err != nil {
-			return opcua.BadApplicationSignatureInvalid
+			return ua.BadApplicationSignatureInvalid
 		}
 
-	case opcua.SecurityPolicyURIBasic256Sha256, opcua.SecurityPolicyURIAes128Sha256RsaOaep:
+	case ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 		hash := crypto.SHA256.New()
 		hash.Write(localCertificate)
 		hash.Write(localNonce)
 		hashed := hash.Sum(nil)
 		err := rsa.VerifyPKCS1v15(ch.channel.remotePublicKey, crypto.SHA256, hashed, []byte(createSessionResponse.ServerSignature.Signature))
 		if err != nil {
-			return opcua.BadApplicationSignatureInvalid
+			return ua.BadApplicationSignatureInvalid
 		}
 
-	case opcua.SecurityPolicyURIAes256Sha256RsaPss:
+	case ua.SecurityPolicyURIAes256Sha256RsaPss:
 		hash := crypto.SHA256.New()
 		hash.Write(localCertificate)
 		hash.Write(localNonce)
 		hashed := hash.Sum(nil)
 		err := rsa.VerifyPSS(ch.channel.remotePublicKey, crypto.SHA256, hashed, []byte(createSessionResponse.ServerSignature.Signature), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 		if err != nil {
-			return opcua.BadApplicationSignatureInvalid
+			return ua.BadApplicationSignatureInvalid
 		}
 
 	}
 
 	// create client signature
-	var clientSignature opcua.SignatureData
+	var clientSignature ua.SignatureData
 	switch ch.securityPolicyURI {
-	case opcua.SecurityPolicyURIBasic128Rsa15, opcua.SecurityPolicyURIBasic256:
+	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 		hash := crypto.SHA1.New()
 		hash.Write([]byte(ch.serverCertificate))
 		hash.Write(remoteNonce)
@@ -274,12 +273,12 @@ func (ch *Client) open(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		clientSignature = opcua.SignatureData{
-			Signature: opcua.ByteString(signature),
-			Algorithm: opcua.RsaSha1Signature,
+		clientSignature = ua.SignatureData{
+			Signature: ua.ByteString(signature),
+			Algorithm: ua.RsaSha1Signature,
 		}
 
-	case opcua.SecurityPolicyURIBasic256Sha256, opcua.SecurityPolicyURIAes128Sha256RsaOaep:
+	case ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 		hash := crypto.SHA256.New()
 		hash.Write([]byte(ch.serverCertificate))
 		hash.Write(remoteNonce)
@@ -288,12 +287,12 @@ func (ch *Client) open(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		clientSignature = opcua.SignatureData{
-			Signature: opcua.ByteString(signature),
-			Algorithm: opcua.RsaSha256Signature,
+		clientSignature = ua.SignatureData{
+			Signature: ua.ByteString(signature),
+			Algorithm: ua.RsaSha256Signature,
 		}
 
-	case opcua.SecurityPolicyURIAes256Sha256RsaPss:
+	case ua.SecurityPolicyURIAes256Sha256RsaPss:
 		hash := crypto.SHA256.New()
 		hash.Write([]byte(ch.serverCertificate))
 		hash.Write(remoteNonce)
@@ -302,30 +301,30 @@ func (ch *Client) open(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		clientSignature = opcua.SignatureData{
-			Signature: opcua.ByteString(signature),
-			Algorithm: opcua.RsaPssSha256Signature,
+		clientSignature = ua.SignatureData{
+			Signature: ua.ByteString(signature),
+			Algorithm: ua.RsaPssSha256Signature,
 		}
 
 	default:
-		clientSignature = opcua.SignatureData{}
+		clientSignature = ua.SignatureData{}
 	}
 
 	// supported UserIdentityToken types are AnonymousIdentityToken, UserNameIdentityToken, IssuedIdentityToken, X509IdentityToken
 	var identityToken interface{}
-	var identityTokenSignature opcua.SignatureData
+	var identityTokenSignature ua.SignatureData
 	switch ui := ch.userIdentity.(type) {
 
-	case opcua.IssuedIdentity:
-		var tokenPolicy *opcua.UserTokenPolicy
+	case ua.IssuedIdentity:
+		var tokenPolicy *ua.UserTokenPolicy
 		for _, t := range ch.userTokenPolicies {
-			if t.TokenType == opcua.UserTokenTypeIssuedToken {
+			if t.TokenType == ua.UserTokenTypeIssuedToken {
 				tokenPolicy = &t
 				break
 			}
 		}
 		if tokenPolicy == nil {
-			return opcua.BadIdentityTokenRejected
+			return ua.BadIdentityTokenRejected
 		}
 
 		secPolicyURI := tokenPolicy.SecurityPolicyURI
@@ -334,10 +333,10 @@ func (ch *Client) open(ctx context.Context) error {
 		}
 
 		switch secPolicyURI {
-		case opcua.SecurityPolicyURIBasic128Rsa15:
+		case ua.SecurityPolicyURIBasic128Rsa15:
 			publickey := ch.channel.remotePublicKey
 			if publickey == nil {
-				return opcua.BadIdentityTokenRejected
+				return ua.BadIdentityTokenRejected
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf := buffer.NewPartitionAt(bufferPool)
@@ -358,17 +357,17 @@ func (ch *Client) open(ctx context.Context) error {
 			plainBuf.Reset()
 			cipherBuf.Reset()
 
-			identityToken = opcua.IssuedIdentityToken{
-				TokenData:           opcua.ByteString(cipherBytes),
-				EncryptionAlgorithm: opcua.RsaV15KeyWrap,
+			identityToken = ua.IssuedIdentityToken{
+				TokenData:           ua.ByteString(cipherBytes),
+				EncryptionAlgorithm: ua.RsaV15KeyWrap,
 				PolicyID:            tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 
-		case opcua.SecurityPolicyURIBasic256, opcua.SecurityPolicyURIBasic256Sha256, opcua.SecurityPolicyURIAes128Sha256RsaOaep:
+		case ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 			publickey := ch.channel.remotePublicKey
 			if publickey == nil {
-				return opcua.BadIdentityTokenRejected
+				return ua.BadIdentityTokenRejected
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf := buffer.NewPartitionAt(bufferPool)
@@ -389,17 +388,17 @@ func (ch *Client) open(ctx context.Context) error {
 			plainBuf.Reset()
 			cipherBuf.Reset()
 
-			identityToken = opcua.IssuedIdentityToken{
-				TokenData:           opcua.ByteString(cipherBytes),
-				EncryptionAlgorithm: opcua.RsaOaepKeyWrap,
+			identityToken = ua.IssuedIdentityToken{
+				TokenData:           ua.ByteString(cipherBytes),
+				EncryptionAlgorithm: ua.RsaOaepKeyWrap,
 				PolicyID:            tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 
-		case opcua.SecurityPolicyURIAes256Sha256RsaPss:
+		case ua.SecurityPolicyURIAes256Sha256RsaPss:
 			publickey := ch.channel.remotePublicKey
 			if publickey == nil {
-				return opcua.BadIdentityTokenRejected
+				return ua.BadIdentityTokenRejected
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf := buffer.NewPartitionAt(bufferPool)
@@ -420,32 +419,32 @@ func (ch *Client) open(ctx context.Context) error {
 			plainBuf.Reset()
 			cipherBuf.Reset()
 
-			identityToken = opcua.IssuedIdentityToken{
-				TokenData:           opcua.ByteString(cipherBytes),
-				EncryptionAlgorithm: opcua.RsaOaepSha256KeyWrap,
+			identityToken = ua.IssuedIdentityToken{
+				TokenData:           ua.ByteString(cipherBytes),
+				EncryptionAlgorithm: ua.RsaOaepSha256KeyWrap,
 				PolicyID:            tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 
 		default:
-			identityToken = opcua.IssuedIdentityToken{
+			identityToken = ua.IssuedIdentityToken{
 				TokenData:           ui.TokenData,
 				EncryptionAlgorithm: "",
 				PolicyID:            tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 		}
 
-	case opcua.X509Identity:
-		var tokenPolicy *opcua.UserTokenPolicy
+	case ua.X509Identity:
+		var tokenPolicy *ua.UserTokenPolicy
 		for _, t := range ch.userTokenPolicies {
-			if t.TokenType == opcua.UserTokenTypeCertificate {
+			if t.TokenType == ua.UserTokenTypeCertificate {
 				tokenPolicy = &t
 				break
 			}
 		}
 		if tokenPolicy == nil {
-			return opcua.BadIdentityTokenRejected
+			return ua.BadIdentityTokenRejected
 		}
 
 		secPolicyURI := tokenPolicy.SecurityPolicyURI
@@ -454,7 +453,7 @@ func (ch *Client) open(ctx context.Context) error {
 		}
 
 		switch secPolicyURI {
-		case opcua.SecurityPolicyURIBasic128Rsa15, opcua.SecurityPolicyURIBasic256:
+		case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 			hash := crypto.SHA1.New()
 			hash.Write([]byte(ch.serverCertificate))
 			hash.Write(remoteNonce)
@@ -463,16 +462,16 @@ func (ch *Client) open(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			identityToken = opcua.X509IdentityToken{
+			identityToken = ua.X509IdentityToken{
 				CertificateData: ui.Certificate,
 				PolicyID:        tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{
-				Signature: opcua.ByteString(signature),
-				Algorithm: opcua.RsaSha1Signature,
+			identityTokenSignature = ua.SignatureData{
+				Signature: ua.ByteString(signature),
+				Algorithm: ua.RsaSha1Signature,
 			}
 
-		case opcua.SecurityPolicyURIBasic256Sha256, opcua.SecurityPolicyURIAes128Sha256RsaOaep:
+		case ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 			hash := crypto.SHA256.New()
 			hash.Write([]byte(ch.serverCertificate))
 			hash.Write(remoteNonce)
@@ -481,16 +480,16 @@ func (ch *Client) open(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			identityToken = opcua.X509IdentityToken{
+			identityToken = ua.X509IdentityToken{
 				CertificateData: ui.Certificate,
 				PolicyID:        tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{
-				Signature: opcua.ByteString(signature),
-				Algorithm: opcua.RsaSha256Signature,
+			identityTokenSignature = ua.SignatureData{
+				Signature: ua.ByteString(signature),
+				Algorithm: ua.RsaSha256Signature,
 			}
 
-		case opcua.SecurityPolicyURIAes256Sha256RsaPss:
+		case ua.SecurityPolicyURIAes256Sha256RsaPss:
 			hash := crypto.SHA256.New()
 			hash.Write([]byte(ch.serverCertificate))
 			hash.Write(remoteNonce)
@@ -499,33 +498,33 @@ func (ch *Client) open(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			identityToken = opcua.X509IdentityToken{
+			identityToken = ua.X509IdentityToken{
 				CertificateData: ui.Certificate,
 				PolicyID:        tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{
-				Signature: opcua.ByteString(signature),
-				Algorithm: opcua.RsaPssSha256Signature,
+			identityTokenSignature = ua.SignatureData{
+				Signature: ua.ByteString(signature),
+				Algorithm: ua.RsaPssSha256Signature,
 			}
 
 		default:
-			identityToken = opcua.X509IdentityToken{
+			identityToken = ua.X509IdentityToken{
 				CertificateData: ui.Certificate,
 				PolicyID:        tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 		}
 
-	case opcua.UserNameIdentity:
-		var tokenPolicy *opcua.UserTokenPolicy
+	case ua.UserNameIdentity:
+		var tokenPolicy *ua.UserTokenPolicy
 		for _, t := range ch.userTokenPolicies {
-			if t.TokenType == opcua.UserTokenTypeUserName {
+			if t.TokenType == ua.UserTokenTypeUserName {
 				tokenPolicy = &t
 				break
 			}
 		}
 		if tokenPolicy == nil {
-			return opcua.BadIdentityTokenRejected
+			return ua.BadIdentityTokenRejected
 		}
 
 		passwordBytes := []byte(ui.Password)
@@ -535,10 +534,10 @@ func (ch *Client) open(ctx context.Context) error {
 		}
 
 		switch secPolicyURI {
-		case opcua.SecurityPolicyURIBasic128Rsa15:
+		case ua.SecurityPolicyURIBasic128Rsa15:
 			publickey := ch.channel.remotePublicKey
 			if publickey == nil {
-				return opcua.BadIdentityTokenRejected
+				return ua.BadIdentityTokenRejected
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf := buffer.NewPartitionAt(bufferPool)
@@ -560,18 +559,18 @@ func (ch *Client) open(ctx context.Context) error {
 			plainBuf.Reset()
 			cipherBuf.Reset()
 
-			identityToken = opcua.UserNameIdentityToken{
+			identityToken = ua.UserNameIdentityToken{
 				UserName:            ui.UserName,
-				Password:            opcua.ByteString(cipherBytes),
-				EncryptionAlgorithm: opcua.RsaV15KeyWrap,
+				Password:            ua.ByteString(cipherBytes),
+				EncryptionAlgorithm: ua.RsaV15KeyWrap,
 				PolicyID:            tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 
-		case opcua.SecurityPolicyURIBasic256, opcua.SecurityPolicyURIBasic256Sha256, opcua.SecurityPolicyURIAes128Sha256RsaOaep:
+		case ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 			publickey := ch.channel.remotePublicKey
 			if publickey == nil {
-				return opcua.BadIdentityTokenRejected
+				return ua.BadIdentityTokenRejected
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf := buffer.NewPartitionAt(bufferPool)
@@ -593,18 +592,18 @@ func (ch *Client) open(ctx context.Context) error {
 			plainBuf.Reset()
 			cipherBuf.Reset()
 
-			identityToken = opcua.UserNameIdentityToken{
+			identityToken = ua.UserNameIdentityToken{
 				UserName:            ui.UserName,
-				Password:            opcua.ByteString(cipherBytes),
-				EncryptionAlgorithm: opcua.RsaOaepKeyWrap,
+				Password:            ua.ByteString(cipherBytes),
+				EncryptionAlgorithm: ua.RsaOaepKeyWrap,
 				PolicyID:            tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 
-		case opcua.SecurityPolicyURIAes256Sha256RsaPss:
+		case ua.SecurityPolicyURIAes256Sha256RsaPss:
 			publickey := ch.channel.remotePublicKey
 			if publickey == nil {
-				return opcua.BadIdentityTokenRejected
+				return ua.BadIdentityTokenRejected
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf := buffer.NewPartitionAt(bufferPool)
@@ -626,38 +625,38 @@ func (ch *Client) open(ctx context.Context) error {
 			plainBuf.Reset()
 			cipherBuf.Reset()
 
-			identityToken = opcua.UserNameIdentityToken{
+			identityToken = ua.UserNameIdentityToken{
 				UserName:            ui.UserName,
-				Password:            opcua.ByteString(cipherBytes),
-				EncryptionAlgorithm: opcua.RsaOaepSha256KeyWrap,
+				Password:            ua.ByteString(cipherBytes),
+				EncryptionAlgorithm: ua.RsaOaepSha256KeyWrap,
 				PolicyID:            tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 
 		default:
-			identityToken = opcua.UserNameIdentityToken{
+			identityToken = ua.UserNameIdentityToken{
 				UserName:            ui.UserName,
-				Password:            opcua.ByteString(passwordBytes),
+				Password:            ua.ByteString(passwordBytes),
 				EncryptionAlgorithm: "",
 				PolicyID:            tokenPolicy.PolicyID,
 			}
-			identityTokenSignature = opcua.SignatureData{}
+			identityTokenSignature = ua.SignatureData{}
 		}
 
 	default:
-		var tokenPolicy *opcua.UserTokenPolicy
+		var tokenPolicy *ua.UserTokenPolicy
 		for _, t := range ch.userTokenPolicies {
-			if t.TokenType == opcua.UserTokenTypeAnonymous {
+			if t.TokenType == ua.UserTokenTypeAnonymous {
 				tokenPolicy = &t
 				break
 			}
 		}
 		if tokenPolicy == nil {
-			return opcua.BadIdentityTokenRejected
+			return ua.BadIdentityTokenRejected
 		}
 
-		identityToken = opcua.AnonymousIdentityToken{PolicyID: tokenPolicy.PolicyID}
-		identityTokenSignature = opcua.SignatureData{}
+		identityToken = ua.AnonymousIdentityToken{PolicyID: tokenPolicy.PolicyID}
+		identityTokenSignature = ua.SignatureData{}
 	}
 
 	// save for re-connect (instead of remote nonce)
@@ -665,7 +664,7 @@ func (ch *Client) open(ctx context.Context) error {
 	ch.identityToken = identityToken
 	ch.identityTokenSignature = identityTokenSignature
 
-	activateSessionRequest := &opcua.ActivateSessionRequest{
+	activateSessionRequest := &ua.ActivateSessionRequest{
 		ClientSignature:    ch.clientSignature,
 		LocaleIDs:          []string{"en"},
 		UserIdentityToken:  identityToken,
@@ -678,15 +677,15 @@ func (ch *Client) open(ctx context.Context) error {
 	_ = []byte(activateSessionResponse.ServerNonce)
 
 	// fetch namespace array, etc.
-	var readRequest = &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
+	var readRequest = &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
 			{
-				NodeID:      opcua.VariableIDServerNamespaceArray,
-				AttributeID: opcua.AttributeIDValue,
+				NodeID:      ua.VariableIDServerNamespaceArray,
+				AttributeID: ua.AttributeIDValue,
 			},
 			{
-				NodeID:      opcua.VariableIDServerServerArray,
-				AttributeID: opcua.AttributeIDValue,
+				NodeID:      ua.VariableIDServerServerArray,
+				AttributeID: ua.AttributeIDValue,
 			},
 		},
 	}
@@ -710,7 +709,7 @@ func (ch *Client) open(ctx context.Context) error {
 
 // Close closes the session and secure channel.
 func (ch *Client) Close(ctx context.Context) error {
-	var request = &opcua.CloseSessionRequest{
+	var request = &ua.CloseSessionRequest{
 		DeleteSubscriptions: true,
 	}
 	_, err := ch.closeSession(ctx, request)

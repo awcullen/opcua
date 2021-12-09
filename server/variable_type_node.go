@@ -4,21 +4,21 @@ import (
 	"context"
 	"sync"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 type VariableTypeNode struct {
 	sync.RWMutex
-	nodeId             opcua.NodeID
-	nodeClass          opcua.NodeClass
-	browseName         opcua.QualifiedName
-	displayName        opcua.LocalizedText
-	description        opcua.LocalizedText
-	rolePermissions    []opcua.RolePermissionType
+	nodeId             ua.NodeID
+	nodeClass          ua.NodeClass
+	browseName         ua.QualifiedName
+	displayName        ua.LocalizedText
+	description        ua.LocalizedText
+	rolePermissions    []ua.RolePermissionType
 	accessRestrictions uint16
-	references         []opcua.Reference
-	value              opcua.DataValue
-	dataType           opcua.NodeID
+	references         []ua.Reference
+	value              ua.DataValue
+	dataType           ua.NodeID
 	valueRank          int32
 	arrayDimensions    []uint32
 	isAbstract         bool
@@ -26,10 +26,10 @@ type VariableTypeNode struct {
 
 var _ Node = (*VariableTypeNode)(nil)
 
-func NewVariableTypeNode(nodeId opcua.NodeID, browseName opcua.QualifiedName, displayName opcua.LocalizedText, description opcua.LocalizedText, rolePermissions []opcua.RolePermissionType, references []opcua.Reference, value opcua.DataValue, dataType opcua.NodeID, valueRank int32, arrayDimensions []uint32, isAbstract bool) *VariableTypeNode {
+func NewVariableTypeNode(nodeId ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, value ua.DataValue, dataType ua.NodeID, valueRank int32, arrayDimensions []uint32, isAbstract bool) *VariableTypeNode {
 	return &VariableTypeNode{
 		nodeId:             nodeId,
-		nodeClass:          opcua.NodeClassVariableType,
+		nodeClass:          ua.NodeClassVariableType,
 		browseName:         browseName,
 		displayName:        displayName,
 		description:        description,
@@ -45,38 +45,38 @@ func NewVariableTypeNode(nodeId opcua.NodeID, browseName opcua.QualifiedName, di
 }
 
 // NodeID returns the NodeID attribute of this node.
-func (n *VariableTypeNode) NodeID() opcua.NodeID {
+func (n *VariableTypeNode) NodeID() ua.NodeID {
 	return n.nodeId
 }
 
 // NodeClass returns the NodeClass attribute of this node.
-func (n *VariableTypeNode) NodeClass() opcua.NodeClass {
+func (n *VariableTypeNode) NodeClass() ua.NodeClass {
 	return n.nodeClass
 }
 
 // BrowseName returns the BrowseName attribute of this node.
-func (n *VariableTypeNode) BrowseName() opcua.QualifiedName {
+func (n *VariableTypeNode) BrowseName() ua.QualifiedName {
 	return n.browseName
 }
 
 // DisplayName returns the DisplayName attribute of this node.
-func (n *VariableTypeNode) DisplayName() opcua.LocalizedText {
+func (n *VariableTypeNode) DisplayName() ua.LocalizedText {
 	return n.displayName
 }
 
 // Description returns the Description attribute of this node.
-func (n *VariableTypeNode) Description() opcua.LocalizedText {
+func (n *VariableTypeNode) Description() ua.LocalizedText {
 	return n.description
 }
 
 // RolePermissions returns the RolePermissions attribute of this node.
-func (n *VariableTypeNode) RolePermissions() []opcua.RolePermissionType {
+func (n *VariableTypeNode) RolePermissions() []ua.RolePermissionType {
 	return n.rolePermissions
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *VariableTypeNode) UserRolePermissions(ctx context.Context) []opcua.RolePermissionType {
-	filteredPermissions := []opcua.RolePermissionType{}
+func (n *VariableTypeNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+	filteredPermissions := []ua.RolePermissionType{}
 	session, ok := ctx.Value(SessionKey).(*Session)
 	if !ok {
 		return filteredPermissions
@@ -97,7 +97,7 @@ func (n *VariableTypeNode) UserRolePermissions(ctx context.Context) []opcua.Role
 }
 
 // References returns the References of this node.
-func (n *VariableTypeNode) References() []opcua.Reference {
+func (n *VariableTypeNode) References() []ua.Reference {
 	n.RLock()
 	res := n.references
 	n.RUnlock()
@@ -105,19 +105,19 @@ func (n *VariableTypeNode) References() []opcua.Reference {
 }
 
 // SetReferences sets the References of the Variable.
-func (n *VariableTypeNode) SetReferences(value []opcua.Reference) {
+func (n *VariableTypeNode) SetReferences(value []ua.Reference) {
 	n.Lock()
 	n.references = value
 	n.Unlock()
 }
 
 // Value returns the value of the Variable.
-func (n *VariableTypeNode) Value() opcua.DataValue {
+func (n *VariableTypeNode) Value() ua.DataValue {
 	return n.value
 }
 
 // DataType returns the DataType attribute of this node.
-func (n *VariableTypeNode) DataType() opcua.NodeID {
+func (n *VariableTypeNode) DataType() ua.NodeID {
 	return n.dataType
 }
 
@@ -139,10 +139,10 @@ func (n *VariableTypeNode) IsAbstract() bool {
 // IsAttributeIDValid returns true if attributeId is supported for the node.
 func (n *VariableTypeNode) IsAttributeIDValid(attributeId uint32) bool {
 	switch attributeId {
-	case opcua.AttributeIDNodeID, opcua.AttributeIDNodeClass, opcua.AttributeIDBrowseName,
-		opcua.AttributeIDDisplayName, opcua.AttributeIDDescription, opcua.AttributeIDRolePermissions,
-		opcua.AttributeIDUserRolePermissions, opcua.AttributeIDIsAbstract, opcua.AttributeIDDataType,
-		opcua.AttributeIDValueRank, opcua.AttributeIDArrayDimensions:
+	case ua.AttributeIDNodeID, ua.AttributeIDNodeClass, ua.AttributeIDBrowseName,
+		ua.AttributeIDDisplayName, ua.AttributeIDDescription, ua.AttributeIDRolePermissions,
+		ua.AttributeIDUserRolePermissions, ua.AttributeIDIsAbstract, ua.AttributeIDDataType,
+		ua.AttributeIDValueRank, ua.AttributeIDArrayDimensions:
 		return true
 	default:
 		return false

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awcullen/opcua"
 	"github.com/awcullen/opcua/client"
+	"github.com/awcullen/opcua/ua"
 )
 
 // RegistrationManager manages registering the server with the local discovery server.
@@ -55,30 +55,30 @@ func (m *RegistrationManager) updateRegistration() {
 	m.Lock()
 	defer m.Unlock()
 	ad := m.server.localDescription
-	registeredServer := opcua.RegisteredServer{
+	registeredServer := ua.RegisteredServer{
 		ServerURI:        ad.ApplicationURI,
 		ProductURI:       ad.ProductURI,
-		ServerNames:      []opcua.LocalizedText{ad.ApplicationName},
+		ServerNames:      []ua.LocalizedText{ad.ApplicationName},
 		ServerType:       ad.ApplicationType,
 		GatewayServerURI: ad.GatewayServerURI,
 		DiscoveryURLs:    ad.DiscoveryURLs,
-		IsOnline:         m.server.state == opcua.ServerStateRunning,
+		IsOnline:         m.server.state == ua.ServerStateRunning,
 	}
 	ctx := context.Background()
 	if m.useRegisterServer2 {
 		discConfig := []interface{}{
-			&opcua.MdnsDiscoveryConfiguration{
+			&ua.MdnsDiscoveryConfiguration{
 				MdnsServerName:     ad.ApplicationName.Text,
 				ServerCapabilities: []string{"DA"},
 			},
 		}
-		_, err := client.RegisterServer2(ctx, "opc.tcp://127.0.0.1:4840", &opcua.RegisterServer2Request{Server: registeredServer, DiscoveryConfiguration: []opcua.ExtensionObject{discConfig}})
+		_, err := client.RegisterServer2(ctx, "opc.tcp://127.0.0.1:4840", &ua.RegisterServer2Request{Server: registeredServer, DiscoveryConfiguration: []ua.ExtensionObject{discConfig}})
 		if err != nil {
 			log.Printf("Error registering server (using RegisterServer2) with '%s'. %s\n", m.server.registrationURL, err)
 			m.useRegisterServer2 = false
 		}
 	} else {
-		_, err := client.RegisterServer(ctx, "opc.tcp://127.0.0.1:4840", &opcua.RegisterServerRequest{Server: registeredServer})
+		_, err := client.RegisterServer(ctx, "opc.tcp://127.0.0.1:4840", &ua.RegisterServerRequest{Server: registeredServer})
 		if err != nil {
 			log.Printf("Error registering server with '%s'. %s\n", m.server.registrationURL, err)
 		}

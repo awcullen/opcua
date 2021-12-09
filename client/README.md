@@ -16,15 +16,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/awcullen/opcua"
 	"github.com/awcullen/opcua/client"
+	"github.com/awcullen/opcua/ua"
 )
 
 func ExampleClient_ReadMe() {
 
 	ctx := context.Background()
 
-	// open a connection to a local testserver. Testserver is started automatically if not already running.
+	// open a connection to testserver running locally. Testserver is started if not already running.
 	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://localhost:48010",
@@ -36,11 +36,11 @@ func ExampleClient_ReadMe() {
 	}
 
 	// prepare read request
-	req := &opcua.ReadRequest{
-		NodesToRead: []opcua.ReadValueID{
+	req := &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
 			{
-				NodeID:      opcua.VariableIDServerServerStatus,
-				AttributeID: opcua.AttributeIDValue,
+				NodeID:      ua.VariableIDServerServerStatus,
+				AttributeID: ua.AttributeIDValue,
 			},
 		},
 	}
@@ -54,7 +54,7 @@ func ExampleClient_ReadMe() {
 	}
 
 	// print results
-	if serverStatus, ok := res.Results[0].Value.(opcua.ServerStatusDataType); ok {
+	if serverStatus, ok := res.Results[0].Value.(ua.ServerStatusDataType); ok {
 		fmt.Printf("Server status:\n")
 		fmt.Printf("  ProductName: %s\n", serverStatus.BuildInfo.ProductName)
 		fmt.Printf("  ManufacturerName: %s\n", serverStatus.BuildInfo.ManufacturerName)

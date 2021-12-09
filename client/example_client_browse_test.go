@@ -6,16 +6,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/awcullen/opcua"
 	"github.com/awcullen/opcua/client"
+	"github.com/awcullen/opcua/ua"
 )
 
-// This example demonstrates browsing the top-level 'Objects' folder of the server. 
+// This example demonstrates browsing the top-level 'Objects' folder of the server.
 func ExampleClient_Browse() {
 
 	ctx := context.Background()
 
-	// open a connection to the testserver
+	// open a connection to testserver running locally. Testserver is started if not already running.
 	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://localhost:46010",
@@ -27,15 +27,15 @@ func ExampleClient_Browse() {
 	}
 
 	// prepare browse request
-	req := &opcua.BrowseRequest{
-		View: opcua.ViewDescription{},
-		NodesToBrowse: []opcua.BrowseDescription{
+	req := &ua.BrowseRequest{
+		View: ua.ViewDescription{},
+		NodesToBrowse: []ua.BrowseDescription{
 			{
-				NodeID:          opcua.ParseNodeID("i=85"), // Objects folder
-				BrowseDirection: opcua.BrowseDirectionForward,
-				ReferenceTypeID: opcua.ReferenceTypeIDHierarchicalReferences,
+				NodeID:          ua.ParseNodeID("i=85"), // Objects folder
+				BrowseDirection: ua.BrowseDirectionForward,
+				ReferenceTypeID: ua.ReferenceTypeIDHierarchicalReferences,
 				IncludeSubtypes: true,
-				ResultMask:      uint32(opcua.BrowseResultMaskTargetInfo),
+				ResultMask:      uint32(ua.BrowseResultMaskTargetInfo),
 			},
 		},
 	}

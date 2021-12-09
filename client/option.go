@@ -6,7 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 // Option is a functional option to be applied to a client during initialization.
@@ -15,7 +15,7 @@ type Option func(*Client) error
 // WithSecurityPolicyNone selects endpoint with security policy of None. (default: select most secure endpoint)
 func WithSecurityPolicyNone() Option {
 	return func(c *Client) error {
-		c.securityPolicyURI = opcua.SecurityPolicyURINone
+		c.securityPolicyURI = ua.SecurityPolicyURINone
 		return nil
 	}
 }
@@ -23,7 +23,7 @@ func WithSecurityPolicyNone() Option {
 // WithSecurityPolicyBasic128Rsa15 selects endpoint with security policy of Basic128Rsa15. (default: select most secure endpoint)
 func WithSecurityPolicyBasic128Rsa15() Option {
 	return func(c *Client) error {
-		c.securityPolicyURI = opcua.SecurityPolicyURIBasic128Rsa15
+		c.securityPolicyURI = ua.SecurityPolicyURIBasic128Rsa15
 		return nil
 	}
 }
@@ -31,7 +31,7 @@ func WithSecurityPolicyBasic128Rsa15() Option {
 // WithSecurityPolicyBasic256 selects endpoint with security policy of Basic256. (default: select most secure endpoint)
 func WithSecurityPolicyBasic256() Option {
 	return func(c *Client) error {
-		c.securityPolicyURI = opcua.SecurityPolicyURIBasic256
+		c.securityPolicyURI = ua.SecurityPolicyURIBasic256
 		return nil
 	}
 }
@@ -39,7 +39,7 @@ func WithSecurityPolicyBasic256() Option {
 // WithSecurityPolicyBasic256Sha256 selects endpoint with security policy of Basic256Sha256. (default: select most secure endpoint)
 func WithSecurityPolicyBasic256Sha256() Option {
 	return func(c *Client) error {
-		c.securityPolicyURI = opcua.SecurityPolicyURIBasic256Sha256
+		c.securityPolicyURI = ua.SecurityPolicyURIBasic256Sha256
 		return nil
 	}
 }
@@ -47,7 +47,7 @@ func WithSecurityPolicyBasic256Sha256() Option {
 // WithSecurityPolicyAes128Sha256RsaOaep selects endpoint with security policy of Aes128Sha256RsaOaep. (default: select most secure endpoint)
 func WithSecurityPolicyAes128Sha256RsaOaep() Option {
 	return func(c *Client) error {
-		c.securityPolicyURI = opcua.SecurityPolicyURIAes128Sha256RsaOaep
+		c.securityPolicyURI = ua.SecurityPolicyURIAes128Sha256RsaOaep
 		return nil
 	}
 }
@@ -55,7 +55,7 @@ func WithSecurityPolicyAes128Sha256RsaOaep() Option {
 // WithSecurityPolicyAes256Sha256RsaPss selects endpoint with security policy of Aes256Sha256RsaPss. (default: select most secure endpoint)
 func WithSecurityPolicyAes256Sha256RsaPss() Option {
 	return func(c *Client) error {
-		c.securityPolicyURI = opcua.SecurityPolicyURIAes256Sha256RsaPss
+		c.securityPolicyURI = ua.SecurityPolicyURIAes256Sha256RsaPss
 		return nil
 	}
 }
@@ -63,23 +63,23 @@ func WithSecurityPolicyAes256Sha256RsaPss() Option {
 // WithUserNameIdentity sets the user identity to a UserNameIdentity created from a username and password. (default: AnonymousIdentity)
 func WithUserNameIdentity(userName, password string) Option {
 	return func(c *Client) error {
-		c.userIdentity = opcua.UserNameIdentity{UserName: userName, Password: password}
+		c.userIdentity = ua.UserNameIdentity{UserName: userName, Password: password}
 		return nil
 	}
 }
 
 // WithX509Identity sets the user identity to an X509Identity created from a certificate and private key. (default: AnonymousIdentity)
-func WithX509Identity(certificate opcua.ByteString, privateKey *rsa.PrivateKey) Option {
+func WithX509Identity(certificate ua.ByteString, privateKey *rsa.PrivateKey) Option {
 	return func(c *Client) error {
-		c.userIdentity = opcua.X509Identity{Certificate: certificate, Key: privateKey}
+		c.userIdentity = ua.X509Identity{Certificate: certificate, Key: privateKey}
 		return nil
 	}
 }
 
 // WithIssuedIdentity sets the user identity to an IssuedIdentity created from a token. (default: AnonymousIdentity)
-func WithIssuedIdentity(tokenData opcua.ByteString) Option {
+func WithIssuedIdentity(tokenData ua.ByteString) Option {
 	return func(c *Client) error {
-		c.userIdentity = opcua.IssuedIdentity{TokenData: tokenData}
+		c.userIdentity = ua.IssuedIdentity{TokenData: tokenData}
 		return nil
 	}
 }

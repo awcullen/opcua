@@ -2,13 +2,13 @@
 
 package server
 
-import "github.com/awcullen/opcua"
+import "github.com/awcullen/opcua/ua"
 
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
 
 // WithEndpoint ...
-func WithEndpoint(endpointURL string, securityPolicyURI string, securityMode opcua.MessageSecurityMode, transportProfileURI string) Option {
+func WithEndpoint(endpointURL string, securityPolicyURI string, securityMode ua.MessageSecurityMode, transportProfileURI string) Option {
 	return func(srv *Server) error {
 		return nil
 	}
@@ -39,7 +39,7 @@ func WithMaxSubscriptionCount(value uint32) Option {
 }
 
 // WithServerCapabilities sets the number of subscription that may be active. (default: no limit)
-func WithServerCapabilities(value *opcua.ServerCapabilities) Option {
+func WithServerCapabilities(value *ua.ServerCapabilities) Option {
 	return func(srv *Server) error {
 		srv.serverCapabilities = value
 		return nil
@@ -47,7 +47,7 @@ func WithServerCapabilities(value *opcua.ServerCapabilities) Option {
 }
 
 // WithBuildInfo sets the BuildInfo returned by ServerStatus.
-func WithBuildInfo(value opcua.BuildInfo) Option {
+func WithBuildInfo(value ua.BuildInfo) Option {
 	return func(srv *Server) error {
 		srv.buildInfo = value
 		return nil
@@ -155,7 +155,7 @@ func WithRolesProvider(provider RolesProvider) Option {
 }
 
 // WithRolePermissions sets the permissions for each role.
-func WithRolePermissions(permissions []opcua.RolePermissionType) Option {
+func WithRolePermissions(permissions []ua.RolePermissionType) Option {
 	return func(srv *Server) error {
 		srv.rolePermissions = permissions
 		return nil

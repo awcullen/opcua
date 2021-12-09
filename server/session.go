@@ -6,44 +6,44 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 type publishOp struct {
 	ch        *serverSecureChannel
 	requestId uint32
-	req       *opcua.PublishRequest
-	results   []opcua.StatusCode
+	req       *ua.PublishRequest
+	results   []ua.StatusCode
 }
 
 type stateChangeOp struct {
 	subscriptionId uint32
-	message        opcua.NotificationMessage
+	message        ua.NotificationMessage
 }
 
 type Session struct {
 	sync.RWMutex
 	server              *Server
-	sessionId           opcua.NodeID
+	sessionId           ua.NodeID
 	sessionName         string
-	authenticationToken opcua.NodeID
+	authenticationToken ua.NodeID
 	timeout             time.Duration
 	userIdentity        interface{}
-	userRoles           []opcua.NodeID
-	sessionNonce        opcua.ByteString
+	userRoles           []ua.NodeID
+	sessionNonce        ua.ByteString
 	lastAccess          time.Time
 	publishRequests     chan *publishOp
 	stateChanges        chan *stateChangeOp
 	channelId           uint32
 	browseCPs           map[uint32]struct {
-		data []opcua.ReferenceDescription
+		data []ua.ReferenceDescription
 		max  int
 	}
 	lastBrowseCP                            uint32
 	maxBrowseContinuationPoints             int
 	historyCPs                              map[uint32]time.Time
 	maxHistoryContinuationPoints            int
-	clientDescription                       opcua.ApplicationDescription
+	clientDescription                       ua.ApplicationDescription
 	serverUri                               string
 	endpointUrl                             string
 	maxResponseMessageSize                  uint32
@@ -113,7 +113,7 @@ type Session struct {
 	clientUserIdHistory                     []string
 }
 
-func NewSession(server *Server, sessionId opcua.NodeID, sessionName string, authenticationToken opcua.NodeID, sessionNonce opcua.ByteString, timeout time.Duration, clientDescription opcua.ApplicationDescription, serverUri string, endpointUrl string, maxResponseMessageSize uint32) *Session {
+func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authenticationToken ua.NodeID, sessionNonce ua.ByteString, timeout time.Duration, clientDescription ua.ApplicationDescription, serverUri string, endpointUrl string, maxResponseMessageSize uint32) *Session {
 	return &Session{
 		server:              server,
 		sessionId:           sessionId,
@@ -125,7 +125,7 @@ func NewSession(server *Server, sessionId opcua.NodeID, sessionName string, auth
 		publishRequests:     make(chan *publishOp, 64),
 		stateChanges:        make(chan *stateChangeOp, 64),
 		browseCPs: make(map[uint32]struct {
-			data []opcua.ReferenceDescription
+			data []ua.ReferenceDescription
 			max  int
 		}, 16),
 		maxBrowseContinuationPoints:  int(server.ServerCapabilities().MaxBrowseContinuationPoints),
@@ -155,7 +155,7 @@ func (s *Session) delete() {
 	s.authenticationToken = nil
 	s.userIdentity = nil
 	s.userRoles = nil
-	s.sessionNonce = opcua.ByteString("")
+	s.sessionNonce = ua.ByteString("")
 	s.publishRequests = nil
 	for k := range s.browseCPs {
 		delete(s.browseCPs, k)
@@ -176,7 +176,7 @@ func (s *Session) Server() *Server {
 	return res
 }
 
-func (s *Session) SessionId() opcua.NodeID {
+func (s *Session) SessionId() ua.NodeID {
 	s.RLock()
 	res := s.sessionId
 	s.RUnlock()
@@ -190,7 +190,7 @@ func (s *Session) SessionName() string {
 	return res
 }
 
-func (s *Session) AuthenticationToken() opcua.NodeID {
+func (s *Session) AuthenticationToken() ua.NodeID {
 	s.RLock()
 	res := s.authenticationToken
 	s.RUnlock()
@@ -216,13 +216,13 @@ func (s *Session) SetUserIdentity(value interface{}) {
 	s.userIdentity = value
 	// update diagnostics
 	switch ui := s.userIdentity.(type) {
-	case opcua.IssuedIdentity:
+	case ua.IssuedIdentity:
 		s.clientUserIdOfSession = "<issued>"
 		s.authenticationMechanism = "Issued"
-	case opcua.X509Identity:
+	case ua.X509Identity:
 		s.clientUserIdOfSession = "<certificate>"
 		s.authenticationMechanism = "X509"
-	case opcua.UserNameIdentity:
+	case ua.UserNameIdentity:
 		s.clientUserIdOfSession = ui.UserName
 		s.authenticationMechanism = "UserName"
 	default:
@@ -233,27 +233,27 @@ func (s *Session) SetUserIdentity(value interface{}) {
 	s.Unlock()
 }
 
-func (s *Session) UserRoles() []opcua.NodeID {
+func (s *Session) UserRoles() []ua.NodeID {
 	s.RLock()
 	res := s.userRoles
 	s.RUnlock()
 	return res
 }
 
-func (s *Session) SetUserRoles(value []opcua.NodeID) {
+func (s *Session) SetUserRoles(value []ua.NodeID) {
 	s.Lock()
 	s.userRoles = value
 	s.Unlock()
 }
 
-func (s *Session) SessionNonce() opcua.ByteString {
+func (s *Session) SessionNonce() ua.ByteString {
 	s.RLock()
 	res := s.sessionNonce
 	s.RUnlock()
 	return res
 }
 
-func (s *Session) SetSessionNonce(value opcua.ByteString) {
+func (s *Session) SetSessionNonce(value ua.ByteString) {
 	s.Lock()
 	s.sessionNonce = value
 	s.Unlock()
@@ -285,7 +285,7 @@ func (s *Session) SetSecureChannelId(value uint32) {
 	s.Unlock()
 }
 
-func (s *Session) addPublishRequest(ch *serverSecureChannel, requestid uint32, req *opcua.PublishRequest, results []opcua.StatusCode) {
+func (s *Session) addPublishRequest(ch *serverSecureChannel, requestid uint32, req *ua.PublishRequest, results []ua.StatusCode) {
 	for {
 		select {
 		case s.publishRequests <- &publishOp{ch, requestid, req, results}:
@@ -293,11 +293,11 @@ func (s *Session) addPublishRequest(ch *serverSecureChannel, requestid uint32, r
 		default:
 			op := <-s.publishRequests
 			op.ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: op.req.RequestHandle,
-						ServiceResult: opcua.BadTooManyPublishRequests,
+						ServiceResult: ua.BadTooManyPublishRequests,
 					},
 				},
 				op.requestId,
@@ -306,7 +306,7 @@ func (s *Session) addPublishRequest(ch *serverSecureChannel, requestid uint32, r
 	}
 }
 
-func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *opcua.PublishRequest, []opcua.StatusCode, bool) {
+func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *ua.PublishRequest, []ua.StatusCode, bool) {
 	for {
 		select {
 		case op := <-s.publishRequests:
@@ -317,11 +317,11 @@ func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *opcua.P
 			// check if expired
 			if time.Now().After(req.RequestHeader.Timestamp.Add(time.Duration(req.RequestHeader.TimeoutHint) * time.Millisecond)) {
 				ch.Write(
-					&opcua.ServiceFault{
-						ResponseHeader: opcua.ResponseHeader{
+					&ua.ServiceFault{
+						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
 							RequestHandle: req.RequestHandle,
-							ServiceResult: opcua.BadTimeout,
+							ServiceResult: ua.BadTimeout,
 						},
 					},
 					rid,
@@ -335,15 +335,15 @@ func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *opcua.P
 	}
 }
 
-func (s *Session) addBrowseContinuationPoint(data []opcua.ReferenceDescription, max int) ([]byte, error) {
+func (s *Session) addBrowseContinuationPoint(data []ua.ReferenceDescription, max int) ([]byte, error) {
 	s.Lock()
 	defer s.Unlock()
 	if s.maxBrowseContinuationPoints > 0 && len(s.browseCPs) >= s.maxBrowseContinuationPoints {
-		return nil, opcua.BadNoContinuationPoints
+		return nil, ua.BadNoContinuationPoints
 	}
 	id := atomic.AddUint32(&s.lastBrowseCP, 1)
 	s.browseCPs[id] = struct {
-		data []opcua.ReferenceDescription
+		data []ua.ReferenceDescription
 		max  int
 	}{data, max}
 	cp := make([]byte, 4)
@@ -351,7 +351,7 @@ func (s *Session) addBrowseContinuationPoint(data []opcua.ReferenceDescription, 
 	return cp, nil
 }
 
-func (s *Session) removeBrowseContinuationPoint(cp []byte) ([]opcua.ReferenceDescription, int, bool) {
+func (s *Session) removeBrowseContinuationPoint(cp []byte) ([]ua.ReferenceDescription, int, bool) {
 	if cp == nil {
 		return nil, 0, false
 	}

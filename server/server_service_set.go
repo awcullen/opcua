@@ -19,16 +19,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awcullen/opcua"
-
+	"github.com/awcullen/opcua/ua"
 	"github.com/djherbis/buffer"
 	"github.com/google/uuid"
 )
 
 // FindServers returns the Servers known to a Server or Discovery Server.
-func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *opcua.FindServersRequest) error {
-	srvs := make([]opcua.ApplicationDescription, 0, 1)
-	for _, s := range []opcua.ApplicationDescription{srv.LocalDescription()} {
+func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *ua.FindServersRequest) error {
+	srvs := make([]ua.ApplicationDescription, 0, 1)
+	for _, s := range []ua.ApplicationDescription{srv.LocalDescription()} {
 		if len(req.ServerURIs) > 0 {
 			for _, su := range req.ServerURIs {
 				if s.ApplicationURI == su {
@@ -41,8 +40,8 @@ func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *o
 		}
 	}
 	ch.Write(
-		&opcua.FindServersResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.FindServersResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -54,8 +53,8 @@ func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *o
 }
 
 // GetEndpoints returns the endpoint descriptions supported by the server.
-func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *opcua.GetEndpointsRequest) error {
-	eps := make([]opcua.EndpointDescription, 0, len(srv.Endpoints()))
+func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *ua.GetEndpointsRequest) error {
+	eps := make([]ua.EndpointDescription, 0, len(srv.Endpoints()))
 	for _, ep := range srv.Endpoints() {
 		if len(req.ProfileURIs) > 0 {
 			for _, pu := range req.ProfileURIs {
@@ -69,8 +68,8 @@ func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *
 		}
 	}
 	ch.Write(
-		&opcua.GetEndpointsResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.GetEndpointsResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -82,10 +81,10 @@ func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *
 }
 
 // createSession creates a session.
-func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32, req *opcua.CreateSessionRequest) error {
+func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32, req *ua.CreateSessionRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// check endpointurl hostname matches one of the certificate hostnames
@@ -108,7 +107,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	}
 	// check nonce
 	switch ch.SecurityPolicyURI() {
-	case opcua.SecurityPolicyURIBasic128Rsa15, opcua.SecurityPolicyURIBasic256, opcua.SecurityPolicyURIBasic256Sha256:
+	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256:
 
 		// check client application uri matches one of the client certificate's san.
 		valid := false
@@ -124,11 +123,11 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		}
 		if !valid {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadCertificateURIInvalid,
+						ServiceResult: ua.BadCertificateURIInvalid,
 					},
 				},
 				requestid,
@@ -137,11 +136,11 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		}
 		if len(req.ClientNonce) < int(nonceLength) {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadNonceInvalid,
+						ServiceResult: ua.BadNonceInvalid,
 					},
 				},
 				requestid,
@@ -151,9 +150,9 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	default:
 	}
 	// create server signature
-	var serverSignature opcua.SignatureData
+	var serverSignature ua.SignatureData
 	switch ch.SecurityPolicyURI() {
-	case opcua.SecurityPolicyURIBasic128Rsa15, opcua.SecurityPolicyURIBasic256:
+	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 		hash := crypto.SHA1.New()
 		hash.Write([]byte(req.ClientCertificate))
 		hash.Write([]byte(req.ClientNonce))
@@ -162,12 +161,12 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		if err != nil {
 			return err
 		}
-		serverSignature = opcua.SignatureData{
-			Signature: opcua.ByteString(signature),
-			Algorithm: opcua.RsaSha1Signature,
+		serverSignature = ua.SignatureData{
+			Signature: ua.ByteString(signature),
+			Algorithm: ua.RsaSha1Signature,
 		}
 
-	case opcua.SecurityPolicyURIBasic256Sha256:
+	case ua.SecurityPolicyURIBasic256Sha256:
 		hash := crypto.SHA256.New()
 		hash.Write([]byte(req.ClientCertificate))
 		hash.Write([]byte(req.ClientNonce))
@@ -176,13 +175,13 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		if err != nil {
 			return err
 		}
-		serverSignature = opcua.SignatureData{
-			Signature: opcua.ByteString(signature),
-			Algorithm: opcua.RsaSha256Signature,
+		serverSignature = ua.SignatureData{
+			Signature: ua.ByteString(signature),
+			Algorithm: ua.RsaSha256Signature,
 		}
 
 	default:
-		serverSignature = opcua.SignatureData{}
+		serverSignature = ua.SignatureData{}
 	}
 
 	sessionName := req.SessionName
@@ -192,10 +191,10 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 
 	session := NewSession(
 		srv,
-		opcua.NewNodeIDOpaque(1, opcua.ByteString(getNextNonce(15))),
+		ua.NewNodeIDOpaque(1, ua.ByteString(getNextNonce(15))),
 		sessionName,
-		opcua.NewNodeIDOpaque(0, opcua.ByteString(getNextNonce(nonceLength))),
-		opcua.ByteString(getNextNonce(nonceLength)),
+		ua.NewNodeIDOpaque(0, ua.ByteString(getNextNonce(nonceLength))),
+		ua.ByteString(getNextNonce(nonceLength)),
 		(time.Duration(req.RequestedSessionTimeout) * time.Millisecond),
 		req.ClientDescription,
 		req.ServerURI,
@@ -205,11 +204,11 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	err := srv.SessionManager().Add(session)
 	if err != nil {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManySessions,
+					ServiceResult: ua.BadTooManySessions,
 				},
 			},
 			requestid,
@@ -219,8 +218,8 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	// log.Printf("Created session '%s'.\n", req.SessionName)
 
 	ch.Write(
-		&opcua.CreateSessionResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.CreateSessionResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -228,7 +227,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			AuthenticationToken:        session.authenticationToken,
 			RevisedSessionTimeout:      req.RequestedSessionTimeout,
 			ServerNonce:                session.sessionNonce,
-			ServerCertificate:          opcua.ByteString(srv.LocalCertificate()),
+			ServerCertificate:          ua.ByteString(srv.LocalCertificate()),
 			ServerEndpoints:            srv.Endpoints(),
 			ServerSoftwareCertificates: nil,
 			ServerSignature:            serverSignature,
@@ -240,10 +239,10 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 }
 
 // handleActivateSession activates a session.
-func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint32, req *opcua.ActivateSessionRequest) error {
+func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint32, req *ua.ActivateSessionRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
@@ -251,11 +250,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	session, ok := m.Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -266,14 +265,14 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	// verify the client's signature.
 	var err error
 	switch ch.SecurityPolicyURI() {
-	case opcua.SecurityPolicyURIBasic128Rsa15, opcua.SecurityPolicyURIBasic256:
+	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 		hash := crypto.SHA1.New()
 		hash.Write(srv.LocalCertificate())
 		hash.Write([]byte(session.SessionNonce()))
 		hashed := hash.Sum(nil)
 		err = rsa.VerifyPKCS1v15(ch.RemotePublicKey(), crypto.SHA1, hashed, []byte(req.ClientSignature.Signature))
 
-	case opcua.SecurityPolicyURIBasic256Sha256:
+	case ua.SecurityPolicyURIBasic256Sha256:
 		hash := crypto.SHA256.New()
 		hash.Write(srv.LocalCertificate())
 		hash.Write([]byte(session.SessionNonce()))
@@ -282,11 +281,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	}
 	if err != nil {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadApplicationSignatureInvalid,
+					ServiceResult: ua.BadApplicationSignatureInvalid,
 				},
 			},
 			requestid,
@@ -297,21 +296,21 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	// validate identity and store
 	var userIdentity interface{}
 	switch userIdentityToken := req.UserIdentityToken.(type) {
-	case opcua.IssuedIdentityToken:
-		var tokenPolicy *opcua.UserTokenPolicy
+	case ua.IssuedIdentityToken:
+		var tokenPolicy *ua.UserTokenPolicy
 		for _, t := range ch.LocalEndpoint().UserIdentityTokens {
-			if t.TokenType == opcua.UserTokenTypeCertificate && t.PolicyID == userIdentityToken.PolicyID {
+			if t.TokenType == ua.UserTokenTypeCertificate && t.PolicyID == userIdentityToken.PolicyID {
 				tokenPolicy = &t
 				break
 			}
 		}
 		if tokenPolicy == nil {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadIdentityTokenInvalid,
+						ServiceResult: ua.BadIdentityTokenInvalid,
 					},
 				},
 				requestid,
@@ -319,23 +318,23 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			return nil
 		}
 		// TODO:
-		userIdentity = opcua.IssuedIdentity{TokenData: userIdentityToken.TokenData}
+		userIdentity = ua.IssuedIdentity{TokenData: userIdentityToken.TokenData}
 
-	case opcua.X509IdentityToken:
-		var tokenPolicy *opcua.UserTokenPolicy
+	case ua.X509IdentityToken:
+		var tokenPolicy *ua.UserTokenPolicy
 		for _, t := range ch.LocalEndpoint().UserIdentityTokens {
-			if t.TokenType == opcua.UserTokenTypeCertificate && t.PolicyID == userIdentityToken.PolicyID {
+			if t.TokenType == ua.UserTokenTypeCertificate && t.PolicyID == userIdentityToken.PolicyID {
 				tokenPolicy = &t
 				break
 			}
 		}
 		if tokenPolicy == nil {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadIdentityTokenInvalid,
+						ServiceResult: ua.BadIdentityTokenInvalid,
 					},
 				},
 				requestid,
@@ -349,11 +348,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		userCert, err := x509.ParseCertificate([]byte(userIdentityToken.CertificateData))
 		if err != nil {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadIdentityTokenInvalid,
+						ServiceResult: ua.BadIdentityTokenInvalid,
 					},
 				},
 				requestid,
@@ -363,11 +362,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		userKey, ok := userCert.PublicKey.(*rsa.PublicKey)
 		if !ok {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadIdentityTokenInvalid,
+						ServiceResult: ua.BadIdentityTokenInvalid,
 					},
 				},
 				requestid,
@@ -376,14 +375,14 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		}
 
 		switch secPolicyURI {
-		case opcua.SecurityPolicyURIBasic128Rsa15, opcua.SecurityPolicyURIBasic256:
+		case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 			hash := crypto.SHA1.New()
 			hash.Write(srv.LocalCertificate())
 			hash.Write([]byte(session.SessionNonce()))
 			hashed := hash.Sum(nil)
 			err = rsa.VerifyPKCS1v15(userKey, crypto.SHA1, hashed, []byte(req.UserTokenSignature.Signature))
 
-		case opcua.SecurityPolicyURIBasic256Sha256:
+		case ua.SecurityPolicyURIBasic256Sha256:
 			hash := crypto.SHA256.New()
 			hash.Write(srv.LocalCertificate())
 			hash.Write([]byte(session.SessionNonce()))
@@ -392,34 +391,34 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		}
 		if err != nil {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadIdentityTokenRejected,
+						ServiceResult: ua.BadIdentityTokenRejected,
 					},
 				},
 				requestid,
 			)
 			return nil
 		}
-		userIdentity = opcua.X509Identity{Certificate: userIdentityToken.CertificateData}
+		userIdentity = ua.X509Identity{Certificate: userIdentityToken.CertificateData}
 
-	case opcua.UserNameIdentityToken:
-		var tokenPolicy *opcua.UserTokenPolicy
+	case ua.UserNameIdentityToken:
+		var tokenPolicy *ua.UserTokenPolicy
 		for _, t := range ch.LocalEndpoint().UserIdentityTokens {
-			if t.TokenType == opcua.UserTokenTypeUserName && t.PolicyID == userIdentityToken.PolicyID {
+			if t.TokenType == ua.UserTokenTypeUserName && t.PolicyID == userIdentityToken.PolicyID {
 				tokenPolicy = &t
 				break
 			}
 		}
 		if tokenPolicy == nil {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadIdentityTokenInvalid,
+						ServiceResult: ua.BadIdentityTokenInvalid,
 					},
 				},
 				requestid,
@@ -428,11 +427,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		}
 		if userIdentityToken.UserName == "" {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadIdentityTokenInvalid,
+						ServiceResult: ua.BadIdentityTokenInvalid,
 					},
 				},
 				requestid,
@@ -446,14 +445,14 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		}
 
 		switch secPolicyURI {
-		case opcua.SecurityPolicyURIBasic128Rsa15:
-			if userIdentityToken.EncryptionAlgorithm != opcua.RsaV15KeyWrap {
+		case ua.SecurityPolicyURIBasic128Rsa15:
+			if userIdentityToken.EncryptionAlgorithm != ua.RsaV15KeyWrap {
 				ch.Write(
-					&opcua.ServiceFault{
-						ResponseHeader: opcua.ResponseHeader{
+					&ua.ServiceFault{
+						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
 							RequestHandle: req.RequestHandle,
-							ServiceResult: opcua.BadIdentityTokenInvalid,
+							ServiceResult: ua.BadIdentityTokenInvalid,
 						},
 					},
 					requestid,
@@ -479,11 +478,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			}
 			if plainLength < 32 || plainLength > 96 {
 				ch.Write(
-					&opcua.ServiceFault{
-						ResponseHeader: opcua.ResponseHeader{
+					&ua.ServiceFault{
+						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
 							RequestHandle: req.RequestHandle,
-							ServiceResult: opcua.BadIdentityTokenRejected,
+							ServiceResult: ua.BadIdentityTokenRejected,
 						},
 					},
 					requestid,
@@ -494,16 +493,16 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf.Read(passwordBytes)
 			cipherBuf.Reset()
 			plainBuf.Reset()
-			userIdentity = opcua.UserNameIdentity{UserName: userIdentityToken.UserName, Password: string(passwordBytes)}
+			userIdentity = ua.UserNameIdentity{UserName: userIdentityToken.UserName, Password: string(passwordBytes)}
 
-		case opcua.SecurityPolicyURIBasic256, opcua.SecurityPolicyURIBasic256Sha256:
-			if userIdentityToken.EncryptionAlgorithm != opcua.RsaOaepKeyWrap {
+		case ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256:
+			if userIdentityToken.EncryptionAlgorithm != ua.RsaOaepKeyWrap {
 				ch.Write(
-					&opcua.ServiceFault{
-						ResponseHeader: opcua.ResponseHeader{
+					&ua.ServiceFault{
+						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
 							RequestHandle: req.RequestHandle,
-							ServiceResult: opcua.BadIdentityTokenInvalid,
+							ServiceResult: ua.BadIdentityTokenInvalid,
 						},
 					},
 					requestid,
@@ -529,11 +528,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			}
 			if plainLength < 32 || plainLength > 96 {
 				ch.Write(
-					&opcua.ServiceFault{
-						ResponseHeader: opcua.ResponseHeader{
+					&ua.ServiceFault{
+						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
 							RequestHandle: req.RequestHandle,
-							ServiceResult: opcua.BadIdentityTokenRejected,
+							ServiceResult: ua.BadIdentityTokenRejected,
 						},
 					},
 					requestid,
@@ -544,75 +543,75 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf.Read(passwordBytes)
 			cipherBuf.Reset()
 			plainBuf.Reset()
-			userIdentity = opcua.UserNameIdentity{UserName: userIdentityToken.UserName, Password: string(passwordBytes)}
+			userIdentity = ua.UserNameIdentity{UserName: userIdentityToken.UserName, Password: string(passwordBytes)}
 
 		default:
-			userIdentity = opcua.UserNameIdentity{UserName: userIdentityToken.UserName, Password: string(cipherBytes)}
+			userIdentity = ua.UserNameIdentity{UserName: userIdentityToken.UserName, Password: string(cipherBytes)}
 
 		}
 
-	case opcua.AnonymousIdentityToken:
-		var tokenPolicy *opcua.UserTokenPolicy
+	case ua.AnonymousIdentityToken:
+		var tokenPolicy *ua.UserTokenPolicy
 		for _, t := range ch.LocalEndpoint().UserIdentityTokens {
-			if t.TokenType == opcua.UserTokenTypeAnonymous && t.PolicyID == userIdentityToken.PolicyID {
+			if t.TokenType == ua.UserTokenTypeAnonymous && t.PolicyID == userIdentityToken.PolicyID {
 				tokenPolicy = &t
 				break
 			}
 		}
 		if tokenPolicy == nil {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadIdentityTokenInvalid,
+						ServiceResult: ua.BadIdentityTokenInvalid,
 					},
 				},
 				requestid,
 			)
 			return nil
 		}
-		userIdentity = opcua.AnonymousIdentity{}
+		userIdentity = ua.AnonymousIdentity{}
 
 	}
 
 	// authenticate user
 	switch id := userIdentity.(type) {
-	case opcua.AnonymousIdentity:
+	case ua.AnonymousIdentity:
 		err = nil
 
-	case opcua.UserNameIdentity:
+	case ua.UserNameIdentity:
 		if auth := srv.userNameIdentityAuthenticator; auth != nil {
 			err = auth.AuthenticateUserNameIdentity(id, ch.remoteApplicationURI, ch.localEndpoint.EndpointURL)
 		} else {
-			err = opcua.BadUserAccessDenied
+			err = ua.BadUserAccessDenied
 		}
 
-	case opcua.X509Identity:
+	case ua.X509Identity:
 		if auth := srv.x509IdentityAuthenticator; auth != nil {
 			err = auth.AuthenticateX509Identity(id, ch.remoteApplicationURI, ch.localEndpoint.EndpointURL)
 		} else {
-			err = opcua.BadUserAccessDenied
+			err = ua.BadUserAccessDenied
 		}
 
-	case opcua.IssuedIdentity:
+	case ua.IssuedIdentity:
 		if auth := srv.issuedIdentityAuthenticator; auth != nil {
 			err = auth.AuthenticateIssuedIdentity(id, ch.remoteApplicationURI, ch.localEndpoint.EndpointURL)
 		} else {
-			err = opcua.BadUserAccessDenied
+			err = ua.BadUserAccessDenied
 		}
 
 	default:
-		err = opcua.BadUserAccessDenied
+		err = ua.BadUserAccessDenied
 
 	}
 	if err != nil {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadUserAccessDenied,
+					ServiceResult: ua.BadUserAccessDenied,
 				},
 			},
 			requestid,
@@ -624,11 +623,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	userRoles, err := srv.rolesProvider.GetRoles(userIdentity, ch.remoteApplicationURI, ch.localEndpoint.EndpointURL)
 	if err != nil {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadUserAccessDenied,
+					ServiceResult: ua.BadUserAccessDenied,
 				},
 			},
 			requestid,
@@ -638,13 +637,13 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 
 	session.SetUserIdentity(userIdentity)
 	session.SetUserRoles(userRoles)
-	session.SetSessionNonce(opcua.ByteString(getNextNonce(nonceLength)))
+	session.SetSessionNonce(ua.ByteString(getNextNonce(nonceLength)))
 	session.SetSecureChannelId(ch.ChannelID())
 	session.localeIds = req.LocaleIDs
 
 	ch.Write(
-		&opcua.ActivateSessionResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.ActivateSessionResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -658,21 +657,21 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 }
 
 // closeSession closes a session.
-func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32, req *opcua.CloseSessionRequest) error {
+func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32, req *ua.CloseSessionRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.sessionManager.Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -684,11 +683,11 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -697,11 +696,11 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -724,8 +723,8 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 	// log.Printf("Deleted session '%s'.\n", session.SessionName())
 
 	ch.Write(
-		&opcua.CloseSessionResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.CloseSessionResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -736,21 +735,21 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 }
 
 // handleCancel cancels a request.
-func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *opcua.CancelRequest) error {
+func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *ua.CancelRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.sessionManager.Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -762,11 +761,11 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -775,11 +774,11 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -788,8 +787,8 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 	}
 
 	ch.Write(
-		&opcua.CancelResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.CancelResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -804,21 +803,21 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 // DeleteNodes deletes one or more Nodes from the AddressSpace.
 // DeleteReferences deletes one or more References of a Node.
 
-func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *opcua.BrowseRequest) error {
+func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *ua.BrowseRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -832,11 +831,11 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -847,11 +846,11 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -866,11 +865,11 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 		n, ok := m.FindNode(req.View.ViewID)
 		if !ok {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadViewIDUnknown,
+						ServiceResult: ua.BadViewIDUnknown,
 					},
 				},
 				requestid,
@@ -879,13 +878,13 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 			session.errorCount++
 			return nil
 		}
-		if n.NodeClass() != opcua.NodeClassView {
+		if n.NodeClass() != ua.NodeClassView {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadViewIDUnknown,
+						ServiceResult: ua.BadViewIDUnknown,
 					},
 				},
 				requestid,
@@ -899,11 +898,11 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 	l := len(req.NodesToBrowse)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -915,11 +914,11 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerBrowse) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -928,7 +927,7 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 		session.errorCount++
 		return nil
 	}
-	results := make([]opcua.BrowseResult, l)
+	results := make([]ua.BrowseResult, l)
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, SessionKey, session)
 
@@ -941,43 +940,43 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 		i := ii
 		wp.Submit(func() {
 			d := req.NodesToBrowse[i]
-			if d.BrowseDirection < opcua.BrowseDirectionForward || d.BrowseDirection > opcua.BrowseDirectionBoth {
-				results[i] = opcua.BrowseResult{StatusCode: opcua.BadBrowseDirectionInvalid}
+			if d.BrowseDirection < ua.BrowseDirectionForward || d.BrowseDirection > ua.BrowseDirectionBoth {
+				results[i] = ua.BrowseResult{StatusCode: ua.BadBrowseDirectionInvalid}
 				wg.Done()
 				return
 			}
 			m := srv.NamespaceManager()
 			node, ok := m.FindNode(d.NodeID)
 			if !ok {
-				results[i] = opcua.BrowseResult{StatusCode: opcua.BadNodeIDUnknown}
+				results[i] = ua.BrowseResult{StatusCode: ua.BadNodeIDUnknown}
 				wg.Done()
 				return
 			}
 			rp := node.UserRolePermissions(ctx)
-			if !IsUserPermitted(rp, opcua.PermissionTypeBrowse) {
-				results[i] = opcua.BrowseResult{StatusCode: opcua.BadNodeIDUnknown}
+			if !IsUserPermitted(rp, ua.PermissionTypeBrowse) {
+				results[i] = ua.BrowseResult{StatusCode: ua.BadNodeIDUnknown}
 				wg.Done()
 				return
 			}
-			both := d.BrowseDirection == opcua.BrowseDirectionBoth
-			isInverse := d.BrowseDirection == opcua.BrowseDirectionInverse
+			both := d.BrowseDirection == ua.BrowseDirectionBoth
+			isInverse := d.BrowseDirection == ua.BrowseDirectionInverse
 			allTypes := d.ReferenceTypeID == nil
 			allClasses := d.NodeClassMask == 0
 			if !allTypes {
 				rt, ok := m.FindNode(d.ReferenceTypeID)
 				if !ok {
-					results[i] = opcua.BrowseResult{StatusCode: opcua.BadReferenceTypeIDInvalid}
+					results[i] = ua.BrowseResult{StatusCode: ua.BadReferenceTypeIDInvalid}
 					wg.Done()
 					return
 				}
-				if rt.NodeClass() != opcua.NodeClassReferenceType {
-					results[i] = opcua.BrowseResult{StatusCode: opcua.BadReferenceTypeIDInvalid}
+				if rt.NodeClass() != ua.NodeClassReferenceType {
+					results[i] = ua.BrowseResult{StatusCode: ua.BadReferenceTypeIDInvalid}
 					wg.Done()
 					return
 				}
 			}
 			refs := node.References()
-			rds := make([]opcua.ReferenceDescription, 0, len(refs))
+			rds := make([]ua.ReferenceDescription, 0, len(refs))
 			for _, r := range refs {
 				if !(both || r.IsInverse == isInverse) {
 					continue
@@ -985,43 +984,43 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 				if !(allTypes || d.ReferenceTypeID == r.ReferenceTypeID || (d.IncludeSubtypes && m.IsSubtype(r.ReferenceTypeID, d.ReferenceTypeID))) {
 					continue
 				}
-				t, ok := m.FindNode(opcua.ToNodeID(r.TargetID, srv.NamespaceUris()))
+				t, ok := m.FindNode(ua.ToNodeID(r.TargetID, srv.NamespaceUris()))
 				if !ok {
-					results[i] = opcua.BrowseResult{StatusCode: opcua.BadNodeIDUnknown}
+					results[i] = ua.BrowseResult{StatusCode: ua.BadNodeIDUnknown}
 					wg.Done()
 					return
 				}
 				rp2 := t.UserRolePermissions(ctx)
-				if !IsUserPermitted(rp2, opcua.PermissionTypeBrowse) {
+				if !IsUserPermitted(rp2, ua.PermissionTypeBrowse) {
 					continue
 				}
 				if !(allClasses || d.NodeClassMask&uint32(t.NodeClass()) != 0) {
 					continue
 				}
-				var rt opcua.NodeID
-				if d.ResultMask&uint32(opcua.BrowseResultMaskReferenceTypeID) != 0 {
+				var rt ua.NodeID
+				if d.ResultMask&uint32(ua.BrowseResultMaskReferenceTypeID) != 0 {
 					rt = r.ReferenceTypeID
 				}
 				fo := false
-				if d.ResultMask&uint32(opcua.BrowseResultMaskIsForward) != 0 {
+				if d.ResultMask&uint32(ua.BrowseResultMaskIsForward) != 0 {
 					fo = !r.IsInverse
 				}
-				nc := opcua.NodeClassUnspecified
-				if d.ResultMask&uint32(opcua.BrowseResultMaskNodeClass) != 0 {
+				nc := ua.NodeClassUnspecified
+				if d.ResultMask&uint32(ua.BrowseResultMaskNodeClass) != 0 {
 					nc = t.NodeClass()
 				}
-				bn := opcua.QualifiedName{}
-				if d.ResultMask&uint32(opcua.BrowseResultMaskBrowseName) != 0 {
+				bn := ua.QualifiedName{}
+				if d.ResultMask&uint32(ua.BrowseResultMaskBrowseName) != 0 {
 					bn = t.BrowseName()
 				}
-				dn := opcua.LocalizedText{}
-				if d.ResultMask&uint32(opcua.BrowseResultMaskDisplayName) != 0 {
+				dn := ua.LocalizedText{}
+				if d.ResultMask&uint32(ua.BrowseResultMaskDisplayName) != 0 {
 					dn = t.DisplayName()
 				}
-				var td opcua.ExpandedNodeID
-				if d.ResultMask&uint32(opcua.BrowseResultMaskTypeDefinition) != 0 {
-					if nc := t.NodeClass(); nc == opcua.NodeClassObject || nc == opcua.NodeClassVariable {
-						hasTypeDef := opcua.ReferenceTypeIDHasTypeDefinition
+				var td ua.ExpandedNodeID
+				if d.ResultMask&uint32(ua.BrowseResultMaskTypeDefinition) != 0 {
+					if nc := t.NodeClass(); nc == ua.NodeClassObject || nc == ua.NodeClassVariable {
+						hasTypeDef := ua.ReferenceTypeIDHasTypeDefinition
 						for _, tr := range t.References() {
 							if hasTypeDef == tr.ReferenceTypeID {
 								td = tr.TargetID
@@ -1030,7 +1029,7 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 						}
 					}
 				}
-				rds = append(rds, opcua.ReferenceDescription{
+				rds = append(rds, ua.ReferenceDescription{
 					ReferenceTypeID: rt,
 					IsForward:       fo,
 					NodeID:          r.TargetID,
@@ -1044,21 +1043,21 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 			if max := int(req.RequestedMaxReferencesPerNode); max > 0 && len(rds) > max {
 				cp, err := session.addBrowseContinuationPoint(rds[max:], max)
 				if err != nil {
-					results[i] = opcua.BrowseResult{
-						StatusCode: opcua.BadNoContinuationPoints,
+					results[i] = ua.BrowseResult{
+						StatusCode: ua.BadNoContinuationPoints,
 					}
 					wg.Done()
 					return
 				}
-				results[i] = opcua.BrowseResult{
-					ContinuationPoint: opcua.ByteString(cp),
+				results[i] = ua.BrowseResult{
+					ContinuationPoint: ua.ByteString(cp),
 					References:        rds[:max],
 				}
 				wg.Done()
 				return
 			}
 
-			results[i] = opcua.BrowseResult{
+			results[i] = ua.BrowseResult{
 				References: rds,
 			}
 			wg.Done()
@@ -1069,8 +1068,8 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 		// wait until all tasks are done
 		wg.Wait()
 		ch.Write(
-			&opcua.BrowseResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.BrowseResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
 				},
@@ -1082,21 +1081,21 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 	return nil
 }
 
-func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, req *opcua.BrowseNextRequest) error {
+func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, req *ua.BrowseNextRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -1110,11 +1109,11 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -1125,11 +1124,11 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -1142,11 +1141,11 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 	l := len(req.ContinuationPoints)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -1158,11 +1157,11 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerBrowse) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -1171,7 +1170,7 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 		session.errorCount++
 		return nil
 	}
-	results := make([]opcua.BrowseResult, l)
+	results := make([]ua.BrowseResult, l)
 
 	// handle requests in parallel using server thread pool.
 	wp := srv.WorkerPool()
@@ -1183,22 +1182,22 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 		wp.Submit(func() {
 			cp := req.ContinuationPoints[i]
 			if len(cp) == 0 {
-				results[i] = opcua.BrowseResult{
-					StatusCode: opcua.Good,
+				results[i] = ua.BrowseResult{
+					StatusCode: ua.Good,
 				}
 				wg.Done()
 				return
 			}
 			rds, max, ok := session.removeBrowseContinuationPoint([]byte(cp))
 			if !ok {
-				results[i] = opcua.BrowseResult{
-					StatusCode: opcua.BadContinuationPointInvalid,
+				results[i] = ua.BrowseResult{
+					StatusCode: ua.BadContinuationPointInvalid,
 				}
 				wg.Done()
 				return
 			}
 			if req.ReleaseContinuationPoints {
-				results[i] = opcua.BrowseResult{
+				results[i] = ua.BrowseResult{
 					StatusCode: 0,
 				}
 				wg.Done()
@@ -1207,20 +1206,20 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 			if len(rds) > max {
 				cp, err := session.addBrowseContinuationPoint(rds[max:], max)
 				if err != nil {
-					results[i] = opcua.BrowseResult{
-						StatusCode: opcua.BadNoContinuationPoints,
+					results[i] = ua.BrowseResult{
+						StatusCode: ua.BadNoContinuationPoints,
 					}
 					wg.Done()
 					return
 				}
-				results[i] = opcua.BrowseResult{
-					ContinuationPoint: opcua.ByteString(cp),
+				results[i] = ua.BrowseResult{
+					ContinuationPoint: ua.ByteString(cp),
 					References:        rds[:max],
 				}
 				wg.Done()
 				return
 			}
-			results[i] = opcua.BrowseResult{
+			results[i] = ua.BrowseResult{
 				References: rds,
 			}
 			wg.Done()
@@ -1231,8 +1230,8 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 		// wait until all tasks are done
 		wg.Wait()
 		ch.Write(
-			&opcua.BrowseNextResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.BrowseNextResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 				},
@@ -1244,21 +1243,21 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 	return nil
 }
 
-func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, requestid uint32, req *opcua.TranslateBrowsePathsToNodeIDsRequest) error {
+func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, requestid uint32, req *ua.TranslateBrowsePathsToNodeIDsRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -1272,11 +1271,11 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -1287,11 +1286,11 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -1304,11 +1303,11 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 	l := len(req.BrowsePaths)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -1320,11 +1319,11 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerTranslateBrowsePathsToNodeIds) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -1333,7 +1332,7 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 		session.errorCount++
 		return nil
 	}
-	results := make([]opcua.BrowsePathResult, l)
+	results := make([]ua.BrowsePathResult, l)
 
 	// handle requests in parallel using server thread pool.
 	wp := srv.WorkerPool()
@@ -1345,44 +1344,44 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 		wp.Submit(func() {
 			d := req.BrowsePaths[i]
 			if len(d.RelativePath.Elements) == 0 {
-				results[i] = opcua.BrowsePathResult{StatusCode: opcua.BadNothingToDo, Targets: []opcua.BrowsePathTarget{}}
+				results[i] = ua.BrowsePathResult{StatusCode: ua.BadNothingToDo, Targets: []ua.BrowsePathTarget{}}
 				wg.Done()
 				return
 			}
 			for _, element := range d.RelativePath.Elements {
 				if element.TargetName.Name == "" {
-					results[i] = opcua.BrowsePathResult{StatusCode: opcua.BadBrowseNameInvalid, Targets: []opcua.BrowsePathTarget{}}
+					results[i] = ua.BrowsePathResult{StatusCode: ua.BadBrowseNameInvalid, Targets: []ua.BrowsePathTarget{}}
 					wg.Done()
 					return
 				}
 			}
 			targets, err1 := srv.follow(d.StartingNode, d.RelativePath.Elements)
-			if err1 == opcua.BadNodeIDUnknown {
-				results[i] = opcua.BrowsePathResult{StatusCode: opcua.BadNodeIDUnknown, Targets: []opcua.BrowsePathTarget{}}
+			if err1 == ua.BadNodeIDUnknown {
+				results[i] = ua.BrowsePathResult{StatusCode: ua.BadNodeIDUnknown, Targets: []ua.BrowsePathTarget{}}
 				wg.Done()
 				return
 			}
-			if err1 == opcua.BadNothingToDo {
-				results[i] = opcua.BrowsePathResult{StatusCode: opcua.BadNothingToDo, Targets: []opcua.BrowsePathTarget{}}
+			if err1 == ua.BadNothingToDo {
+				results[i] = ua.BrowsePathResult{StatusCode: ua.BadNothingToDo, Targets: []ua.BrowsePathTarget{}}
 				wg.Done()
 				return
 			}
-			if err1 == opcua.BadNoMatch {
-				results[i] = opcua.BrowsePathResult{StatusCode: opcua.BadNoMatch, Targets: []opcua.BrowsePathTarget{}}
+			if err1 == ua.BadNoMatch {
+				results[i] = ua.BrowsePathResult{StatusCode: ua.BadNoMatch, Targets: []ua.BrowsePathTarget{}}
 				wg.Done()
 				return
 			}
 			if targets != nil {
 				if len(targets) > 0 {
-					results[i] = opcua.BrowsePathResult{StatusCode: opcua.Good, Targets: targets}
+					results[i] = ua.BrowsePathResult{StatusCode: ua.Good, Targets: targets}
 					wg.Done()
 					return
 				}
-				results[i] = opcua.BrowsePathResult{StatusCode: opcua.BadNoMatch, Targets: targets}
+				results[i] = ua.BrowsePathResult{StatusCode: ua.BadNoMatch, Targets: targets}
 				wg.Done()
 				return
 			}
-			results[i] = opcua.BrowsePathResult{StatusCode: opcua.BadNoMatch, Targets: []opcua.BrowsePathTarget{}}
+			results[i] = ua.BrowsePathResult{StatusCode: ua.BadNoMatch, Targets: []ua.BrowsePathTarget{}}
 			wg.Done()
 		})
 	}
@@ -1391,8 +1390,8 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 		// wait until all tasks are done
 		wg.Wait()
 		ch.Write(
-			&opcua.TranslateBrowsePathsToNodeIDsResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.TranslateBrowsePathsToNodeIDsResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 				},
@@ -1404,21 +1403,21 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 	return nil
 }
 
-func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32, req *opcua.RegisterNodesRequest) error {
+func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32, req *ua.RegisterNodesRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -1432,11 +1431,11 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -1447,11 +1446,11 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -1464,11 +1463,11 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 	l := len(req.NodesToRegister)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -1480,11 +1479,11 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerRegisterNodes) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -1493,15 +1492,15 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 		session.errorCount++
 		return nil
 	}
-	results := make([]opcua.NodeID, l)
+	results := make([]ua.NodeID, l)
 
 	for ii := 0; ii < l; ii++ {
 		results[ii] = req.NodesToRegister[ii]
 	}
 
 	ch.Write(
-		&opcua.RegisterNodesResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.RegisterNodesResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -1512,21 +1511,21 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 	return nil
 }
 
-func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint32, req *opcua.UnregisterNodesRequest) error {
+func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint32, req *ua.UnregisterNodesRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -1540,11 +1539,11 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -1555,11 +1554,11 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -1572,11 +1571,11 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 	l := len(req.NodesToUnregister)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -1588,11 +1587,11 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerRegisterNodes) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -1603,8 +1602,8 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 	}
 
 	ch.Write(
-		&opcua.UnregisterNodesResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.UnregisterNodesResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -1614,17 +1613,17 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 	return nil
 }
 
-func (srv *Server) follow(nodeID opcua.NodeID, elements []opcua.RelativePathElement) ([]opcua.BrowsePathTarget, error) {
+func (srv *Server) follow(nodeID ua.NodeID, elements []ua.RelativePathElement) ([]ua.BrowsePathTarget, error) {
 	if len(elements) == 0 {
-		return nil, opcua.BadNothingToDo
+		return nil, ua.BadNothingToDo
 	} else if len(elements) == 1 {
 		ns, err2 := srv.target(nodeID, elements[0])
 		if err2 != nil {
 			return nil, err2
 		}
-		targets := make([]opcua.BrowsePathTarget, len(ns))
+		targets := make([]ua.BrowsePathTarget, len(ns))
 		for i, n := range ns {
-			targets[i] = opcua.BrowsePathTarget{TargetID: n, RemainingPathIndex: math.MaxUint32}
+			targets[i] = ua.BrowsePathTarget{TargetID: n, RemainingPathIndex: math.MaxUint32}
 		}
 		return targets, nil
 	} else {
@@ -1633,29 +1632,29 @@ func (srv *Server) follow(nodeID opcua.NodeID, elements []opcua.RelativePathElem
 		if err3 != nil {
 			return nil, err3
 		}
-		var nextID opcua.ExpandedNodeID
+		var nextID ua.ExpandedNodeID
 		if len(ns2) > 0 {
 			nextID = ns2[0]
 		}
-		nextElements := make([]opcua.RelativePathElement, len(elements)-1)
+		nextElements := make([]ua.RelativePathElement, len(elements)-1)
 		copy(nextElements, elements[1:])
-		nextNode, ok := srv.NamespaceManager().FindNode(opcua.ToNodeID(nextID, srv.NamespaceUris()))
+		nextNode, ok := srv.NamespaceManager().FindNode(ua.ToNodeID(nextID, srv.NamespaceUris()))
 		if ok {
 			return srv.follow(nextNode.NodeID(), nextElements)
 		}
 		if len(nextElements) == 0 {
-			return []opcua.BrowsePathTarget{
+			return []ua.BrowsePathTarget{
 				{TargetID: nextID, RemainingPathIndex: math.MaxUint32},
 			}, nil
 		}
-		return []opcua.BrowsePathTarget{
+		return []ua.BrowsePathTarget{
 			{TargetID: nextID, RemainingPathIndex: uint32(len(nextElements))},
 		}, nil
 	}
 }
 
 // target returns a slice of target nodeid's that match the given RelativePathElement
-func (srv *Server) target(nodeID opcua.NodeID, element opcua.RelativePathElement) ([]opcua.ExpandedNodeID, error) {
+func (srv *Server) target(nodeID ua.NodeID, element ua.RelativePathElement) ([]ua.ExpandedNodeID, error) {
 	referenceTypeID := element.ReferenceTypeID
 	includeSubtypes := element.IncludeSubtypes
 	isInverse := element.IsInverse
@@ -1663,10 +1662,10 @@ func (srv *Server) target(nodeID opcua.NodeID, element opcua.RelativePathElement
 	m := srv.NamespaceManager()
 	node, ok := m.FindNode(nodeID)
 	if !ok {
-		return nil, opcua.BadNodeIDUnknown
+		return nil, ua.BadNodeIDUnknown
 	}
 	refs := node.References()
-	targets := make([]opcua.ExpandedNodeID, 0, 4)
+	targets := make([]ua.ExpandedNodeID, 0, 4)
 	for _, r := range refs {
 		if !(r.IsInverse == isInverse) {
 			continue
@@ -1674,7 +1673,7 @@ func (srv *Server) target(nodeID opcua.NodeID, element opcua.RelativePathElement
 		if !(referenceTypeID == nil || r.ReferenceTypeID == referenceTypeID || (includeSubtypes && m.IsSubtype(r.ReferenceTypeID, referenceTypeID))) {
 			continue
 		}
-		t, ok := m.FindNode(opcua.ToNodeID(r.TargetID, srv.NamespaceUris()))
+		t, ok := m.FindNode(ua.ToNodeID(r.TargetID, srv.NamespaceUris()))
 		if !ok {
 			continue
 		}
@@ -1684,27 +1683,27 @@ func (srv *Server) target(nodeID opcua.NodeID, element opcua.RelativePathElement
 		targets = append(targets, r.TargetID)
 	}
 	if len(targets) == 0 {
-		return nil, opcua.BadNoMatch
+		return nil, ua.BadNoMatch
 	}
 	return targets, nil
 }
 
 // Read returns a list of Node attributes.
-func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *opcua.ReadRequest) error {
+func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua.ReadRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -1718,11 +1717,11 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -1733,11 +1732,11 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -1752,11 +1751,11 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 	// check MaxAge
 	if req.MaxAge < 0.0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadMaxAgeInvalid,
+					ServiceResult: ua.BadMaxAgeInvalid,
 				},
 			},
 			requestid,
@@ -1766,13 +1765,13 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 		return nil
 	}
 	// check TimestampsToReturn
-	if req.TimestampsToReturn < opcua.TimestampsToReturnSource || req.TimestampsToReturn > opcua.TimestampsToReturnNeither {
+	if req.TimestampsToReturn < ua.TimestampsToReturnSource || req.TimestampsToReturn > ua.TimestampsToReturnNeither {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTimestampsToReturnInvalid,
+					ServiceResult: ua.BadTimestampsToReturnInvalid,
 				},
 			},
 			requestid,
@@ -1785,11 +1784,11 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 	l := len(req.NodesToRead)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -1801,11 +1800,11 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerRead) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -1815,7 +1814,7 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 		return nil
 	}
 
-	results := make([]opcua.DataValue, l)
+	results := make([]ua.DataValue, l)
 	wp := srv.WorkerPool()
 	wg := sync.WaitGroup{}
 	wg.Add(l)
@@ -1832,8 +1831,8 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 		// wait until all tasks are done
 		wg.Wait()
 		ch.Write(
-			&opcua.ReadResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ReadResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
 				},
@@ -1846,21 +1845,21 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *op
 }
 
 // Write sets a list of Node attributes.
-func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *opcua.WriteRequest) error {
+func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *ua.WriteRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -1874,11 +1873,11 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *o
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -1889,11 +1888,11 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *o
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -1909,11 +1908,11 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *o
 	l := len(req.NodesToWrite)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -1925,11 +1924,11 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *o
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerWrite) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -1939,7 +1938,7 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *o
 		return nil
 	}
 
-	results := make([]opcua.StatusCode, l)
+	results := make([]ua.StatusCode, l)
 
 	// handle requests in parallel using server thread pool.
 	wp := srv.WorkerPool()
@@ -1958,8 +1957,8 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *o
 		// wait until all tasks are done
 		wg.Wait()
 		ch.Write(
-			&opcua.WriteResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.WriteResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now().UTC(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 				},
@@ -1973,21 +1972,21 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *o
 }
 
 // HistoryRead returns a list of historical values.
-func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, req *opcua.HistoryReadRequest) error {
+func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, req *ua.HistoryReadRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -2001,11 +2000,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -2016,11 +2015,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -2033,13 +2032,13 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	ctx = context.WithValue(ctx, SessionKey, session)
 
 	// check TimestampsToReturn
-	if req.TimestampsToReturn < opcua.TimestampsToReturnSource || req.TimestampsToReturn > opcua.TimestampsToReturnBoth {
+	if req.TimestampsToReturn < ua.TimestampsToReturnSource || req.TimestampsToReturn > ua.TimestampsToReturnBoth {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadInvalidTimestampArgument,
+					ServiceResult: ua.BadInvalidTimestampArgument,
 				},
 			},
 			requestid,
@@ -2052,11 +2051,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	l := len(req.NodesToRead)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -2068,11 +2067,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryReadData) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -2086,11 +2085,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	h := srv.Historian()
 	if h == nil {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadHistoryOperationUnsupported,
+					ServiceResult: ua.BadHistoryOperationUnsupported,
 				},
 			},
 			requestid,
@@ -2099,11 +2098,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	}
 
 	switch details := req.HistoryReadDetails.(type) {
-	case opcua.ReadEventDetails:
+	case ua.ReadEventDetails:
 		results, status := h.ReadEvent(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
 		ch.Write(
-			&opcua.HistoryReadResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.HistoryReadResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 					ServiceResult: status,
@@ -2114,11 +2113,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 		)
 		return nil
 
-	case opcua.ReadRawModifiedDetails:
+	case ua.ReadRawModifiedDetails:
 		results, status := h.ReadRawModified(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
 		ch.Write(
-			&opcua.HistoryReadResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.HistoryReadResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 					ServiceResult: status,
@@ -2129,11 +2128,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 		)
 		return nil
 
-	case opcua.ReadProcessedDetails:
+	case ua.ReadProcessedDetails:
 		results, status := h.ReadProcessed(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
 		ch.Write(
-			&opcua.HistoryReadResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.HistoryReadResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 					ServiceResult: status,
@@ -2144,11 +2143,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 		)
 		return nil
 
-	case opcua.ReadAtTimeDetails:
+	case ua.ReadAtTimeDetails:
 		results, status := h.ReadAtTime(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
 		ch.Write(
-			&opcua.HistoryReadResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.HistoryReadResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 					ServiceResult: status,
@@ -2161,11 +2160,11 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	}
 
 	ch.Write(
-		&opcua.ServiceFault{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.ServiceFault{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHandle,
-				ServiceResult: opcua.BadHistoryOperationInvalid,
+				ServiceResult: ua.BadHistoryOperationInvalid,
 			},
 		},
 		requestid,
@@ -2174,7 +2173,7 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 }
 
 // readRange returns slice of value specified by IndexRange
-func readRange(source opcua.DataValue, indexRange string) opcua.DataValue {
+func readRange(source ua.DataValue, indexRange string) ua.DataValue {
 	if indexRange == "" {
 		return source
 	}
@@ -2182,156 +2181,156 @@ func readRange(source opcua.DataValue, indexRange string) opcua.DataValue {
 	switch src := source.Value.(type) {
 	case string:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		v1 := []rune(src)
 		i, j, status := parseBounds(ranges[0], len(v1))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]rune, j-i)
 		copy(dst, v1[i:j])
-		return opcua.NewDataValue(string(dst), source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case opcua.ByteString:
+		return ua.NewDataValue(string(dst), source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case ua.ByteString:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		v1 := []byte(src)
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]byte, j-i)
 		copy(dst, v1[i:j])
-		return opcua.NewDataValue(opcua.ByteString(dst), source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(ua.ByteString(dst), source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []bool:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]bool, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []int8:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]int8, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []byte:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]byte, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []int16:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]int16, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []uint16:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]uint16, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []int32:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]int32, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []uint32:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]uint32, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []int64:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]int64, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []uint64:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]uint64, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []float32:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]float32, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []float64:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]float64, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []string:
 		if len(ranges) > 2 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]string, j-i)
 		copy(dst, src[i:j])
@@ -2340,660 +2339,660 @@ func readRange(source opcua.DataValue, indexRange string) opcua.DataValue {
 				v1 := []rune(dst[ii])
 				i, j, status := parseBounds(ranges[1], len(v1))
 				if status.IsBad() {
-					return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+					return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 				}
 				dst2 := make([]rune, j-i)
 				copy(dst2, v1[i:j])
 				dst[ii] = string(dst2)
 			}
 		}
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []time.Time:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]time.Time, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	case []uuid.UUID:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		dst := make([]uuid.UUID, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.ByteString:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.ByteString:
 		if len(ranges) > 2 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.ByteString, j-i)
+		dst := make([]ua.ByteString, j-i)
 		copy(dst, src[i:j])
 		if len(ranges) > 1 {
 			for ii := range dst {
 				i, j, status := parseBounds(ranges[1], len(dst[ii]))
 				if status.IsBad() {
-					return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+					return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 				}
 				dst2 := make([]byte, j-i)
 				copy(dst2, dst[ii][i:j])
-				dst[ii] = opcua.ByteString(dst2)
+				dst[ii] = ua.ByteString(dst2)
 			}
 		}
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.XMLElement:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.XMLElement:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.XMLElement, j-i)
+		dst := make([]ua.XMLElement, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.NodeID:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.NodeID:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.NodeID, j-i)
+		dst := make([]ua.NodeID, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.ExpandedNodeID:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.ExpandedNodeID:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.ExpandedNodeID, j-i)
+		dst := make([]ua.ExpandedNodeID, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.StatusCode:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.StatusCode:
 		i, j, status := parseBounds(ranges[0], len(src))
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.StatusCode, j-i)
+		dst := make([]ua.StatusCode, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.QualifiedName:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.QualifiedName:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-		}
-		i, j, status := parseBounds(ranges[0], len(src))
-		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-		}
-		dst := make([]opcua.QualifiedName, j-i)
-		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.LocalizedText:
-		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.LocalizedText, j-i)
+		dst := make([]ua.QualifiedName, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.ExtensionObject:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.LocalizedText:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.ExtensionObject, j-i)
+		dst := make([]ua.LocalizedText, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.DataValue:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.ExtensionObject:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.DataValue, j-i)
+		dst := make([]ua.ExtensionObject, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.Variant:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.DataValue:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.Variant, j-i)
+		dst := make([]ua.DataValue, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
-	case []opcua.DiagnosticInfo:
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.Variant:
 		if len(ranges) > 1 {
-			return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 		}
-		dst := make([]opcua.DiagnosticInfo, j-i)
+		dst := make([]ua.Variant, j-i)
 		copy(dst, src[i:j])
-		return opcua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+	case []ua.DiagnosticInfo:
+		if len(ranges) > 1 {
+			return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		}
+		i, j, status := parseBounds(ranges[0], len(src))
+		if status.IsBad() {
+			return ua.NewDataValue(nil, status, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		}
+		dst := make([]ua.DiagnosticInfo, j-i)
+		copy(dst, src[i:j])
+		return ua.NewDataValue(dst, source.StatusCode, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	default:
-		return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
+		return ua.NewDataValue(nil, ua.BadIndexRangeNoData, source.SourceTimestamp, 0, source.ServerTimestamp, 0)
 	}
 }
 
 // writeRange sets subset of value specified by IndexRange
-func writeRange(source opcua.DataValue, value opcua.DataValue, indexRange string) (opcua.DataValue, opcua.StatusCode) {
+func writeRange(source ua.DataValue, value ua.DataValue, indexRange string) (ua.DataValue, ua.StatusCode) {
 	if indexRange == "" {
-		return opcua.NewDataValue(value.Value, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(value.Value, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	}
 	ranges := strings.Split(indexRange, ",")
 	switch src := source.Value.(type) {
 	case string:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		v1 := []rune(src)
 		i, j, status := parseBounds(ranges[0], len(v1))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := []rune(value.Value.(string))
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]rune, len(v1))
 		copy(dst, v1)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(string(dst), value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case opcua.ByteString:
+		return ua.NewDataValue(string(dst), value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case ua.ByteString:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.(opcua.ByteString)
+		v2 := value.Value.(ua.ByteString)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]byte, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(opcua.ByteString(dst), value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(ua.ByteString(dst), value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []bool:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]bool)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]bool, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []int8:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]int8)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]int8, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []byte:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]byte)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]byte, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []int16:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]int16)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]int16, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []uint16:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]uint16)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]uint16, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []int32:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]int32)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]int32, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []uint32:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]uint32)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]uint32, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []int64:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]int64)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]int64, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []uint64:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]uint64)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]uint64, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []float32:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]float32)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]float32, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []float64:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]float64)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]float64, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []string:
 		if len(ranges) > 2 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]string)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]string, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []time.Time:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]time.Time)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]time.Time, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	case []uuid.UUID:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
 		v2 := value.Value.([]uuid.UUID)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		dst := make([]uuid.UUID, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.ByteString:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.ByteString:
 		if len(ranges) > 2 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.ByteString)
+		v2 := value.Value.([]ua.ByteString)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.ByteString, len(src))
+		dst := make([]ua.ByteString, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.XMLElement:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.XMLElement:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.XMLElement)
+		v2 := value.Value.([]ua.XMLElement)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.XMLElement, len(src))
+		dst := make([]ua.XMLElement, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.NodeID:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.NodeID:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.NodeID)
+		v2 := value.Value.([]ua.NodeID)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.NodeID, len(src))
+		dst := make([]ua.NodeID, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.ExpandedNodeID:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.ExpandedNodeID:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.ExpandedNodeID)
+		v2 := value.Value.([]ua.ExpandedNodeID)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.ExpandedNodeID, len(src))
+		dst := make([]ua.ExpandedNodeID, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.StatusCode:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.StatusCode:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.StatusCode)
+		v2 := value.Value.([]ua.StatusCode)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.StatusCode, len(src))
+		dst := make([]ua.StatusCode, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.QualifiedName:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.QualifiedName:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.QualifiedName)
+		v2 := value.Value.([]ua.QualifiedName)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.QualifiedName, len(src))
+		dst := make([]ua.QualifiedName, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.LocalizedText:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.LocalizedText:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.LocalizedText)
+		v2 := value.Value.([]ua.LocalizedText)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.LocalizedText, len(src))
+		dst := make([]ua.LocalizedText, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.ExtensionObject:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.ExtensionObject:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.ExtensionObject)
+		v2 := value.Value.([]ua.ExtensionObject)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.ExtensionObject, len(src))
+		dst := make([]ua.ExtensionObject, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.DataValue:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.DataValue:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.DataValue)
+		v2 := value.Value.([]ua.DataValue)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.DataValue, len(src))
+		dst := make([]ua.DataValue, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.Variant:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.Variant:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.Variant)
+		v2 := value.Value.([]ua.Variant)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.Variant, len(src))
+		dst := make([]ua.Variant, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
-	case []opcua.DiagnosticInfo:
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
+	case []ua.DiagnosticInfo:
 		if len(ranges) > 1 {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
 		i, j, status := parseBounds(ranges[0], len(src))
 		if status.IsBad() {
-			return opcua.NilDataValue, status
+			return ua.NilDataValue, status
 		}
-		v2 := value.Value.([]opcua.DiagnosticInfo)
+		v2 := value.Value.([]ua.DiagnosticInfo)
 		if j-i != len(v2) {
-			return opcua.NilDataValue, opcua.BadIndexRangeNoData
+			return ua.NilDataValue, ua.BadIndexRangeNoData
 		}
-		dst := make([]opcua.DiagnosticInfo, len(src))
+		dst := make([]ua.DiagnosticInfo, len(src))
 		copy(dst, src)
 		copy(dst[i:j], v2)
-		return opcua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), opcua.Good
+		return ua.NewDataValue(dst, value.StatusCode, time.Now(), 0, time.Now(), 0), ua.Good
 	default:
-		return opcua.NilDataValue, opcua.BadIndexRangeNoData
+		return ua.NilDataValue, ua.BadIndexRangeNoData
 	}
 }
 
-func parseBounds(s string, length int) (int, int, opcua.StatusCode) {
+func parseBounds(s string, length int) (int, int, ua.StatusCode) {
 	lo := int64(-1)
 	hi := int64(-1)
 	len := int64(length)
 	var err error
 
 	if len == 0 {
-		return -1, -1, opcua.BadIndexRangeNoData
+		return -1, -1, ua.BadIndexRangeNoData
 	}
 
 	if s == "" {
-		return 0, length, opcua.Good
+		return 0, length, ua.Good
 	}
 
 	index := strings.Index(s, ":")
 	if index != -1 {
 		lo, err = strconv.ParseInt(s[:index], 10, 32)
 		if err != nil {
-			return -1, -1, opcua.BadIndexRangeInvalid
+			return -1, -1, ua.BadIndexRangeInvalid
 		}
 		hi, err = strconv.ParseInt(s[index+1:], 10, 32)
 		if err != nil {
-			return -1, -1, opcua.BadIndexRangeInvalid
+			return -1, -1, ua.BadIndexRangeInvalid
 		}
 		if hi < 0 {
-			return -1, -1, opcua.BadIndexRangeInvalid
+			return -1, -1, ua.BadIndexRangeInvalid
 		}
 		if lo >= hi {
-			return -1, -1, opcua.BadIndexRangeInvalid
+			return -1, -1, ua.BadIndexRangeInvalid
 		}
 	} else {
 		lo, err = strconv.ParseInt(s, 10, 32)
 		if err != nil {
-			return -1, -1, opcua.BadIndexRangeInvalid
+			return -1, -1, ua.BadIndexRangeInvalid
 		}
 	}
 	if lo < 0 {
-		return -1, -1, opcua.BadIndexRangeInvalid
+		return -1, -1, ua.BadIndexRangeInvalid
 	}
 	// now check if no data in range
 	if lo >= len {
-		return -1, -1, opcua.BadIndexRangeNoData
+		return -1, -1, ua.BadIndexRangeNoData
 	}
 	// limit hi
 	if hi >= len {
@@ -3005,25 +3004,25 @@ func parseBounds(s string, length int) (int, int, opcua.StatusCode) {
 	}
 	hi++
 
-	return int(lo), int(hi), opcua.Good
+	return int(lo), int(hi), ua.Good
 }
 
 // selectTimestamps returns new instances of DataValue with only the selected timestamps.
-func selectTimestamps(values []opcua.DataValue, timestampsToReturn opcua.TimestampsToReturn) []opcua.DataValue {
+func selectTimestamps(values []ua.DataValue, timestampsToReturn ua.TimestampsToReturn) []ua.DataValue {
 	switch timestampsToReturn {
-	case opcua.TimestampsToReturnSource:
+	case ua.TimestampsToReturnSource:
 		for i, value := range values {
-			values[i] = opcua.NewDataValue(value.Value, value.StatusCode, value.SourceTimestamp, 0, time.Time{}, 0)
+			values[i] = ua.NewDataValue(value.Value, value.StatusCode, value.SourceTimestamp, 0, time.Time{}, 0)
 		}
 		return values
-	case opcua.TimestampsToReturnServer:
+	case ua.TimestampsToReturnServer:
 		for i, value := range values {
-			values[i] = opcua.NewDataValue(value.Value, value.StatusCode, time.Time{}, 0, value.ServerTimestamp, 0)
+			values[i] = ua.NewDataValue(value.Value, value.StatusCode, time.Time{}, 0, value.ServerTimestamp, 0)
 		}
 		return values
-	case opcua.TimestampsToReturnNeither:
+	case ua.TimestampsToReturnNeither:
 		for i, value := range values {
-			values[i] = opcua.NewDataValue(value.Value, value.StatusCode, time.Time{}, 0, time.Time{}, 0)
+			values[i] = ua.NewDataValue(value.Value, value.StatusCode, time.Time{}, 0, time.Time{}, 0)
 		}
 		return values
 	default:
@@ -3032,21 +3031,21 @@ func selectTimestamps(values []opcua.DataValue, timestampsToReturn opcua.Timesta
 }
 
 // Call invokes a list of Methods.
-func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *opcua.CallRequest) error {
+func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua.CallRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -3060,11 +3059,11 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -3075,11 +3074,11 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -3094,11 +3093,11 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 	l := len(req.MethodsToCall)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -3110,11 +3109,11 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerMethodCall) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -3124,7 +3123,7 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 		return nil
 	}
 
-	results := make([]opcua.CallMethodResult, l)
+	results := make([]ua.CallMethodResult, l)
 
 	// handle requests in parallel using server thread pool.
 	wp := srv.WorkerPool()
@@ -3138,13 +3137,13 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 			m := srv.NamespaceManager()
 			n1, ok := m.FindNode(n.ObjectID)
 			if !ok {
-				results[i] = opcua.CallMethodResult{StatusCode: opcua.BadNodeIDUnknown}
+				results[i] = ua.CallMethodResult{StatusCode: ua.BadNodeIDUnknown}
 				wg.Done()
 				return
 			}
 			rp := n1.UserRolePermissions(ctx)
-			if !IsUserPermitted(rp, opcua.PermissionTypeBrowse) {
-				results[i] = opcua.CallMethodResult{StatusCode: opcua.BadNodeIDUnknown}
+			if !IsUserPermitted(rp, ua.PermissionTypeBrowse) {
+				results[i] = ua.CallMethodResult{StatusCode: ua.BadNodeIDUnknown}
 				wg.Done()
 				return
 			}
@@ -3152,19 +3151,19 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 			case *ObjectNode:
 			case *ObjectTypeNode:
 			default:
-				results[i] = opcua.CallMethodResult{StatusCode: opcua.BadNodeClassInvalid}
+				results[i] = ua.CallMethodResult{StatusCode: ua.BadNodeClassInvalid}
 				wg.Done()
 				return
 			}
 			n2, ok := m.FindNode(n.MethodID)
 			if !ok {
-				results[i] = opcua.CallMethodResult{StatusCode: opcua.BadNodeIDUnknown}
+				results[i] = ua.CallMethodResult{StatusCode: ua.BadNodeIDUnknown}
 				wg.Done()
 				return
 			}
 			rp = n2.UserRolePermissions(ctx)
-			if !IsUserPermitted(rp, opcua.PermissionTypeBrowse) {
-				results[i] = opcua.CallMethodResult{StatusCode: opcua.BadNodeIDUnknown}
+			if !IsUserPermitted(rp, ua.PermissionTypeBrowse) {
+				results[i] = ua.CallMethodResult{StatusCode: ua.BadNodeIDUnknown}
 				wg.Done()
 				return
 			}
@@ -3172,16 +3171,16 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 			switch n3 := n2.(type) {
 			case *MethodNode:
 				if !n3.UserExecutable(ctx) {
-					results[i] = opcua.CallMethodResult{StatusCode: opcua.BadUserAccessDenied}
+					results[i] = ua.CallMethodResult{StatusCode: ua.BadUserAccessDenied}
 				} else {
 					if n3.callMethodHandler != nil {
 						results[i] = n3.callMethodHandler(ctx, n)
 					} else {
-						results[i] = opcua.CallMethodResult{StatusCode: opcua.BadNotImplemented}
+						results[i] = ua.CallMethodResult{StatusCode: ua.BadNotImplemented}
 					}
 				}
 			default:
-				results[i] = opcua.CallMethodResult{StatusCode: opcua.BadAttributeIDInvalid}
+				results[i] = ua.CallMethodResult{StatusCode: ua.BadAttributeIDInvalid}
 			}
 			wg.Done()
 		})
@@ -3190,8 +3189,8 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 		// wait until all tasks are done
 		wg.Wait()
 		ch.Write(
-			&opcua.CallResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.CallResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 				},
@@ -3204,21 +3203,21 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *op
 }
 
 // CreateMonitoredItems creates and adds one or more MonitoredItems to a Subscription.
-func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid uint32, req *opcua.CreateMonitoredItemsRequest) error {
+func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid uint32, req *ua.CreateMonitoredItemsRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -3232,11 +3231,11 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -3247,11 +3246,11 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -3267,11 +3266,11 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSubscriptionIDInvalid,
+					ServiceResult: ua.BadSubscriptionIDInvalid,
 				},
 			},
 			requestid,
@@ -3284,13 +3283,13 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	sub.lifetimeCounter = 0
 	sub.Unlock()
 
-	if req.TimestampsToReturn < opcua.TimestampsToReturnSource || req.TimestampsToReturn > opcua.TimestampsToReturnNeither {
+	if req.TimestampsToReturn < ua.TimestampsToReturnSource || req.TimestampsToReturn > ua.TimestampsToReturnNeither {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTimestampsToReturnInvalid,
+					ServiceResult: ua.BadTimestampsToReturnInvalid,
 				},
 			},
 			requestid,
@@ -3303,11 +3302,11 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	l := len(req.ItemsToCreate)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -3319,11 +3318,11 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -3333,94 +3332,94 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 		return nil
 	}
 
-	results := make([]opcua.MonitoredItemCreateResult, l)
+	results := make([]ua.MonitoredItemCreateResult, l)
 	minSupportedSampleRate := srv.ServerCapabilities().MinSupportedSampleRate
 	for i, item := range req.ItemsToCreate {
 		n, ok := srv.NamespaceManager().FindNode(item.ItemToMonitor.NodeID)
 		if !ok {
-			results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadNodeIDUnknown}
+			results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadNodeIDUnknown}
 			continue
 		}
 		attr := item.ItemToMonitor.AttributeID
 		if !n.IsAttributeIDValid(attr) {
-			results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadAttributeIDInvalid}
+			results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadAttributeIDInvalid}
 			continue
 		}
 		switch attr {
-		case opcua.AttributeIDValue:
+		case ua.AttributeIDValue:
 			n2, ok := n.(*VariableNode)
 			if !ok {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadAttributeIDInvalid}
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadAttributeIDInvalid}
 				continue
 			}
 			// check AccessLevel
-			if (n2.AccessLevel() & opcua.AccessLevelsCurrentRead) == 0 {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadNotReadable}
+			if (n2.AccessLevel() & ua.AccessLevelsCurrentRead) == 0 {
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadNotReadable}
 				continue
 			}
-			if (n2.UserAccessLevel(ctx) & opcua.AccessLevelsCurrentRead) == 0 {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadUserAccessDenied}
+			if (n2.UserAccessLevel(ctx) & ua.AccessLevelsCurrentRead) == 0 {
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadUserAccessDenied}
 				continue
 			}
-			if sc := srv.validateIndexRange(ctx, item.ItemToMonitor.IndexRange, n2.DataType(), n2.ValueRank()); sc != opcua.Good {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: sc}
+			if sc := srv.validateIndexRange(ctx, item.ItemToMonitor.IndexRange, n2.DataType(), n2.ValueRank()); sc != ua.Good {
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: sc}
 				continue
 			}
 			if item.RequestedParameters.Filter == nil {
-				item.RequestedParameters.Filter = opcua.DataChangeFilter{Trigger: opcua.DataChangeTriggerStatusValue}
+				item.RequestedParameters.Filter = ua.DataChangeFilter{Trigger: ua.DataChangeTriggerStatusValue}
 			}
-			dcf, ok := item.RequestedParameters.Filter.(opcua.DataChangeFilter)
+			dcf, ok := item.RequestedParameters.Filter.(ua.DataChangeFilter)
 			if !ok {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadFilterNotAllowed}
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadFilterNotAllowed}
 				continue
 			}
-			if dcf.DeadbandType != uint32(opcua.DeadbandTypeNone) {
+			if dcf.DeadbandType != uint32(ua.DeadbandTypeNone) {
 				destType := srv.NamespaceManager().FindVariantType(n2.DataType())
 				switch destType {
-				case opcua.VariantTypeByte, opcua.VariantTypeSByte:
-				case opcua.VariantTypeInt16, opcua.VariantTypeInt32, opcua.VariantTypeInt64:
-				case opcua.VariantTypeUInt16, opcua.VariantTypeUInt32, opcua.VariantTypeUInt64:
-				case opcua.VariantTypeFloat, opcua.VariantTypeDouble:
+				case ua.VariantTypeByte, ua.VariantTypeSByte:
+				case ua.VariantTypeInt16, ua.VariantTypeInt32, ua.VariantTypeInt64:
+				case ua.VariantTypeUInt16, ua.VariantTypeUInt32, ua.VariantTypeUInt64:
+				case ua.VariantTypeFloat, ua.VariantTypeDouble:
 				default:
-					results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadFilterNotAllowed}
+					results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadFilterNotAllowed}
 					continue
 				}
 			}
 			mi := NewMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters, req.TimestampsToReturn, minSupportedSampleRate)
 			sub.AppendItem(mi)
-			results[i] = opcua.MonitoredItemCreateResult{
+			results[i] = ua.MonitoredItemCreateResult{
 				MonitoredItemID:         mi.id,
 				RevisedSamplingInterval: mi.samplingInterval,
 				RevisedQueueSize:        mi.queueSize,
 			}
 			continue
-		case opcua.AttributeIDEventNotifier:
+		case ua.AttributeIDEventNotifier:
 			n2, ok := n.(*ObjectNode)
 			if !ok {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadAttributeIDInvalid}
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadAttributeIDInvalid}
 				continue
 			}
 			// check EventNotifier
-			if (n2.EventNotifier() & opcua.EventNotifierSubscribeToEvents) == 0 {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadNotReadable}
+			if (n2.EventNotifier() & ua.EventNotifierSubscribeToEvents) == 0 {
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadNotReadable}
 				continue
 			}
 			rp := n2.UserRolePermissions(ctx)
-			if !IsUserPermitted(rp, opcua.PermissionTypeReceiveEvents) {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadUserAccessDenied}
+			if !IsUserPermitted(rp, ua.PermissionTypeReceiveEvents) {
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadUserAccessDenied}
 				continue
 			}
 			if item.RequestedParameters.Filter == nil {
-				item.RequestedParameters.Filter = opcua.EventFilter{} // TODO: get EventBase select clause
+				item.RequestedParameters.Filter = ua.EventFilter{} // TODO: get EventBase select clause
 			}
-			_, ok = item.RequestedParameters.Filter.(opcua.EventFilter)
+			_, ok = item.RequestedParameters.Filter.(ua.EventFilter)
 			if !ok {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadFilterNotAllowed}
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadFilterNotAllowed}
 				continue
 			}
 			mi := NewMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters, req.TimestampsToReturn, 0.0)
 			sub.AppendItem(mi)
-			results[i] = opcua.MonitoredItemCreateResult{
+			results[i] = ua.MonitoredItemCreateResult{
 				MonitoredItemID:         mi.id,
 				RevisedSamplingInterval: mi.samplingInterval,
 				RevisedQueueSize:        mi.queueSize,
@@ -3428,17 +3427,17 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 			continue
 		default:
 			rp := n.UserRolePermissions(ctx)
-			if !IsUserPermitted(rp, opcua.PermissionTypeBrowse) {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadAttributeIDInvalid}
+			if !IsUserPermitted(rp, ua.PermissionTypeBrowse) {
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadAttributeIDInvalid}
 				continue
 			}
 			if item.RequestedParameters.Filter != nil {
-				results[i] = opcua.MonitoredItemCreateResult{StatusCode: opcua.BadFilterNotAllowed}
+				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadFilterNotAllowed}
 				continue
 			}
 			mi := NewMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters, req.TimestampsToReturn, minSupportedSampleRate)
 			sub.AppendItem(mi)
-			results[i] = opcua.MonitoredItemCreateResult{
+			results[i] = ua.MonitoredItemCreateResult{
 				MonitoredItemID:         mi.id,
 				RevisedSamplingInterval: mi.samplingInterval,
 				RevisedQueueSize:        mi.queueSize,
@@ -3448,8 +3447,8 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	}
 
 	ch.Write(
-		&opcua.CreateMonitoredItemsResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.CreateMonitoredItemsResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -3461,21 +3460,21 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 }
 
 // ModifyMonitoredItems modifies MonitoredItems of a Subscription.
-func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid uint32, req *opcua.ModifyMonitoredItemsRequest) error {
+func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid uint32, req *ua.ModifyMonitoredItemsRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -3489,11 +3488,11 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -3504,11 +3503,11 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -3524,11 +3523,11 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSubscriptionIDInvalid,
+					ServiceResult: ua.BadSubscriptionIDInvalid,
 				},
 			},
 			requestid,
@@ -3541,13 +3540,13 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	sub.lifetimeCounter = 0
 	sub.Unlock()
 
-	if req.TimestampsToReturn < opcua.TimestampsToReturnSource || req.TimestampsToReturn > opcua.TimestampsToReturnNeither {
+	if req.TimestampsToReturn < ua.TimestampsToReturnSource || req.TimestampsToReturn > ua.TimestampsToReturnNeither {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTimestampsToReturnInvalid,
+					ServiceResult: ua.BadTimestampsToReturnInvalid,
 				},
 			},
 			requestid,
@@ -3560,11 +3559,11 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	l := len(req.ItemsToModify)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -3576,11 +3575,11 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -3590,62 +3589,62 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 		return nil
 	}
 
-	results := make([]opcua.MonitoredItemModifyResult, l)
+	results := make([]ua.MonitoredItemModifyResult, l)
 
 	for i, modifyReq := range req.ItemsToModify {
 		if item, ok := sub.FindItem(modifyReq.MonitoredItemID); ok {
 			attr := item.itemToMonitor.AttributeID
 			switch {
-			case attr == opcua.AttributeIDValue:
+			case attr == ua.AttributeIDValue:
 				if modifyReq.RequestedParameters.Filter == nil {
-					modifyReq.RequestedParameters.Filter = opcua.DataChangeFilter{Trigger: opcua.DataChangeTriggerStatusValue}
+					modifyReq.RequestedParameters.Filter = ua.DataChangeFilter{Trigger: ua.DataChangeTriggerStatusValue}
 				}
-				dcf, ok := modifyReq.RequestedParameters.Filter.(opcua.DataChangeFilter)
+				dcf, ok := modifyReq.RequestedParameters.Filter.(ua.DataChangeFilter)
 				if !ok {
-					results[i] = opcua.MonitoredItemModifyResult{StatusCode: opcua.BadFilterNotAllowed}
+					results[i] = ua.MonitoredItemModifyResult{StatusCode: ua.BadFilterNotAllowed}
 					continue
 				}
-				if dcf.DeadbandType != uint32(opcua.DeadbandTypeNone) {
+				if dcf.DeadbandType != uint32(ua.DeadbandTypeNone) {
 					destType := srv.NamespaceManager().FindVariantType(item.node.(*VariableNode).DataType())
 					switch destType {
-					case opcua.VariantTypeByte, opcua.VariantTypeSByte:
-					case opcua.VariantTypeInt16, opcua.VariantTypeInt32, opcua.VariantTypeInt64:
-					case opcua.VariantTypeUInt16, opcua.VariantTypeUInt32, opcua.VariantTypeUInt64:
-					case opcua.VariantTypeFloat, opcua.VariantTypeDouble:
+					case ua.VariantTypeByte, ua.VariantTypeSByte:
+					case ua.VariantTypeInt16, ua.VariantTypeInt32, ua.VariantTypeInt64:
+					case ua.VariantTypeUInt16, ua.VariantTypeUInt32, ua.VariantTypeUInt64:
+					case ua.VariantTypeFloat, ua.VariantTypeDouble:
 					default:
-						results[i] = opcua.MonitoredItemModifyResult{StatusCode: opcua.BadFilterNotAllowed}
+						results[i] = ua.MonitoredItemModifyResult{StatusCode: ua.BadFilterNotAllowed}
 						continue
 					}
 				}
 				results[i] = item.Modify(ctx, modifyReq)
 				continue
-			case attr == opcua.AttributeIDEventNotifier:
+			case attr == ua.AttributeIDEventNotifier:
 				if modifyReq.RequestedParameters.Filter == nil {
-					modifyReq.RequestedParameters.Filter = opcua.EventFilter{} // TODO: get EventBase select clause
+					modifyReq.RequestedParameters.Filter = ua.EventFilter{} // TODO: get EventBase select clause
 				}
-				_, ok := modifyReq.RequestedParameters.Filter.(opcua.EventFilter)
+				_, ok := modifyReq.RequestedParameters.Filter.(ua.EventFilter)
 				if !ok {
-					results[i] = opcua.MonitoredItemModifyResult{StatusCode: opcua.BadFilterNotAllowed}
+					results[i] = ua.MonitoredItemModifyResult{StatusCode: ua.BadFilterNotAllowed}
 					continue
 				}
 				results[i] = item.Modify(ctx, modifyReq)
 				continue
 			default:
 				if modifyReq.RequestedParameters.Filter != nil {
-					results[i] = opcua.MonitoredItemModifyResult{StatusCode: opcua.BadFilterNotAllowed}
+					results[i] = ua.MonitoredItemModifyResult{StatusCode: ua.BadFilterNotAllowed}
 					continue
 				}
 				results[i] = item.Modify(ctx, modifyReq)
 				continue
 			}
 		} else {
-			results[i] = opcua.MonitoredItemModifyResult{StatusCode: opcua.BadMonitoredItemIDInvalid}
+			results[i] = ua.MonitoredItemModifyResult{StatusCode: ua.BadMonitoredItemIDInvalid}
 		}
 	}
 
 	ch.Write(
-		&opcua.ModifyMonitoredItemsResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.ModifyMonitoredItemsResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -3657,21 +3656,21 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 }
 
 // SetMonitoringMode sets the monitoring mode for one or more MonitoredItems of a Subscription.
-func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid uint32, req *opcua.SetMonitoringModeRequest) error {
+func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid uint32, req *ua.SetMonitoringModeRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -3685,11 +3684,11 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -3700,11 +3699,11 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -3720,11 +3719,11 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSubscriptionIDInvalid,
+					ServiceResult: ua.BadSubscriptionIDInvalid,
 				},
 			},
 			requestid,
@@ -3740,11 +3739,11 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 	l := len(req.MonitoredItemIDs)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -3756,11 +3755,11 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -3770,20 +3769,20 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 		return nil
 	}
 
-	results := make([]opcua.StatusCode, l)
+	results := make([]ua.StatusCode, l)
 
 	for i, id := range req.MonitoredItemIDs {
 		if item, ok := sub.FindItem(id); ok {
 			item.SetMonitoringMode(ctx, req.MonitoringMode)
-			results[i] = opcua.Good
+			results[i] = ua.Good
 		} else {
-			results[i] = opcua.BadMonitoredItemIDInvalid
+			results[i] = ua.BadMonitoredItemIDInvalid
 		}
 	}
 
 	ch.Write(
-		&opcua.SetMonitoringModeResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.SetMonitoringModeResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -3795,21 +3794,21 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 }
 
 // SetTriggering creates and deletes triggering links for a triggering item.
-func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32, req *opcua.SetTriggeringRequest) error {
+func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32, req *ua.SetTriggeringRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -3823,11 +3822,11 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -3838,11 +3837,11 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -3856,11 +3855,11 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSubscriptionIDInvalid,
+					ServiceResult: ua.BadSubscriptionIDInvalid,
 				},
 			},
 			requestid,
@@ -3875,11 +3874,11 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 
 	if len(req.LinksToRemove) == 0 && len(req.LinksToAdd) == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -3892,11 +3891,11 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 	trigger, ok := sub.FindItem(req.TriggeringItemID)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadMonitoredItemIDInvalid,
+					ServiceResult: ua.BadMonitoredItemIDInvalid,
 				},
 			},
 			requestid,
@@ -3906,37 +3905,37 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 		return nil
 	}
 
-	removeResults := make([]opcua.StatusCode, len(req.LinksToRemove))
+	removeResults := make([]ua.StatusCode, len(req.LinksToRemove))
 	for i, link := range req.LinksToRemove {
 		triggered, ok := sub.FindItem(link)
 		if !ok {
-			removeResults[i] = opcua.BadMonitoredItemIDInvalid
+			removeResults[i] = ua.BadMonitoredItemIDInvalid
 			continue
 		}
 		if trigger.RemoveTriggeredItem(triggered) {
-			removeResults[i] = opcua.Good
+			removeResults[i] = ua.Good
 		} else {
-			removeResults[i] = opcua.BadMonitoredItemIDInvalid
+			removeResults[i] = ua.BadMonitoredItemIDInvalid
 		}
 	}
 
-	addResults := make([]opcua.StatusCode, len(req.LinksToAdd))
+	addResults := make([]ua.StatusCode, len(req.LinksToAdd))
 	for i, link := range req.LinksToAdd {
 		triggered, ok := sub.FindItem(link)
 		if !ok {
-			addResults[i] = opcua.BadMonitoredItemIDInvalid
+			addResults[i] = ua.BadMonitoredItemIDInvalid
 			continue
 		}
 		if trigger.AddTriggeredItem(triggered) {
-			addResults[i] = opcua.Good
+			addResults[i] = ua.Good
 		} else {
-			addResults[i] = opcua.BadMonitoredItemIDInvalid
+			addResults[i] = ua.BadMonitoredItemIDInvalid
 		}
 	}
 
 	ch.Write(
-		&opcua.SetTriggeringResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.SetTriggeringResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -3949,21 +3948,21 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 }
 
 // DeleteMonitoredItems removes one or more MonitoredItems of a Subscription.
-func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid uint32, req *opcua.DeleteMonitoredItemsRequest) error {
+func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid uint32, req *ua.DeleteMonitoredItemsRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -3977,11 +3976,11 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -3992,11 +3991,11 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -4012,11 +4011,11 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSubscriptionIDInvalid,
+					ServiceResult: ua.BadSubscriptionIDInvalid,
 				},
 			},
 			requestid,
@@ -4032,11 +4031,11 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	l := len(req.MonitoredItemIDs)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -4048,11 +4047,11 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall) {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManyOperations,
+					ServiceResult: ua.BadTooManyOperations,
 				},
 			},
 			requestid,
@@ -4061,19 +4060,19 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 		session.errorCount++
 		return nil
 	}
-	results := make([]opcua.StatusCode, l)
+	results := make([]ua.StatusCode, l)
 
 	for i, id := range req.MonitoredItemIDs {
 		if ok := sub.DeleteItem(ctx, id); ok {
-			results[i] = opcua.Good
+			results[i] = ua.Good
 		} else {
-			results[i] = opcua.BadMonitoredItemIDInvalid
+			results[i] = ua.BadMonitoredItemIDInvalid
 		}
 	}
 
 	ch.Write(
-		&opcua.DeleteMonitoredItemsResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.DeleteMonitoredItemsResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -4084,13 +4083,13 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	return nil
 }
 
-func (srv *Server) validateIndexRange(ctx context.Context, s string, dataType opcua.NodeID, rank int32) opcua.StatusCode {
+func (srv *Server) validateIndexRange(ctx context.Context, s string, dataType ua.NodeID, rank int32) ua.StatusCode {
 	lo := int64(-1)
 	hi := int64(-1)
 	var err error
 
 	if s == "" {
-		return opcua.Good
+		return ua.Good
 	}
 
 	ranges := strings.Split(s, ",")
@@ -4099,73 +4098,73 @@ func (srv *Server) validateIndexRange(ctx context.Context, s string, dataType op
 		if index != -1 {
 			lo, err = strconv.ParseInt(r[:index], 10, 32)
 			if err != nil {
-				return opcua.BadIndexRangeInvalid
+				return ua.BadIndexRangeInvalid
 			}
 			hi, err = strconv.ParseInt(r[index+1:], 10, 32)
 			if err != nil {
-				return opcua.BadIndexRangeInvalid
+				return ua.BadIndexRangeInvalid
 			}
 			if hi < 0 {
-				return opcua.BadIndexRangeInvalid
+				return ua.BadIndexRangeInvalid
 			}
 			if lo >= hi {
-				return opcua.BadIndexRangeInvalid
+				return ua.BadIndexRangeInvalid
 			}
 		} else {
 			lo, err = strconv.ParseInt(r, 10, 32)
 			if err != nil {
-				return opcua.BadIndexRangeInvalid
+				return ua.BadIndexRangeInvalid
 			}
 		}
 		if lo < 0 {
-			return opcua.BadIndexRangeInvalid
+			return ua.BadIndexRangeInvalid
 		}
 	}
 
 	destType := srv.NamespaceManager().FindVariantType(dataType)
 
 	switch rank {
-	case opcua.ValueRankScalarOrOneDimension:
+	case ua.ValueRankScalarOrOneDimension:
 		diff := len(ranges) - 1
 		if !(diff == 0) {
-			if !(diff == 1 && (destType == opcua.VariantTypeString || destType == opcua.VariantTypeByteString)) {
-				return opcua.BadIndexRangeNoData
+			if !(diff == 1 && (destType == ua.VariantTypeString || destType == ua.VariantTypeByteString)) {
+				return ua.BadIndexRangeNoData
 			}
 		}
-	case opcua.ValueRankAny:
-	case opcua.ValueRankScalar:
-		if !(len(ranges) == 1 && (destType == opcua.VariantTypeString || destType == opcua.VariantTypeByteString)) {
-			return opcua.BadIndexRangeNoData
+	case ua.ValueRankAny:
+	case ua.ValueRankScalar:
+		if !(len(ranges) == 1 && (destType == ua.VariantTypeString || destType == ua.VariantTypeByteString)) {
+			return ua.BadIndexRangeNoData
 		}
-	case opcua.ValueRankOneOrMoreDimensions:
+	case ua.ValueRankOneOrMoreDimensions:
 	default:
 		diff := len(ranges) - int(rank)
 		if !(diff == 0) {
-			if !(diff == 1 && (destType == opcua.VariantTypeString || destType == opcua.VariantTypeByteString)) {
-				return opcua.BadIndexRangeNoData
+			if !(diff == 1 && (destType == ua.VariantTypeString || destType == ua.VariantTypeByteString)) {
+				return ua.BadIndexRangeNoData
 			}
 		}
 	}
 
-	return opcua.Good
+	return ua.Good
 }
 
 // CreateSubscription creates a Subscription.
-func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid uint32, req *opcua.CreateSubscriptionRequest) error {
+func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid uint32, req *ua.CreateSubscriptionRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -4179,11 +4178,11 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -4194,11 +4193,11 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -4212,11 +4211,11 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 	s := NewSubscription(sm, session, req.RequestedPublishingInterval, req.RequestedLifetimeCount, req.RequestedMaxKeepAliveCount, req.MaxNotificationsPerPublish, req.PublishingEnabled, req.Priority)
 	if err := sm.Add(s); err != nil {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadTooManySubscriptions,
+					ServiceResult: ua.BadTooManySubscriptions,
 				},
 			},
 			requestid,
@@ -4229,8 +4228,8 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 	// log.Printf("Created subscription '%d'.\n", s.id)
 
 	ch.Write(
-		&opcua.CreateSubscriptionResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.CreateSubscriptionResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -4245,21 +4244,21 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 }
 
 // ModifySubscription modifies a Subscription.
-func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid uint32, req *opcua.ModifySubscriptionRequest) error {
+func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid uint32, req *ua.ModifySubscriptionRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -4273,11 +4272,11 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -4288,11 +4287,11 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -4306,11 +4305,11 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSubscriptionIDInvalid,
+					ServiceResult: ua.BadSubscriptionIDInvalid,
 				},
 			},
 			requestid,
@@ -4323,8 +4322,8 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 	sub.Modify(req.RequestedPublishingInterval, req.RequestedLifetimeCount, req.RequestedMaxKeepAliveCount, req.MaxNotificationsPerPublish, req.Priority)
 
 	ch.Write(
-		&opcua.ModifySubscriptionResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.ModifySubscriptionResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -4338,21 +4337,21 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 }
 
 // SetPublishingMode enables sending of Notifications on one or more Subscriptions.
-func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid uint32, req *opcua.SetPublishingModeRequest) error {
+func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid uint32, req *ua.SetPublishingModeRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -4366,11 +4365,11 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -4381,11 +4380,11 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -4395,20 +4394,20 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 		return nil
 	}
 
-	results := make([]opcua.StatusCode, len(req.SubscriptionIDs))
+	results := make([]ua.StatusCode, len(req.SubscriptionIDs))
 	sm := srv.SubscriptionManager()
 	for i, id := range req.SubscriptionIDs {
 		s, ok := sm.Get(id)
 		if ok {
 			s.SetPublishingMode(req.PublishingEnabled)
-			results[i] = opcua.Good
+			results[i] = ua.Good
 		} else {
-			results[i] = opcua.BadSubscriptionIDInvalid
+			results[i] = ua.BadSubscriptionIDInvalid
 		}
 	}
 	ch.Write(
-		&opcua.SetPublishingModeResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.SetPublishingModeResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -4422,21 +4421,21 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 // TransferSubscriptions transfers a Subscription and its MonitoredItems from one Session to another.
 
 // DeleteSubscriptions deletes one or more Subscriptions.
-func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid uint32, req *opcua.DeleteSubscriptionsRequest) error {
+func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid uint32, req *ua.DeleteSubscriptionsRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -4450,11 +4449,11 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -4465,11 +4464,11 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -4480,11 +4479,11 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 	l := len(req.SubscriptionIDs)
 	if l == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNothingToDo,
+					ServiceResult: ua.BadNothingToDo,
 				},
 			},
 			requestid,
@@ -4494,21 +4493,21 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 		return nil
 	}
 
-	results := make([]opcua.StatusCode, l)
+	results := make([]ua.StatusCode, l)
 	sm := srv.SubscriptionManager()
 	for i, id := range req.SubscriptionIDs {
 		if s, ok := sm.Get(id); ok {
 			sm.Delete(s)
 			s.Delete()
 			// log.Printf("Deleted subscription '%d'.\n", id)
-			results[i] = opcua.Good
+			results[i] = ua.Good
 		} else {
-			results[i] = opcua.BadSubscriptionIDInvalid
+			results[i] = ua.BadSubscriptionIDInvalid
 		}
 	}
 	ch.Write(
-		&opcua.DeleteSubscriptionsResponse{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.DeleteSubscriptionsResponse{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHeader.RequestHandle,
 			},
@@ -4521,11 +4520,11 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 		ch, requestid, req, _, ok := session.removePublishRequest()
 		for ok {
 			ch.Write(
-				&opcua.ServiceFault{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.ServiceFault{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHandle,
-						ServiceResult: opcua.BadNoSubscription,
+						ServiceResult: ua.BadNoSubscription,
 					},
 				},
 				requestid,
@@ -4539,21 +4538,21 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 }
 
 // Publish returns a NotificationMessage or a keep-alive Message.
-func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req *opcua.PublishRequest) error {
+func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req *ua.PublishRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -4567,11 +4566,11 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -4582,11 +4581,11 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -4599,16 +4598,16 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 	sm := srv.SubscriptionManager()
 
 	// process sub ack's
-	results := make([]opcua.StatusCode, len(req.SubscriptionAcknowledgements))
+	results := make([]ua.StatusCode, len(req.SubscriptionAcknowledgements))
 	for i, sa := range req.SubscriptionAcknowledgements {
 		if sub, ok := sm.Get(sa.SubscriptionID); ok {
 			if sub.acknowledge(sa.SequenceNumber) {
-				results[i] = opcua.Good
+				results[i] = ua.Good
 			} else {
-				results[i] = opcua.BadSequenceNumberUnknown
+				results[i] = ua.BadSequenceNumberUnknown
 			}
 		} else {
-			results[i] = opcua.BadSubscriptionIDInvalid
+			results[i] = ua.BadSubscriptionIDInvalid
 		}
 	}
 
@@ -4628,8 +4627,8 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 		// 	}
 		// }
 		ch.Write(
-			&opcua.PublishResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.PublishResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 				},
@@ -4648,11 +4647,11 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 
 	if sm.Len() == 0 {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadNoSubscription,
+					ServiceResult: ua.BadNoSubscription,
 				},
 			},
 			requestid,
@@ -4678,21 +4677,21 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 }
 
 // Republish requests the Server to republish a NotificationMessage from its retransmission queue.
-func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, req *opcua.RepublishRequest) error {
+func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, req *ua.RepublishRequest) error {
 	// discovery only?
 	if ch.discoveryOnly {
-		ch.Abort(opcua.BadSecurityPolicyRejected, "")
+		ch.Abort(ua.BadSecurityPolicyRejected, "")
 		return nil
 	}
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionIDInvalid,
+					ServiceResult: ua.BadSessionIDInvalid,
 				},
 			},
 			requestid,
@@ -4706,11 +4705,11 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 	if id == 0 {
 		srv.SessionManager().Delete(session)
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSessionNotActivated,
+					ServiceResult: ua.BadSessionNotActivated,
 				},
 			},
 			requestid,
@@ -4721,11 +4720,11 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 	}
 	if id != ch.ChannelID() {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSecureChannelIDInvalid,
+					ServiceResult: ua.BadSecureChannelIDInvalid,
 				},
 			},
 			requestid,
@@ -4738,11 +4737,11 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 	s, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
 		ch.Write(
-			&opcua.ServiceFault{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHandle,
-					ServiceResult: opcua.BadSubscriptionIDInvalid,
+					ServiceResult: ua.BadSubscriptionIDInvalid,
 				},
 			},
 			requestid,
@@ -4760,11 +4759,11 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 	s.republishMessageRequestCount++
 	q := s.retransmissionQueue
 	for e := q.Front(); e != nil; e = e.Next() {
-		if nm, ok := e.Value.(opcua.NotificationMessage); ok {
+		if nm, ok := e.Value.(ua.NotificationMessage); ok {
 			if req.RetransmitSequenceNumber == nm.SequenceNumber {
 				ch.Write(
-					&opcua.RepublishResponse{
-						ResponseHeader: opcua.ResponseHeader{
+					&ua.RepublishResponse{
+						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
 							RequestHandle: req.RequestHeader.RequestHandle,
 						},
@@ -4780,11 +4779,11 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 		}
 	}
 	ch.Write(
-		&opcua.ServiceFault{
-			ResponseHeader: opcua.ResponseHeader{
+		&ua.ServiceFault{
+			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
 				RequestHandle: req.RequestHandle,
-				ServiceResult: opcua.BadMessageNotAvailable,
+				ServiceResult: ua.BadMessageNotAvailable,
 			},
 		},
 		requestid,
@@ -4795,445 +4794,445 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 }
 
 // WriteValue writes the value of the attribute.
-func (srv *Server) writeValue(ctx context.Context, writeValue opcua.WriteValue) opcua.StatusCode {
+func (srv *Server) writeValue(ctx context.Context, writeValue ua.WriteValue) ua.StatusCode {
 	n, ok := srv.NamespaceManager().FindNode(writeValue.NodeID)
 	if !ok {
-		return opcua.BadNodeIDUnknown
+		return ua.BadNodeIDUnknown
 	}
 	rp := n.UserRolePermissions(ctx)
-	if !IsUserPermitted(rp, opcua.PermissionTypeBrowse) {
-		return opcua.BadNodeIDUnknown
+	if !IsUserPermitted(rp, ua.PermissionTypeBrowse) {
+		return ua.BadNodeIDUnknown
 	}
 	switch writeValue.AttributeID {
-	case opcua.AttributeIDValue:
+	case ua.AttributeIDValue:
 		switch n1 := n.(type) {
 		case *VariableNode:
 			// if writeValue.Value.StatusCode != Good || !time.Time.IsZero(writeValue.Value.ServerTimestamp) || !time.Time.IsZero(writeValue.Value.SourceTimestamp) {
-			// 	return opcua.BadWriteNotSupported
+			// 	return ua.BadWriteNotSupported
 			// }
-			if (n1.AccessLevel() & opcua.AccessLevelsCurrentWrite) == 0 {
-				return opcua.BadNotWritable
+			if (n1.AccessLevel() & ua.AccessLevelsCurrentWrite) == 0 {
+				return ua.BadNotWritable
 			}
-			if (n1.UserAccessLevel(ctx) & opcua.AccessLevelsCurrentWrite) == 0 {
-				return opcua.BadUserAccessDenied
+			if (n1.UserAccessLevel(ctx) & ua.AccessLevelsCurrentWrite) == 0 {
+				return ua.BadUserAccessDenied
 			}
 			// check data type
 			destType := srv.NamespaceManager().FindVariantType(n1.DataType())
 			destRank := n1.ValueRank()
 			// special case convert bytestring to byte array
-			if destType == opcua.VariantTypeByte && destRank == opcua.ValueRankOneDimension {
-				if v1, ok := writeValue.Value.Value.(opcua.ByteString); ok {
+			if destType == ua.VariantTypeByte && destRank == ua.ValueRankOneDimension {
+				if v1, ok := writeValue.Value.Value.(ua.ByteString); ok {
 					writeValue.Value.Value = []byte(v1)
 				}
 			}
 			// special case convert byte array to bytestring
-			if destType == opcua.VariantTypeByteString && destRank == opcua.ValueRankScalar {
+			if destType == ua.VariantTypeByteString && destRank == ua.ValueRankScalar {
 				if v1, ok := writeValue.Value.Value.([]byte); ok {
-					writeValue.Value.Value = opcua.ByteString(v1)
+					writeValue.Value.Value = ua.ByteString(v1)
 				}
 			}
 			switch v2 := writeValue.Value.Value.(type) {
 			case nil:
 			case bool:
-				if destType != opcua.VariantTypeBoolean && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeBoolean && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case int8:
-				if destType != opcua.VariantTypeSByte && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeSByte && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case uint8:
-				if destType != opcua.VariantTypeByte && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeByte && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case int16:
-				if destType != opcua.VariantTypeInt16 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeInt16 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case uint16:
-				if destType != opcua.VariantTypeUInt16 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeUInt16 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case int32:
-				if destType != opcua.VariantTypeInt32 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeInt32 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case uint32:
-				if destType != opcua.VariantTypeUInt32 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeUInt32 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case int64:
-				if destType != opcua.VariantTypeInt64 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeInt64 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case uint64:
-				if destType != opcua.VariantTypeUInt64 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeUInt64 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case float32:
-				if destType != opcua.VariantTypeFloat && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeFloat && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case float64:
-				if destType != opcua.VariantTypeDouble && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeDouble && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case string:
 				if len(v2) > int(srv.serverCapabilities.MaxStringLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeString && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeString && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case time.Time:
-				if destType != opcua.VariantTypeDateTime && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeDateTime && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case uuid.UUID:
-				if destType != opcua.VariantTypeGUID && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeGUID && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case opcua.ByteString:
+			case ua.ByteString:
 				if len(v2) > int(srv.serverCapabilities.MaxByteStringLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeByteString && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeByteString && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case opcua.XMLElement:
-				if destType != opcua.VariantTypeXMLElement && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+			case ua.XMLElement:
+				if destType != ua.VariantTypeXMLElement && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case opcua.NodeID:
-				if destType != opcua.VariantTypeNodeID && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+			case ua.NodeID:
+				if destType != ua.VariantTypeNodeID && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case opcua.ExpandedNodeID:
-				if destType != opcua.VariantTypeExpandedNodeID && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+			case ua.ExpandedNodeID:
+				if destType != ua.VariantTypeExpandedNodeID && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case opcua.StatusCode:
-				if destType != opcua.VariantTypeStatusCode && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+			case ua.StatusCode:
+				if destType != ua.VariantTypeStatusCode && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case opcua.QualifiedName:
-				if destType != opcua.VariantTypeQualifiedName && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+			case ua.QualifiedName:
+				if destType != ua.VariantTypeQualifiedName && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case opcua.LocalizedText:
-				if destType != opcua.VariantTypeLocalizedText && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+			case ua.LocalizedText:
+				if destType != ua.VariantTypeLocalizedText && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []bool:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeBoolean && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeBoolean && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []int8:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeSByte && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeSByte && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []uint8:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeByte && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeByte && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []int16:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeInt16 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeInt16 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []uint16:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeUInt16 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeUInt16 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []int32:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeInt32 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeInt32 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []uint32:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeUInt32 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeUInt32 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []int64:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeInt64 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeInt64 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []uint64:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeUInt64 && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeUInt64 && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []float32:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeFloat && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeFloat && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []float64:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeDouble && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeDouble && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []string:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeString && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeString && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []time.Time:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeDateTime && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeDateTime && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			case []uuid.UUID:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeGUID && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeGUID && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.ByteString:
+			case []ua.ByteString:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeByteString && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeByteString && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.XMLElement:
+			case []ua.XMLElement:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeXMLElement && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeXMLElement && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.NodeID:
+			case []ua.NodeID:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeNodeID && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeNodeID && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.ExpandedNodeID:
+			case []ua.ExpandedNodeID:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeExpandedNodeID && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeExpandedNodeID && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.StatusCode:
+			case []ua.StatusCode:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeStatusCode && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeStatusCode && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.QualifiedName:
+			case []ua.QualifiedName:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeQualifiedName && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeQualifiedName && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.LocalizedText:
+			case []ua.LocalizedText:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeLocalizedText && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeLocalizedText && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.ExtensionObject:
+			case []ua.ExtensionObject:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeExtensionObject && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeExtensionObject && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.DataValue:
+			case []ua.DataValue:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeDataValue && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeDataValue && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
-			case []opcua.Variant:
+			case []ua.Variant:
 				if len(v2) > int(srv.serverCapabilities.MaxArrayLength) {
-					return opcua.BadOutOfRange
+					return ua.BadOutOfRange
 				}
-				if destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+				if destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankOneDimension && destRank != opcua.ValueRankOneOrMoreDimensions && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankOneDimension && destRank != ua.ValueRankOneOrMoreDimensions && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			default:
-			// case opcua.ExtensionObject:
-				if destType != opcua.VariantTypeExtensionObject && destType != opcua.VariantTypeVariant {
-					return opcua.BadTypeMismatch
+			// case ua.ExtensionObject:
+				if destType != ua.VariantTypeExtensionObject && destType != ua.VariantTypeVariant {
+					return ua.BadTypeMismatch
 				}
-				if destRank != opcua.ValueRankScalar && destRank != opcua.ValueRankScalarOrOneDimension && destRank != opcua.ValueRankAny {
-					return opcua.BadTypeMismatch
+				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+					return ua.BadTypeMismatch
 				}
 			}
 
@@ -5241,219 +5240,219 @@ func (srv *Server) writeValue(ctx context.Context, writeValue opcua.WriteValue) 
 				return f(ctx, writeValue)
 			} else {
 				result, status := writeRange(n1.Value(), writeValue.Value, writeValue.IndexRange)
-				if status == opcua.Good {
+				if status == ua.Good {
 					n1.SetValue(result)
 				}
 				return status
 			}
 		default:
-			return opcua.BadAttributeIDInvalid
+			return ua.BadAttributeIDInvalid
 		}
-	case opcua.AttributeIDHistorizing:
+	case ua.AttributeIDHistorizing:
 		switch n1 := n.(type) {
 		case *VariableNode:
 			// check for PermissionTypeWriteHistorizing
-			if !IsUserPermitted(rp, opcua.PermissionTypeWriteHistorizing) {
-				return opcua.BadUserAccessDenied
+			if !IsUserPermitted(rp, ua.PermissionTypeWriteHistorizing) {
+				return ua.BadUserAccessDenied
 			}
 			v, ok := writeValue.Value.Value.(bool)
 			if !ok {
-				return opcua.BadTypeMismatch
+				return ua.BadTypeMismatch
 			}
 			n1.SetHistorizing(v)
-			return opcua.Good
+			return ua.Good
 		default:
-			return opcua.BadAttributeIDInvalid
+			return ua.BadAttributeIDInvalid
 		}
 	default:
-		return opcua.BadAttributeIDInvalid
+		return ua.BadAttributeIDInvalid
 	}
 }
 
 // readValue returns the value of the attribute.
-func (srv *Server) readValue(ctx context.Context, readValueId opcua.ReadValueID) opcua.DataValue {
+func (srv *Server) readValue(ctx context.Context, readValueId ua.ReadValueID) ua.DataValue {
 	if readValueId.DataEncoding.Name != "" {
-		return opcua.NewDataValue(nil, opcua.BadDataEncodingInvalid, time.Time{}, 0, time.Now(), 0)
+		return ua.NewDataValue(nil, ua.BadDataEncodingInvalid, time.Time{}, 0, time.Now(), 0)
 	}
-	if readValueId.IndexRange != "" && readValueId.AttributeID != opcua.AttributeIDValue {
-		return opcua.NewDataValue(nil, opcua.BadIndexRangeNoData, time.Time{}, 0, time.Now(), 0)
+	if readValueId.IndexRange != "" && readValueId.AttributeID != ua.AttributeIDValue {
+		return ua.NewDataValue(nil, ua.BadIndexRangeNoData, time.Time{}, 0, time.Now(), 0)
 	}
 	n, ok := srv.NamespaceManager().FindNode(readValueId.NodeID)
 	if !ok {
-		return opcua.NewDataValue(nil, opcua.BadNodeIDUnknown, time.Time{}, 0, time.Now(), 0)
+		return ua.NewDataValue(nil, ua.BadNodeIDUnknown, time.Time{}, 0, time.Now(), 0)
 	}
 	rp := n.UserRolePermissions(ctx)
-	if !IsUserPermitted(rp, opcua.PermissionTypeBrowse) {
-		return opcua.NewDataValue(nil, opcua.BadNodeIDUnknown, time.Time{}, 0, time.Now(), 0)
+	if !IsUserPermitted(rp, ua.PermissionTypeBrowse) {
+		return ua.NewDataValue(nil, ua.BadNodeIDUnknown, time.Time{}, 0, time.Now(), 0)
 	}
 	switch readValueId.AttributeID {
-	case opcua.AttributeIDValue:
+	case ua.AttributeIDValue:
 		switch n1 := n.(type) {
 		case *VariableNode:
 			// check the access level for the variable.
-			if (n1.AccessLevel() & opcua.AccessLevelsCurrentRead) == 0 {
-				return opcua.NewDataValue(nil, opcua.BadNotReadable, time.Time{}, 0, time.Now(), 0)
+			if (n1.AccessLevel() & ua.AccessLevelsCurrentRead) == 0 {
+				return ua.NewDataValue(nil, ua.BadNotReadable, time.Time{}, 0, time.Now(), 0)
 			}
-			if (n1.UserAccessLevel(ctx) & opcua.AccessLevelsCurrentRead) == 0 {
-				return opcua.NewDataValue(nil, opcua.BadUserAccessDenied, time.Time{}, 0, time.Now(), 0)
+			if (n1.UserAccessLevel(ctx) & ua.AccessLevelsCurrentRead) == 0 {
+				return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Time{}, 0, time.Now(), 0)
 			}
 			if f := n1.readValueHandler; f != nil {
 				return f(ctx, readValueId)
 			}
 			return readRange(n1.Value(), readValueId.IndexRange)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDNodeID:
-		return opcua.NewDataValue(n.NodeID(), opcua.Good, time.Time{}, 0, time.Now(), 0)
-	case opcua.AttributeIDNodeClass:
-		return opcua.NewDataValue(int32(n.NodeClass()), opcua.Good, time.Time{}, 0, time.Now(), 0)
-	case opcua.AttributeIDBrowseName:
-		return opcua.NewDataValue(n.BrowseName(), opcua.Good, time.Time{}, 0, time.Now(), 0)
-	case opcua.AttributeIDDisplayName:
-		return opcua.NewDataValue(n.DisplayName(), opcua.Good, time.Time{}, 0, time.Now(), 0)
-	case opcua.AttributeIDDescription:
-		return opcua.NewDataValue(n.Description(), opcua.Good, time.Time{}, 0, time.Now(), 0)
-	case opcua.AttributeIDIsAbstract:
+	case ua.AttributeIDNodeID:
+		return ua.NewDataValue(n.NodeID(), ua.Good, time.Time{}, 0, time.Now(), 0)
+	case ua.AttributeIDNodeClass:
+		return ua.NewDataValue(int32(n.NodeClass()), ua.Good, time.Time{}, 0, time.Now(), 0)
+	case ua.AttributeIDBrowseName:
+		return ua.NewDataValue(n.BrowseName(), ua.Good, time.Time{}, 0, time.Now(), 0)
+	case ua.AttributeIDDisplayName:
+		return ua.NewDataValue(n.DisplayName(), ua.Good, time.Time{}, 0, time.Now(), 0)
+	case ua.AttributeIDDescription:
+		return ua.NewDataValue(n.Description(), ua.Good, time.Time{}, 0, time.Now(), 0)
+	case ua.AttributeIDIsAbstract:
 		switch n1 := n.(type) {
 		case *DataTypeNode:
-			return opcua.NewDataValue(n1.IsAbstract(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.IsAbstract(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		case *ObjectTypeNode:
-			return opcua.NewDataValue(n1.IsAbstract(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.IsAbstract(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		case *ReferenceTypeNode:
-			return opcua.NewDataValue(n1.IsAbstract(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.IsAbstract(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		case *VariableTypeNode:
-			return opcua.NewDataValue(n1.IsAbstract(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.IsAbstract(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDSymmetric:
+	case ua.AttributeIDSymmetric:
 		switch n1 := n.(type) {
 		case *ReferenceTypeNode:
-			return opcua.NewDataValue(n1.Symmetric(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.Symmetric(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDInverseName:
+	case ua.AttributeIDInverseName:
 		switch n1 := n.(type) {
 		case *ReferenceTypeNode:
-			return opcua.NewDataValue(n1.InverseName(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.InverseName(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDContainsNoLoops:
+	case ua.AttributeIDContainsNoLoops:
 		switch n1 := n.(type) {
 		case *ViewNode:
-			return opcua.NewDataValue(n1.ContainsNoLoops(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.ContainsNoLoops(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDEventNotifier:
+	case ua.AttributeIDEventNotifier:
 		switch n1 := n.(type) {
 		case *ObjectNode:
-			return opcua.NewDataValue(n1.EventNotifier(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.EventNotifier(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		case *ViewNode:
-			return opcua.NewDataValue(n1.EventNotifier(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.EventNotifier(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDDataType:
+	case ua.AttributeIDDataType:
 		switch n1 := n.(type) {
 		case *VariableNode:
-			return opcua.NewDataValue(n1.DataType(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.DataType(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		case *VariableTypeNode:
-			return opcua.NewDataValue(n1.DataType(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.DataType(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDValueRank:
+	case ua.AttributeIDValueRank:
 		switch n1 := n.(type) {
 		case *VariableNode:
-			return opcua.NewDataValue(n1.ValueRank(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.ValueRank(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		case *VariableTypeNode:
-			return opcua.NewDataValue(n1.ValueRank(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.ValueRank(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDArrayDimensions:
+	case ua.AttributeIDArrayDimensions:
 		switch n1 := n.(type) {
 		case *VariableNode:
-			return opcua.NewDataValue(n1.ArrayDimensions(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.ArrayDimensions(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		case *VariableTypeNode:
-			return opcua.NewDataValue(n1.ArrayDimensions(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.ArrayDimensions(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDAccessLevel:
+	case ua.AttributeIDAccessLevel:
 		switch n1 := n.(type) {
 		case *VariableNode:
-			return opcua.NewDataValue(n1.AccessLevel(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.AccessLevel(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDUserAccessLevel:
+	case ua.AttributeIDUserAccessLevel:
 		switch n1 := n.(type) {
 		case *VariableNode:
-			return opcua.NewDataValue(n1.UserAccessLevel(ctx), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.UserAccessLevel(ctx), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDMinimumSamplingInterval:
+	case ua.AttributeIDMinimumSamplingInterval:
 		switch n1 := n.(type) {
 		case *VariableNode:
-			return opcua.NewDataValue(n1.MinimumSamplingInterval(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.MinimumSamplingInterval(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDHistorizing:
+	case ua.AttributeIDHistorizing:
 		switch n1 := n.(type) {
 		case *VariableNode:
-			return opcua.NewDataValue(n1.Historizing(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.Historizing(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDExecutable:
+	case ua.AttributeIDExecutable:
 		switch n1 := n.(type) {
 		case *MethodNode:
-			return opcua.NewDataValue(n1.Executable(), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.Executable(), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDUserExecutable:
+	case ua.AttributeIDUserExecutable:
 		switch n1 := n.(type) {
 		case *MethodNode:
-			return opcua.NewDataValue(n1.UserExecutable(ctx), opcua.Good, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(n1.UserExecutable(ctx), ua.Good, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDDataTypeDefinition:
+	case ua.AttributeIDDataTypeDefinition:
 		switch n1 := n.(type) {
 		case *DataTypeNode:
 			if def := n1.DataTypeDefinition(); def != nil {
-				return opcua.NewDataValue(def, opcua.Good, time.Time{}, 0, time.Now(), 0)
+				return ua.NewDataValue(def, ua.Good, time.Time{}, 0, time.Now(), 0)
 			}
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		default:
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
-	case opcua.AttributeIDRolePermissions:
-		if !IsUserPermitted(rp, opcua.PermissionTypeReadRolePermissions) {
-			return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+	case ua.AttributeIDRolePermissions:
+		if !IsUserPermitted(rp, ua.PermissionTypeReadRolePermissions) {
+			return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 		}
 		s1 := n.RolePermissions()
-		s2 := make([]opcua.ExtensionObject, len(s1))
+		s2 := make([]ua.ExtensionObject, len(s1))
 		for i := range s1 {
 			s2[i] = s1[i]
 		}
-		return opcua.NewDataValue(s2, opcua.Good, time.Time{}, 0, time.Now(), 0)
-	case opcua.AttributeIDUserRolePermissions:
+		return ua.NewDataValue(s2, ua.Good, time.Time{}, 0, time.Now(), 0)
+	case ua.AttributeIDUserRolePermissions:
 		s1 := n.UserRolePermissions(ctx)
-		s2 := make([]opcua.ExtensionObject, len(s1))
+		s2 := make([]ua.ExtensionObject, len(s1))
 		for i := range s1 {
 			s2[i] = s1[i]
 		}
-		return opcua.NewDataValue(s2, opcua.Good, time.Time{}, 0, time.Now(), 0)
+		return ua.NewDataValue(s2, ua.Good, time.Time{}, 0, time.Now(), 0)
 	default:
-		return opcua.NewDataValue(nil, opcua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
+		return ua.NewDataValue(nil, ua.BadAttributeIDInvalid, time.Time{}, 0, time.Now(), 0)
 	}
 }

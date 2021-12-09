@@ -4,7 +4,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 )
 
 // RolesProvider selects roles where the user identity and connection information matches the membership criteria.
@@ -12,13 +12,13 @@ import (
 // Later, users are granted Permissions to perform actions based on the user's role memberships.
 type RolesProvider interface {
 	// GetRoles returns the roles where the user matches the membership criteria.
-	GetRoles(userIdentity interface{}, applicationURI string, endpointURL string) ([]opcua.NodeID, error)
+	GetRoles(userIdentity interface{}, applicationURI string, endpointURL string) ([]ua.NodeID, error)
 }
 
 // IdentityMappingRule ...
 type IdentityMappingRule struct {
-	NodeID              opcua.NodeID
-	Identities          []opcua.IdentityMappingRuleType
+	NodeID              ua.NodeID
+	Identities          []ua.IdentityMappingRuleType
 	ApplicationsExclude bool
 	Applications        []string
 	EndpointsExclude    bool
@@ -32,69 +32,69 @@ type IdentityMappingRule struct {
 
 var (
 	// DefaultRolePermissions returns RolePermissionTypes for the well known roles.
-	DefaultRolePermissions []opcua.RolePermissionType = []opcua.RolePermissionType{
-		{RoleID: opcua.ObjectIDWellKnownRoleAnonymous, Permissions: (opcua.PermissionTypeBrowse | opcua.PermissionTypeRead)},
-		{RoleID: opcua.ObjectIDWellKnownRoleAuthenticatedUser, Permissions: (opcua.PermissionTypeBrowse | opcua.PermissionTypeRead)},
-		{RoleID: opcua.ObjectIDWellKnownRoleObserver, Permissions: (opcua.PermissionTypeBrowse | opcua.PermissionTypeRead | opcua.PermissionTypeReadHistory | opcua.PermissionTypeReceiveEvents)},
-		{RoleID: opcua.ObjectIDWellKnownRoleOperator, Permissions: (opcua.PermissionTypeBrowse | opcua.PermissionTypeRead | opcua.PermissionTypeWrite | opcua.PermissionTypeReadHistory | opcua.PermissionTypeReceiveEvents | opcua.PermissionTypeCall)},
-		{RoleID: opcua.ObjectIDWellKnownRoleEngineer, Permissions: (opcua.PermissionTypeBrowse | opcua.PermissionTypeRead | opcua.PermissionTypeWrite | opcua.PermissionTypeReadHistory | opcua.PermissionTypeReceiveEvents | opcua.PermissionTypeCall | opcua.PermissionTypeWriteHistorizing)},
-		{RoleID: opcua.ObjectIDWellKnownRoleSupervisor, Permissions: (opcua.PermissionTypeBrowse | opcua.PermissionTypeRead | opcua.PermissionTypeWrite | opcua.PermissionTypeReadHistory | opcua.PermissionTypeReceiveEvents | opcua.PermissionTypeCall)},
-		{RoleID: opcua.ObjectIDWellKnownRoleConfigureAdmin, Permissions: (opcua.PermissionTypeBrowse | opcua.PermissionTypeRead | opcua.PermissionTypeWriteAttribute)},
-		{RoleID: opcua.ObjectIDWellKnownRoleSecurityAdmin, Permissions: (opcua.PermissionTypeBrowse | opcua.PermissionTypeReadRolePermissions | opcua.PermissionTypeWriteRolePermissions)},
+	DefaultRolePermissions []ua.RolePermissionType = []ua.RolePermissionType{
+		{RoleID: ua.ObjectIDWellKnownRoleAnonymous, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead)},
+		{RoleID: ua.ObjectIDWellKnownRoleAuthenticatedUser, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead)},
+		{RoleID: ua.ObjectIDWellKnownRoleObserver, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents)},
+		{RoleID: ua.ObjectIDWellKnownRoleOperator, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeWrite | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents | ua.PermissionTypeCall)},
+		{RoleID: ua.ObjectIDWellKnownRoleEngineer, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeWrite | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents | ua.PermissionTypeCall | ua.PermissionTypeWriteHistorizing)},
+		{RoleID: ua.ObjectIDWellKnownRoleSupervisor, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeWrite | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents | ua.PermissionTypeCall)},
+		{RoleID: ua.ObjectIDWellKnownRoleConfigureAdmin, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeWriteAttribute)},
+		{RoleID: ua.ObjectIDWellKnownRoleSecurityAdmin, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeReadRolePermissions | ua.PermissionTypeWriteRolePermissions)},
 	}
 	// DefaultIdentityMappingRules ...
 	DefaultIdentityMappingRules []IdentityMappingRule = []IdentityMappingRule{
 		// WellKnownRoleAnonymous
 		{
-			NodeID: opcua.ObjectIDWellKnownRoleAnonymous,
-			Identities: []opcua.IdentityMappingRuleType{
-				{CriteriaType: opcua.IdentityCriteriaTypeAnonymous},
+			NodeID: ua.ObjectIDWellKnownRoleAnonymous,
+			Identities: []ua.IdentityMappingRuleType{
+				{CriteriaType: ua.IdentityCriteriaTypeAnonymous},
 			},
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
 		// WellKnownRoleAuthenticatedUser
 		{
-			NodeID: opcua.ObjectIDWellKnownRoleAuthenticatedUser,
-			Identities: []opcua.IdentityMappingRuleType{
-				{CriteriaType: opcua.IdentityCriteriaTypeAuthenticatedUser},
+			NodeID: ua.ObjectIDWellKnownRoleAuthenticatedUser,
+			Identities: []ua.IdentityMappingRuleType{
+				{CriteriaType: ua.IdentityCriteriaTypeAuthenticatedUser},
 			},
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
 		// WellKnownRoleObserver
 		{
-			NodeID:              opcua.ObjectIDWellKnownRoleObserver,
+			NodeID:              ua.ObjectIDWellKnownRoleObserver,
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
 		// WellKnownRoleOperator
 		{
-			NodeID:              opcua.ObjectIDWellKnownRoleOperator,
+			NodeID:              ua.ObjectIDWellKnownRoleOperator,
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
 		// WellKnownRoleEngineer
 		{
-			NodeID:              opcua.ObjectIDWellKnownRoleEngineer,
+			NodeID:              ua.ObjectIDWellKnownRoleEngineer,
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
 		// WellKnownRoleSupervisor
 		{
-			NodeID:              opcua.ObjectIDWellKnownRoleSupervisor,
+			NodeID:              ua.ObjectIDWellKnownRoleSupervisor,
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
 		// WellKnownRoleConfigureAdmin
 		{
-			NodeID:              opcua.ObjectIDWellKnownRoleConfigureAdmin,
+			NodeID:              ua.ObjectIDWellKnownRoleConfigureAdmin,
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
 		// WellKnownRoleSecurityAdmin
 		{
-			NodeID:              opcua.ObjectIDWellKnownRoleSecurityAdmin,
+			NodeID:              ua.ObjectIDWellKnownRoleSecurityAdmin,
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
@@ -102,7 +102,7 @@ var (
 )
 
 // IsUserPermitted returns true if the user's role permissions contain a given permissionType.
-func IsUserPermitted(userRolePermissions []opcua.RolePermissionType, permissionType opcua.PermissionType) bool {
+func IsUserPermitted(userRolePermissions []ua.RolePermissionType, permissionType ua.PermissionType) bool {
 	for _, rp := range userRolePermissions {
 		if rp.Permissions&permissionType != 0 {
 			return true
@@ -124,8 +124,8 @@ func NewRulesBasedRolesProvider(rules []IdentityMappingRule) RolesProvider {
 }
 
 // GetRoles ...
-func (p *RulesBasedRolesProvider) GetRoles(userIdentity interface{}, applicationURI string, endpointURL string) ([]opcua.NodeID, error) {
-	roles := []opcua.NodeID{}
+func (p *RulesBasedRolesProvider) GetRoles(userIdentity interface{}, applicationURI string, endpointURL string) ([]ua.NodeID, error) {
+	roles := []ua.NodeID{}
 	for _, rule := range p.identityMappingRules {
 		ok := rule.ApplicationsExclude // true means the following applications should be excluded
 		for _, uri := range rule.Applications {
@@ -150,47 +150,47 @@ func (p *RulesBasedRolesProvider) GetRoles(userIdentity interface{}, application
 		for _, identity := range rule.Identities {
 
 			switch id := userIdentity.(type) {
-			case opcua.AnonymousIdentity:
-				if identity.CriteriaType == opcua.IdentityCriteriaTypeAnonymous {
+			case ua.AnonymousIdentity:
+				if identity.CriteriaType == ua.IdentityCriteriaTypeAnonymous {
 					roles = append(roles, rule.NodeID)
 					break // continue with next identity
 				}
 
-			case opcua.UserNameIdentity:
-				if identity.CriteriaType == opcua.IdentityCriteriaTypeAuthenticatedUser {
+			case ua.UserNameIdentity:
+				if identity.CriteriaType == ua.IdentityCriteriaTypeAuthenticatedUser {
 					roles = append(roles, rule.NodeID)
 					break // continue with next identity
 				}
-				if identity.CriteriaType == opcua.IdentityCriteriaTypeUserName && identity.Criteria == id.UserName {
+				if identity.CriteriaType == ua.IdentityCriteriaTypeUserName && identity.Criteria == id.UserName {
 					roles = append(roles, rule.NodeID)
 					break // continue with next identity
 				}
 
-			case opcua.X509Identity:
-				if identity.CriteriaType == opcua.IdentityCriteriaTypeAuthenticatedUser {
+			case ua.X509Identity:
+				if identity.CriteriaType == ua.IdentityCriteriaTypeAuthenticatedUser {
 					roles = append(roles, rule.NodeID)
 					break // continue with next identity
 				}
 				thumbprint := fmt.Sprintf("%x", sha1.Sum([]byte(id.Certificate)))
-				if identity.CriteriaType == opcua.IdentityCriteriaTypeThumbprint && identity.Criteria == thumbprint {
+				if identity.CriteriaType == ua.IdentityCriteriaTypeThumbprint && identity.Criteria == thumbprint {
 					roles = append(roles, rule.NodeID)
 					break // continue with next identity
 				}
 
-			case opcua.IssuedIdentity:
-				if identity.CriteriaType == opcua.IdentityCriteriaTypeAuthenticatedUser {
+			case ua.IssuedIdentity:
+				if identity.CriteriaType == ua.IdentityCriteriaTypeAuthenticatedUser {
 					roles = append(roles, rule.NodeID)
 					break // continue with next identity
 				}
 
 			default:
-				return nil, opcua.BadUserAccessDenied
+				return nil, ua.BadUserAccessDenied
 
 			}
 		}
 	}
 	if len(roles) == 0 {
-		return nil, opcua.BadUserAccessDenied
+		return nil, ua.BadUserAccessDenied
 	}
 	return roles, nil
 }

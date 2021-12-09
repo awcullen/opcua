@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/awcullen/opcua"
 	"github.com/awcullen/opcua/server"
+	"github.com/awcullen/opcua/ua"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -23,7 +23,7 @@ func NewTestServer() (*server.Server, error) {
 	host, _ := os.Hostname()
 
 	// userids for testing
-	userids := []opcua.UserNameIdentity{
+	userids := []ua.UserNameIdentity{
 		{UserName: "root", Password: "secret"},
 		{UserName: "user1", Password: "password"},
 		{UserName: "user2", Password: "password1"},
@@ -35,14 +35,14 @@ func NewTestServer() (*server.Server, error) {
 
 	// create server
 	srv, err := server.New(
-		opcua.ApplicationDescription{
+		ua.ApplicationDescription{
 			ApplicationURI: fmt.Sprintf("urn:%s:testserver", host),
 			ProductURI:     "http://github.com/awcullen/opcua/testserver",
-			ApplicationName: opcua.LocalizedText{
+			ApplicationName: ua.LocalizedText{
 				Text:   fmt.Sprintf("testserver@%s", host),
 				Locale: "en",
 			},
-			ApplicationType:     opcua.ApplicationTypeServer,
+			ApplicationType:     ua.ApplicationTypeServer,
 			GatewayServerURI:    "",
 			DiscoveryProfileURI: "",
 			DiscoveryURLs:       []string{fmt.Sprintf("opc.tcp://%s:%d", host, port)},
@@ -51,13 +51,13 @@ func NewTestServer() (*server.Server, error) {
 		"./pki/server.key",
 		fmt.Sprintf("opc.tcp://%s:%d", host, port),
 		server.WithBuildInfo(
-			opcua.BuildInfo{
+			ua.BuildInfo{
 				ProductURI:       "http://github.com/awcullen/opcua/testserver",
 				ManufacturerName: "awcullen",
 				ProductName:      "testserver",
 				SoftwareVersion:  SoftwareVersion,
 			}),
-		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity opcua.UserNameIdentity, applicationURI string, endpointURL string) error {
+		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
 			valid := false
 			for _, user := range userids {
 				if user.UserName == userIdentity.UserName {
@@ -68,7 +68,7 @@ func NewTestServer() (*server.Server, error) {
 				}
 			}
 			if !valid {
-				return opcua.BadUserAccessDenied
+				return ua.BadUserAccessDenied
 			}
 			// log.Printf("Login user: %s from %s\n", userIdentity.UserName, applicationURI)
 			return nil
@@ -78,40 +78,40 @@ func NewTestServer() (*server.Server, error) {
 				[]server.IdentityMappingRule{
 					// WellKnownRoleAnonymous
 					{
-						NodeID: opcua.ObjectIDWellKnownRoleAnonymous,
-						Identities: []opcua.IdentityMappingRuleType{
-							{CriteriaType: opcua.IdentityCriteriaTypeAnonymous},
+						NodeID: ua.ObjectIDWellKnownRoleAnonymous,
+						Identities: []ua.IdentityMappingRuleType{
+							{CriteriaType: ua.IdentityCriteriaTypeAnonymous},
 						},
 						ApplicationsExclude: true,
 						EndpointsExclude:    true,
 					},
 					// WellKnownRoleAuthenticatedUser
 					{
-						NodeID: opcua.ObjectIDWellKnownRoleAuthenticatedUser,
-						Identities: []opcua.IdentityMappingRuleType{
-							{CriteriaType: opcua.IdentityCriteriaTypeAuthenticatedUser},
+						NodeID: ua.ObjectIDWellKnownRoleAuthenticatedUser,
+						Identities: []ua.IdentityMappingRuleType{
+							{CriteriaType: ua.IdentityCriteriaTypeAuthenticatedUser},
 						},
 						ApplicationsExclude: true,
 						EndpointsExclude:    true,
 					},
 					// WellKnownRoleObserver
 					{
-						NodeID: opcua.ObjectIDWellKnownRoleObserver,
-						Identities: []opcua.IdentityMappingRuleType{
-							{CriteriaType: opcua.IdentityCriteriaTypeUserName, Criteria: "user1"},
-							{CriteriaType: opcua.IdentityCriteriaTypeUserName, Criteria: "user2"},
-							{CriteriaType: opcua.IdentityCriteriaTypeUserName, Criteria: "root"},
+						NodeID: ua.ObjectIDWellKnownRoleObserver,
+						Identities: []ua.IdentityMappingRuleType{
+							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user1"},
+							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user2"},
+							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "root"},
 						},
 						ApplicationsExclude: true,
 						EndpointsExclude:    true,
 					},
 					// WellKnownRoleOperator
 					{
-						NodeID: opcua.ObjectIDWellKnownRoleOperator,
-						Identities: []opcua.IdentityMappingRuleType{
-							{CriteriaType: opcua.IdentityCriteriaTypeUserName, Criteria: "user1"},
-							{CriteriaType: opcua.IdentityCriteriaTypeUserName, Criteria: "user2"},
-							{CriteriaType: opcua.IdentityCriteriaTypeUserName, Criteria: "root"},
+						NodeID: ua.ObjectIDWellKnownRoleOperator,
+						Identities: []ua.IdentityMappingRuleType{
+							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user1"},
+							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user2"},
+							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "root"},
 						},
 						ApplicationsExclude: true,
 						EndpointsExclude:    true,
@@ -135,72 +135,72 @@ func NewTestServer() (*server.Server, error) {
 	}
 
 	// install MethodNoArgs method
-	if n, ok := nm.FindMethod(opcua.ParseNodeID("ns=2;s=Demo.Methods.MethodNoArgs")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req opcua.CallMethodRequest) opcua.CallMethodResult {
-			return opcua.CallMethodResult{}
+	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodNoArgs")); ok {
+		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+			return ua.CallMethodResult{}
 		})
 	}
 
 	// install MethodI method
-	if n, ok := nm.FindMethod(opcua.ParseNodeID("ns=2;s=Demo.Methods.MethodI")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req opcua.CallMethodRequest) opcua.CallMethodResult {
+	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodI")); ok {
+		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadArgumentsMissing}
+				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
 			if len(req.InputArguments) > 1 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadTooManyArguments}
+				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
-			statusCode := opcua.Good
-			inputArgumentResults := make([]opcua.StatusCode, 1)
+			statusCode := ua.Good
+			inputArgumentResults := make([]ua.StatusCode, 1)
 			_, ok := req.InputArguments[0].(uint32)
 			if !ok {
-				statusCode = opcua.BadInvalidArgument
-				inputArgumentResults[0] = opcua.BadTypeMismatch
+				statusCode = ua.BadInvalidArgument
+				inputArgumentResults[0] = ua.BadTypeMismatch
 			}
-			if statusCode == opcua.BadInvalidArgument {
-				return opcua.CallMethodResult{StatusCode: statusCode, InputArgumentResults: inputArgumentResults}
+			if statusCode == ua.BadInvalidArgument {
+				return ua.CallMethodResult{StatusCode: statusCode, InputArgumentResults: inputArgumentResults}
 			}
-			return opcua.CallMethodResult{OutputArguments: []opcua.Variant{}}
+			return ua.CallMethodResult{OutputArguments: []ua.Variant{}}
 		})
 	}
 
 	// install MethodO method
-	if n, ok := nm.FindMethod(opcua.ParseNodeID("ns=2;s=Demo.Methods.MethodO")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req opcua.CallMethodRequest) opcua.CallMethodResult {
+	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodO")); ok {
+		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) > 0 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadTooManyArguments}
+				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
 			result := uint32(42)
-			return opcua.CallMethodResult{OutputArguments: []opcua.Variant{uint32(result)}}
+			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
 		})
 	}
 
 	// install MethodIO method
-	if n, ok := nm.FindMethod(opcua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req opcua.CallMethodRequest) opcua.CallMethodResult {
+	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO")); ok {
+		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 2 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadArgumentsMissing}
+				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
 			if len(req.InputArguments) > 2 {
-				return opcua.CallMethodResult{StatusCode: opcua.BadTooManyArguments}
+				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
-			statusCode := opcua.Good
-			inputArgumentResults := make([]opcua.StatusCode, 2)
+			statusCode := ua.Good
+			inputArgumentResults := make([]ua.StatusCode, 2)
 			a, ok := req.InputArguments[0].(uint32)
 			if !ok {
-				statusCode = opcua.BadInvalidArgument
-				inputArgumentResults[0] = opcua.BadTypeMismatch
+				statusCode = ua.BadInvalidArgument
+				inputArgumentResults[0] = ua.BadTypeMismatch
 			}
 			b, ok := req.InputArguments[1].(uint32)
 			if !ok {
-				statusCode = opcua.BadInvalidArgument
-				inputArgumentResults[1] = opcua.BadTypeMismatch
+				statusCode = ua.BadInvalidArgument
+				inputArgumentResults[1] = ua.BadTypeMismatch
 			}
-			if statusCode == opcua.BadInvalidArgument {
-				return opcua.CallMethodResult{StatusCode: statusCode, InputArgumentResults: inputArgumentResults}
+			if statusCode == ua.BadInvalidArgument {
+				return ua.CallMethodResult{StatusCode: statusCode, InputArgumentResults: inputArgumentResults}
 			}
 			result := a + b
-			return opcua.CallMethodResult{OutputArguments: []opcua.Variant{uint32(result)}}
+			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
 		})
 	}
 	return srv, nil

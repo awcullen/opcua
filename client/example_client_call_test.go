@@ -6,16 +6,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/awcullen/opcua"
 	"github.com/awcullen/opcua/client"
+	"github.com/awcullen/opcua/ua"
 )
 
-// This example demonstrates calling an method of the server to add two integers and return the sum. 
+// This example demonstrates calling an method of the server to add two integers and return the sum.
 func ExampleClient_Call() {
 
 	ctx := context.Background()
 
-	// open a connection to the testserver
+	// open a connection to testserver running locally. Testserver is started if not already running.
 	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://localhost:46010",
@@ -29,12 +29,12 @@ func ExampleClient_Call() {
 	}
 
 	// prepare call request
-	req := &opcua.CallRequest{
-		MethodsToCall: []opcua.CallMethodRequest{
+	req := &ua.CallRequest{
+		MethodsToCall: []ua.CallMethodRequest{
 			{
-				ObjectID: opcua.ParseNodeID("ns=2;s=Demo.Methods"),          // parent of "MethodIO" method
-				MethodID: opcua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO"), // "MethodIO" method
-				InputArguments: []opcua.Variant{
+				ObjectID: ua.ParseNodeID("ns=2;s=Demo.Methods"),          // parent of "MethodIO" method
+				MethodID: ua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO"), // "MethodIO" method
+				InputArguments: []ua.Variant{
 					uint32(6),
 					uint32(7),
 				},

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 	"github.com/google/uuid"
 )
 
@@ -46,8 +46,8 @@ type Subscription struct {
 	retransmissionQueue          *list.List
 	isLate                       bool
 	resend                       bool
-	diagnosticsNodeId            opcua.NodeID
-	sessionId                    opcua.NodeID
+	diagnosticsNodeId            ua.NodeID
+	sessionId                    ua.NodeID
 	modifyCount                  uint32
 	republishRequestCount        uint32
 	republishMessageRequestCount uint32
@@ -75,7 +75,7 @@ func NewSubscription(manager *SubscriptionManager, session *Session, publishingI
 		keepAliveCounter:    math.MaxUint32,
 		items:               make(map[uint32]*MonitoredItem),
 		retransmissionQueue: list.New(),
-		diagnosticsNodeId:   opcua.NewNodeIDGUID(1, uuid.New()),
+		diagnosticsNodeId:   ua.NewNodeIDGUID(1, uuid.New()),
 		sessionId:           session.sessionId,
 	}
 	s.setPublishingInterval(publishingInterval)
@@ -140,7 +140,7 @@ func (s *Subscription) AppendItem(item *MonitoredItem) bool {
 	if _, ok := s.items[item.id]; !ok {
 		s.items[item.id] = item
 		s.monitoredItemCount++
-		if item.monitoringMode == opcua.MonitoringModeDisabled {
+		if item.monitoringMode == ua.MonitoringModeDisabled {
 			s.disabledMonitoredItemCount++
 		}
 		ret = true
@@ -156,7 +156,7 @@ func (s *Subscription) DeleteItem(ctx context.Context, id uint32) bool {
 		delete(s.items, id)
 		item.Delete()
 		s.monitoredItemCount--
-		if item.monitoringMode == opcua.MonitoringModeDisabled {
+		if item.monitoringMode == ua.MonitoringModeDisabled {
 			s.disabledMonitoredItemCount--
 		}
 		ret = true
@@ -273,7 +273,7 @@ func (s *Subscription) acknowledge(seqNum uint32) bool {
 	defer s.Unlock()
 	q := s.retransmissionQueue
 	for e := q.Front(); e != nil; e = e.Next() {
-		if nm, ok := e.Value.(opcua.NotificationMessage); ok && nm.SequenceNumber == seqNum {
+		if nm, ok := e.Value.(ua.NotificationMessage); ok && nm.SequenceNumber == seqNum {
 			q.Remove(e)
 			e.Value = nil
 			return true
@@ -327,20 +327,20 @@ func (s *Subscription) publish(_ time.Time) {
 		if ch, requestid, req, results, ok := sess.removePublishRequest(); ok {
 			more := false
 			maxN := int(s.maxNotificationsPerPublish)
-			mins := make([]opcua.MonitoredItemNotification, 0, 4)
-			efls := make([]opcua.EventFieldList, 0, 4)
+			mins := make([]ua.MonitoredItemNotification, 0, 4)
+			efls := make([]ua.EventFieldList, 0, 4)
 			for _, item := range s.items {
-				if item.monitoringMode != opcua.MonitoringModeReporting && !item.triggered {
+				if item.monitoringMode != ua.MonitoringModeReporting && !item.triggered {
 					continue
 				}
 				// if item.triggered {
 				// log.Printf("TriggeredItem %d published.", item.id)
 				// }
-				if item.itemToMonitor.AttributeID == opcua.AttributeIDEventNotifier {
+				if item.itemToMonitor.AttributeID == ua.AttributeIDEventNotifier {
 					encs, more1 := item.notifications(maxN)
 					for _, enc := range encs {
-						if efs, ok := enc.([]opcua.Variant); ok {
-							efls = append(efls, opcua.EventFieldList{ClientHandle: item.clientHandle, EventFields: efs})
+						if efs, ok := enc.([]ua.Variant); ok {
+							efls = append(efls, ua.EventFieldList{ClientHandle: item.clientHandle, EventFields: efs})
 							s.eventNotificationsCount++
 							s.notificationsCount++
 						}
@@ -350,8 +350,8 @@ func (s *Subscription) publish(_ time.Time) {
 				} else {
 					encs, more1 := item.notifications(maxN)
 					for _, enc := range encs {
-						if dv, ok := enc.(opcua.DataValue); ok {
-							mins = append(mins, opcua.MonitoredItemNotification{ClientHandle: item.clientHandle, Value: dv})
+						if dv, ok := enc.(ua.DataValue); ok {
+							mins = append(mins, ua.MonitoredItemNotification{ClientHandle: item.clientHandle, Value: dv})
 							s.dataChangeNotificationsCount++
 							s.notificationsCount++
 						}
@@ -360,14 +360,14 @@ func (s *Subscription) publish(_ time.Time) {
 					maxN = maxN - len(encs)
 				}
 			}
-			nd := make([]opcua.ExtensionObject, 0, 2)
+			nd := make([]ua.ExtensionObject, 0, 2)
 			if len(mins) > 0 {
-				nd = append(nd, opcua.DataChangeNotification{MonitoredItems: mins})
+				nd = append(nd, ua.DataChangeNotification{MonitoredItems: mins})
 			}
 			if len(efls) > 0 {
-				nd = append(nd, opcua.EventNotificationList{Events: efls})
+				nd = append(nd, ua.EventNotificationList{Events: efls})
 			}
-			nm := opcua.NotificationMessage{
+			nm := ua.NotificationMessage{
 				SequenceNumber:   s.seqNum,
 				PublishTime:      tn,
 				NotificationData: nd,
@@ -380,13 +380,13 @@ func (s *Subscription) publish(_ time.Time) {
 			q.PushBack(nm)
 			avail := make([]uint32, 0, 4)
 			for e := q.Front(); e != nil; e = e.Next() {
-				if nm, ok := e.Value.(opcua.NotificationMessage); ok {
+				if nm, ok := e.Value.(ua.NotificationMessage); ok {
 					avail = append(avail, nm.SequenceNumber)
 				}
 			}
 			ch.Write(
-				&opcua.PublishResponse{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.PublishResponse{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHeader.RequestHandle,
 					},
@@ -418,10 +418,10 @@ func (s *Subscription) publish(_ time.Time) {
 		s.lifetimeCounter++
 		if s.lifetimeCounter == s.lifetimeCount {
 			// log.Printf("Subscription '%d' expired.\n", s.id)
-			nm := opcua.NotificationMessage{
+			nm := ua.NotificationMessage{
 				SequenceNumber:   s.seqNum,
 				PublishTime:      time.Now(),
-				NotificationData: []opcua.ExtensionObject{opcua.StatusChangeNotification{Status: opcua.BadTimeout}},
+				NotificationData: []ua.ExtensionObject{ua.StatusChangeNotification{Status: ua.BadTimeout}},
 			}
 			s.session.stateChanges <- &stateChangeOp{subscriptionId: s.id, message: nm}
 			if s.seqNum != math.MaxUint32 {
@@ -446,20 +446,20 @@ func (s *Subscription) publish(_ time.Time) {
 			avail := make([]uint32, 0, 4)
 			q := s.retransmissionQueue
 			for e := q.Front(); e != nil; e = e.Next() {
-				if nm, ok := e.Value.(opcua.NotificationMessage); ok {
+				if nm, ok := e.Value.(ua.NotificationMessage); ok {
 					avail = append(avail, nm.SequenceNumber)
 				}
 			}
 			ch.Write(
-				&opcua.PublishResponse{
-					ResponseHeader: opcua.ResponseHeader{
+				&ua.PublishResponse{
+					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
 						RequestHandle: req.RequestHeader.RequestHandle,
 					},
 					SubscriptionID:           s.id,
 					AvailableSequenceNumbers: avail,
 					MoreNotifications:        false,
-					NotificationMessage: opcua.NotificationMessage{
+					NotificationMessage: ua.NotificationMessage{
 						SequenceNumber:   s.seqNum,
 						PublishTime:      time.Now(),
 						NotificationData: nil,
@@ -482,10 +482,10 @@ func (s *Subscription) publish(_ time.Time) {
 		s.lifetimeCounter++
 		if s.lifetimeCounter == s.lifetimeCount {
 			// log.Printf("Subscription '%d' expired.\n", s.id)
-			nm := opcua.NotificationMessage{
+			nm := ua.NotificationMessage{
 				SequenceNumber:   s.seqNum,
 				PublishTime:      time.Now(),
-				NotificationData: []opcua.ExtensionObject{opcua.StatusChangeNotification{Status: opcua.BadTimeout}},
+				NotificationData: []ua.ExtensionObject{ua.StatusChangeNotification{Status: ua.BadTimeout}},
 			}
 			s.session.stateChanges <- &stateChangeOp{subscriptionId: s.id, message: nm}
 			if s.seqNum != math.MaxUint32 {
@@ -506,7 +506,7 @@ func (s *Subscription) publish(_ time.Time) {
 	}
 }
 
-func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, requestid uint32, req *opcua.PublishRequest, results []opcua.StatusCode) bool {
+func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, requestid uint32, req *ua.PublishRequest, results []ua.StatusCode) bool {
 	s.Lock()
 	if !s.isLate {
 		s.Unlock()
@@ -524,20 +524,20 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 		// log.Printf("handleLatePublishRequest %d, %d\n", s.id, s.priority)
 		more := false
 		maxN := int(s.maxNotificationsPerPublish)
-		mins := make([]opcua.MonitoredItemNotification, 0, 4)
-		efls := make([]opcua.EventFieldList, 0, 4)
+		mins := make([]ua.MonitoredItemNotification, 0, 4)
+		efls := make([]ua.EventFieldList, 0, 4)
 		for _, item := range s.items {
-			if item.monitoringMode != opcua.MonitoringModeReporting && !item.triggered {
+			if item.monitoringMode != ua.MonitoringModeReporting && !item.triggered {
 				continue
 			}
 			// if item.triggered {
 			// 	// log.Printf("TriggeredItem %d published late.", item.id)
 			// }
-			if item.itemToMonitor.AttributeID == opcua.AttributeIDEventNotifier {
+			if item.itemToMonitor.AttributeID == ua.AttributeIDEventNotifier {
 				encs, more1 := item.notifications(maxN)
 				for _, enc := range encs {
-					if efs, ok := enc.([]opcua.Variant); ok {
-						efls = append(efls, opcua.EventFieldList{ClientHandle: item.clientHandle, EventFields: efs})
+					if efs, ok := enc.([]ua.Variant); ok {
+						efls = append(efls, ua.EventFieldList{ClientHandle: item.clientHandle, EventFields: efs})
 						s.eventNotificationsCount++
 						s.notificationsCount++
 					}
@@ -547,8 +547,8 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 			} else {
 				encs, more1 := item.notifications(maxN)
 				for _, enc := range encs {
-					if dv, ok := enc.(opcua.DataValue); ok {
-						mins = append(mins, opcua.MonitoredItemNotification{ClientHandle: item.clientHandle, Value: dv})
+					if dv, ok := enc.(ua.DataValue); ok {
+						mins = append(mins, ua.MonitoredItemNotification{ClientHandle: item.clientHandle, Value: dv})
 						s.dataChangeNotificationsCount++
 						s.notificationsCount++
 					}
@@ -557,14 +557,14 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 				maxN = maxN - len(encs)
 			}
 		}
-		nd := make([]opcua.ExtensionObject, 0, 2)
+		nd := make([]ua.ExtensionObject, 0, 2)
 		if len(mins) > 0 {
-			nd = append(nd, opcua.DataChangeNotification{MonitoredItems: mins})
+			nd = append(nd, ua.DataChangeNotification{MonitoredItems: mins})
 		}
 		if len(efls) > 0 {
-			nd = append(nd, opcua.EventNotificationList{Events: efls})
+			nd = append(nd, ua.EventNotificationList{Events: efls})
 		}
-		nm := opcua.NotificationMessage{
+		nm := ua.NotificationMessage{
 			SequenceNumber:   s.seqNum,
 			PublishTime:      tn,
 			NotificationData: nd,
@@ -576,13 +576,13 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 		q.PushBack(nm)
 		avail := make([]uint32, 0, 4)
 		for e := q.Front(); e != nil; e = e.Next() {
-			if nm, ok := e.Value.(opcua.NotificationMessage); ok {
+			if nm, ok := e.Value.(ua.NotificationMessage); ok {
 				avail = append(avail, nm.SequenceNumber)
 			}
 		}
 		ch.Write(
-			&opcua.PublishResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.PublishResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 				},
@@ -615,21 +615,21 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 		avail := make([]uint32, 0, 4)
 		q := s.retransmissionQueue
 		for e := q.Front(); e != nil; e = e.Next() {
-			if nm, ok := e.Value.(opcua.NotificationMessage); ok {
+			if nm, ok := e.Value.(ua.NotificationMessage); ok {
 				avail = append(avail, nm.SequenceNumber)
 			}
 		}
-		results := make([]opcua.StatusCode, len(req.SubscriptionAcknowledgements))
+		results := make([]ua.StatusCode, len(req.SubscriptionAcknowledgements))
 		ch.Write(
-			&opcua.PublishResponse{
-				ResponseHeader: opcua.ResponseHeader{
+			&ua.PublishResponse{
+				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
 					RequestHandle: req.RequestHeader.RequestHandle,
 				},
 				SubscriptionID:           s.id,
 				AvailableSequenceNumbers: avail,
 				MoreNotifications:        false,
-				NotificationMessage: opcua.NotificationMessage{
+				NotificationMessage: ua.NotificationMessage{
 					SequenceNumber:   s.seqNum,
 					PublishTime:      time.Now(),
 					NotificationData: nil,

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/awcullen/opcua"
+	"github.com/awcullen/opcua/ua"
 	"github.com/google/uuid"
 )
 
@@ -57,7 +57,7 @@ func (m *SubscriptionManager) Add(s *Subscription) error {
 	defer m.Unlock()
 	maxSubscriptionCount := m.server.MaxSubscriptionCount()
 	if maxSubscriptionCount > 0 && len(m.subscriptionsByID) >= int(maxSubscriptionCount) {
-		return opcua.BadTooManySubscriptions
+		return ua.BadTooManySubscriptions
 	}
 	m.subscriptionsByID[s.id] = s
 	if m.server.serverDiagnostics {
@@ -126,34 +126,34 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 	nm := srv.NamespaceManager()
 	nodes := []Node{}
 
-	refs := []opcua.Reference{
-		opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDSubscriptionDiagnosticsType)),
-		opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(opcua.VariableIDServerServerDiagnosticsSubscriptionDiagnosticsArray)),
+	refs := []ua.Reference{
+		ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDSubscriptionDiagnosticsType)),
+		ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(ua.VariableIDServerServerDiagnosticsSubscriptionDiagnosticsArray)),
 	}
 	if n1, ok := nm.FindNode(s.sessionId); ok {
-		if n2, ok := nm.FindComponent(n1, opcua.NewQualifiedName(0, "SubscriptionDiagnosticsArray")); ok {
-			refs = append(refs, opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(n2.NodeID())))
+		if n2, ok := nm.FindComponent(n1, ua.NewQualifiedName(0, "SubscriptionDiagnosticsArray")); ok {
+			refs = append(refs, ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(n2.NodeID())))
 		}
 	}
 	subscriptionDiagnosticsVariable := NewVariableNode(
 		s.diagnosticsNodeId,
-		opcua.NewQualifiedName(uint16(1), fmt.Sprint(s.id)),
-		opcua.NewLocalizedText(fmt.Sprint(s.id), ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewQualifiedName(uint16(1), fmt.Sprint(s.id)),
+		ua.NewLocalizedText(fmt.Sprint(s.id), ""),
+		ua.NewLocalizedText("", ""),
 		nil,
 		refs,
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDSubscriptionDiagnosticsDataType,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDSubscriptionDiagnosticsDataType,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	subscriptionDiagnosticsVariable.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
+	subscriptionDiagnosticsVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		s.RLock()
 		defer s.RUnlock()
-		dv := opcua.NewDataValue(opcua.SubscriptionDiagnosticsDataType{
+		dv := ua.NewDataValue(ua.SubscriptionDiagnosticsDataType{
 				SessionID:                  s.sessionId,
 				SubscriptionID:             s.id,
 				Priority:                   s.priority,
@@ -190,686 +190,686 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 	})
 	nodes = append(nodes, subscriptionDiagnosticsVariable)
 	n := NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "SessionId"),
-		opcua.NewLocalizedText("SessionId", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "SessionId"),
+		ua.NewLocalizedText("SessionId", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDNodeID,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDNodeID,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.sessionId, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.sessionId, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "SubscriptionId"),
-		opcua.NewLocalizedText("SubscriptionId", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "SubscriptionId"),
+		ua.NewLocalizedText("SubscriptionId", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.id, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.id, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "Priority"),
-		opcua.NewLocalizedText("Priority", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "Priority"),
+		ua.NewLocalizedText("Priority", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDByte,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDByte,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.priority, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.priority, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "PublishingInterval"),
-		opcua.NewLocalizedText("PublishingInterval", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "PublishingInterval"),
+		ua.NewLocalizedText("PublishingInterval", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDDouble,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDDouble,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.publishingInterval, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.publishingInterval, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "MaxKeepAliveCount"),
-		opcua.NewLocalizedText("MaxKeepAliveCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "MaxKeepAliveCount"),
+		ua.NewLocalizedText("MaxKeepAliveCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.maxKeepAliveCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.maxKeepAliveCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "MaxLifetimeCount"),
-		opcua.NewLocalizedText("MaxLifetimeCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "MaxLifetimeCount"),
+		ua.NewLocalizedText("MaxLifetimeCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.lifetimeCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.lifetimeCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "MaxNotificationsPerPublish"),
-		opcua.NewLocalizedText("MaxNotificationsPerPublish", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "MaxNotificationsPerPublish"),
+		ua.NewLocalizedText("MaxNotificationsPerPublish", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.maxNotificationsPerPublish, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.maxNotificationsPerPublish, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "PublishingEnabled"),
-		opcua.NewLocalizedText("PublishingEnabled", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "PublishingEnabled"),
+		ua.NewLocalizedText("PublishingEnabled", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDBoolean,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDBoolean,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.publishingEnabled, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.publishingEnabled, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "ModifyCount"),
-		opcua.NewLocalizedText("ModifyCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "ModifyCount"),
+		ua.NewLocalizedText("ModifyCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.modifyCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.modifyCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "EnableCount"),
-		opcua.NewLocalizedText("EnableCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "EnableCount"),
+		ua.NewLocalizedText("EnableCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "DisableCount"),
-		opcua.NewLocalizedText("DisableCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "DisableCount"),
+		ua.NewLocalizedText("DisableCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "RepublishRequestCount"),
-		opcua.NewLocalizedText("RepublishRequestCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "RepublishRequestCount"),
+		ua.NewLocalizedText("RepublishRequestCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.republishRequestCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.republishRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "RepublishMessageRequestCount"),
-		opcua.NewLocalizedText("RepublishMessageRequestCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "RepublishMessageRequestCount"),
+		ua.NewLocalizedText("RepublishMessageRequestCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.republishMessageRequestCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.republishMessageRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "RepublishMessageCount"),
-		opcua.NewLocalizedText("RepublishMessageCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "RepublishMessageCount"),
+		ua.NewLocalizedText("RepublishMessageCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.republishMessageCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.republishMessageCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "TransferRequestCount"),
-		opcua.NewLocalizedText("TransferRequestCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "TransferRequestCount"),
+		ua.NewLocalizedText("TransferRequestCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "TransferredToAltClientCount"),
-		opcua.NewLocalizedText("TransferredToAltClientCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "TransferredToAltClientCount"),
+		ua.NewLocalizedText("TransferredToAltClientCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "TransferredToSameClientCount"),
-		opcua.NewLocalizedText("TransferredToSameClientCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "TransferredToSameClientCount"),
+		ua.NewLocalizedText("TransferredToSameClientCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "PublishRequestCount"),
-		opcua.NewLocalizedText("PublishRequestCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "PublishRequestCount"),
+		ua.NewLocalizedText("PublishRequestCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.publishRequestCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.publishRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "DataChangeNotificationsCount"),
-		opcua.NewLocalizedText("DataChangeNotificationsCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "DataChangeNotificationsCount"),
+		ua.NewLocalizedText("DataChangeNotificationsCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.dataChangeNotificationsCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.dataChangeNotificationsCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "EventNotificationsCount"),
-		opcua.NewLocalizedText("EventNotificationsCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "EventNotificationsCount"),
+		ua.NewLocalizedText("EventNotificationsCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.eventNotificationsCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.eventNotificationsCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "NotificationsCount"),
-		opcua.NewLocalizedText("NotificationsCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "NotificationsCount"),
+		ua.NewLocalizedText("NotificationsCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.notificationsCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.notificationsCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "LatePublishRequestCount"),
-		opcua.NewLocalizedText("LatePublishRequestCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "LatePublishRequestCount"),
+		ua.NewLocalizedText("LatePublishRequestCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.latePublishRequestCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.latePublishRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "CurrentKeepAliveCount"),
-		opcua.NewLocalizedText("CurrentKeepAliveCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "CurrentKeepAliveCount"),
+		ua.NewLocalizedText("CurrentKeepAliveCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.keepAliveCounter, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.keepAliveCounter, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "CurrentLifetimeCount"),
-		opcua.NewLocalizedText("CurrentLifetimeCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "CurrentLifetimeCount"),
+		ua.NewLocalizedText("CurrentLifetimeCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.lifetimeCounter, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.lifetimeCounter, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "UnacknowledgedMessageCount"),
-		opcua.NewLocalizedText("UnacknowledgedMessageCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "UnacknowledgedMessageCount"),
+		ua.NewLocalizedText("UnacknowledgedMessageCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.unacknowledgedMessageCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.unacknowledgedMessageCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "DiscardedMessageCount"),
-		opcua.NewLocalizedText("DiscardedMessageCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "DiscardedMessageCount"),
+		ua.NewLocalizedText("DiscardedMessageCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "MonitoredItemCount"),
-		opcua.NewLocalizedText("MonitoredItemCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "MonitoredItemCount"),
+		ua.NewLocalizedText("MonitoredItemCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.monitoredItemCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.monitoredItemCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "DisabledMonitoredItemCount"),
-		opcua.NewLocalizedText("DisabledMonitoredItemCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "DisabledMonitoredItemCount"),
+		ua.NewLocalizedText("DisabledMonitoredItemCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.disabledMonitoredItemCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.disabledMonitoredItemCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "MonitoringQueueOverflowCount"),
-		opcua.NewLocalizedText("MonitoringQueueOverflowCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "MonitoringQueueOverflowCount"),
+		ua.NewLocalizedText("MonitoringQueueOverflowCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.monitoringQueueOverflowCount, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.monitoringQueueOverflowCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "NextSequenceNumber"),
-		opcua.NewLocalizedText("NextSequenceNumber", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "NextSequenceNumber"),
+		ua.NewLocalizedText("NextSequenceNumber", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(s.seqNum, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.seqNum, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
-		opcua.NewNodeIDGUID(1, uuid.New()),
-		opcua.NewQualifiedName(0, "EventQueueOverFlowCount"),
-		opcua.NewLocalizedText("EventQueueOverFlowCount", ""),
-		opcua.NewLocalizedText("", ""),
+		ua.NewNodeIDGUID(1, uuid.New()),
+		ua.NewQualifiedName(0, "EventQueueOverFlowCount"),
+		ua.NewLocalizedText("EventQueueOverFlowCount", ""),
+		ua.NewLocalizedText("", ""),
 		nil,
-		[]opcua.Reference{
-			opcua.NewReference(opcua.ReferenceTypeIDHasTypeDefinition, false, opcua.NewExpandedNodeID(opcua.VariableTypeIDBaseDataVariableType)),
-			opcua.NewReference(opcua.ReferenceTypeIDHasComponent, true, opcua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
+		[]ua.Reference{
+			ua.NewReference(ua.ReferenceTypeIDHasTypeDefinition, false, ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)),
+			ua.NewReference(ua.ReferenceTypeIDHasComponent, true, ua.NewExpandedNodeID(subscriptionDiagnosticsVariable.NodeID())),
 		},
-		opcua.NewDataValue(nil, opcua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
-		opcua.DataTypeIDUInt32,
-		opcua.ValueRankScalar,
+		ua.NewDataValue(nil, ua.BadWaitingForInitialData, time.Now(), 0, time.Now(), 0),
+		ua.DataTypeIDUInt32,
+		ua.ValueRankScalar,
 		[]uint32{},
-		opcua.AccessLevelsCurrentRead,
+		ua.AccessLevelsCurrentRead,
 		125,
 		false,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req opcua.ReadValueID) opcua.DataValue {
-		return opcua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 
