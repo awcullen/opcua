@@ -12,6 +12,8 @@ With this client, you can call any service of the OPC Unified Architecture, see 
 For example, to connect to an OPC UA Demo Server, and read the server's status: 
 
 ```go
+package client_test
+
 import (
 	"context"
 	"fmt"
@@ -20,14 +22,14 @@ import (
 	"github.com/awcullen/opcua/ua"
 )
 
-func ExampleClient_ReadMe() {
+func ExampleClient_Read() {
 
 	ctx := context.Background()
 
 	// open a connection to testserver running locally. Testserver is started if not already running.
 	ch, err := client.Dial(
 		ctx,
-		"opc.tcp://localhost:48010",
+		"opc.tcp://localhost:46010",
 		client.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
