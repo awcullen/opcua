@@ -108,12 +108,25 @@ func WithSessionTimeout(value float64) Option {
 	}
 }
 
+// WithClientCertificate sets the client certificate and private key.
+func WithClientCertificate(cert []byte, privateKey *rsa.PrivateKey) Option {
+	return func(c *Client) error {
+		var err error
+		c.localCertificate, c.localPrivateKey = cert, privateKey
+		return err
+	}
+}
+
 // WithClientCertificateFile sets the file paths of the client certificate and private key.
 func WithClientCertificateFile(certPath, keyPath string) Option {
 	return func(c *Client) error {
-		var err error
-		c.applicationCertificate, err = tls.LoadX509KeyPair(certPath, keyPath)
-		return err
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			return err
+		}
+		c.localCertificate = cert.Certificate[0]
+		c.localPrivateKey, _ = cert.PrivateKey.(*rsa.PrivateKey)
+		return nil
 	}
 }
 

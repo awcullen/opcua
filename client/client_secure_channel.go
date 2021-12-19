@@ -12,7 +12,6 @@ import (
 	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
@@ -60,7 +59,6 @@ const (
 type clientSecureChannel struct {
 	sync.RWMutex
 	localDescription                   ua.ApplicationDescription
-	applicationCertificate             tls.Certificate
 	timeoutHint                        uint32
 	diagnosticsHint                    uint32
 	tokenRequestedLifetime             uint32
@@ -80,6 +78,8 @@ type clientSecureChannel struct {
 	remoteCertificate          []byte
 	localPrivateKey            *rsa.PrivateKey
 	remotePublicKey            *rsa.PublicKey
+	localPrivateKeySize        int
+	remotePublicKeySize        int
 	localNonce                 []byte
 	remoteNonce                []byte
 	channelID                  uint32
@@ -114,8 +114,6 @@ type clientSecureChannel struct {
 	tokenRenewalTime           time.Time
 	symSignHMAC                hash.Hash
 	symVerifyHMAC              hash.Hash
-	symSign                    func(mac hash.Hash, plainText []byte) ([]byte, error)
-	symVerify                  func(mac hash.Hash, plainText, signature []byte) error
 	symEncryptingBlockCipher   cipher.Block
 	symDecryptingBlockCipher   cipher.Block
 	trace                      bool
@@ -131,7 +129,6 @@ func newClientSecureChannel(
 	securityMode ua.MessageSecurityMode,
 	remoteCertificate []byte,
 	connectTimeout int64,
-	applicationCertificate tls.Certificate,
 	trustedCertsFile string,
 	suppressHostNameInvalid bool,
 	suppressCertificateExpired bool,
@@ -153,7 +150,6 @@ func newClientSecureChannel(
 		namespaceURIs:                      []string{"http://opcfoundation.org/UA/"},
 		serverURIs:                         []string{},
 		connectTimeout:                     connectTimeout,
-		applicationCertificate:             applicationCertificate,
 		trustedCertsFile:                   trustedCertsFile,
 		suppressHostNameInvalid:            suppressHostNameInvalid,
 		suppressCertificateExpired:         suppressCertificateExpired,
@@ -306,9 +302,9 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		return err
 	}
 
-	if ch.trace {
-		log.Printf("Hello{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d,\"EndpointURL\":\"%s\"}\n", protocolVersion, defaultBufferSize, defaultBufferSize, defaultMaxMessageSize, defaultMaxChunkCount, ch.endpointURL)
-	}
+	// if ch.trace {
+	// 	log.Printf("Hello{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d,\"EndpointURL\":\"%s\"}\n", protocolVersion, defaultBufferSize, defaultBufferSize, defaultMaxMessageSize, defaultMaxChunkCount, ch.endpointURL)
+	// }
 
 	_, err = ch.Read(buf)
 	if err != nil {
@@ -350,9 +346,9 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		if err := dec.ReadUInt32(&ch.maxChunkCount); err != nil {
 			return err
 		}
-		if ch.trace {
-			log.Printf("Ack{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d}\n", remoteProtocolVersion, ch.sendBufferSize, ch.receiveBufferSize, ch.maxMessageSize, ch.maxChunkCount)
-		}
+		// if ch.trace {
+		// 	log.Printf("Ack{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d}\n", remoteProtocolVersion, ch.sendBufferSize, ch.receiveBufferSize, ch.maxMessageSize, ch.maxChunkCount)
+		// }
 
 	case ua.MessageTypeError:
 		if msgLen < 16 {
@@ -372,61 +368,47 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		return ua.BadDecodingError
 	}
 
+	// setSecurityPolicy
+	switch ch.securityPolicyURI {
+	case ua.SecurityPolicyURINone:
+		ch.securityPolicy = new(ua.SecurityPolicyNone)
+
+	case ua.SecurityPolicyURIBasic128Rsa15:
+		ch.securityPolicy = new(ua.SecurityPolicyBasic128Rsa15)
+
+	case ua.SecurityPolicyURIBasic256:
+		ch.securityPolicy = new(ua.SecurityPolicyBasic256)
+
+	case ua.SecurityPolicyURIBasic256Sha256:
+		ch.securityPolicy = new(ua.SecurityPolicyBasic256Sha256)
+
+	case ua.SecurityPolicyURIAes128Sha256RsaOaep:
+		ch.securityPolicy = new(ua.SecurityPolicyAes128Sha256RsaOaep)
+
+	case ua.SecurityPolicyURIAes256Sha256RsaPss:
+		ch.securityPolicy = new(ua.SecurityPolicyAes256Sha256RsaPss)
+
+	default:
+		return ua.BadSecurityPolicyRejected
+	}
+
+	ch.localSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
+	ch.localEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
+	ch.localInitializationVector = make([]byte, ch.securityPolicy.SymEncryptionBlockSize())
+	ch.remoteSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
+	ch.remoteEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
+	ch.remoteInitializationVector = make([]byte, ch.securityPolicy.SymEncryptionBlockSize())
+
 	switch ch.securityMode {
 	case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
-
 		if ch.localPrivateKey == nil {
 			return ua.BadSecurityChecksFailed
 		}
-
+		ch.localPrivateKeySize = ch.localPrivateKey.Size()
 		if ch.remotePublicKey == nil {
 			return ua.BadSecurityChecksFailed
 		}
-
-		switch ch.securityPolicyURI {
-		case ua.SecurityPolicyURIBasic128Rsa15:
-			ch.securityPolicy = new(ua.SecurityPolicyBasic128Rsa15)
-
-		case ua.SecurityPolicyURIBasic256:
-			ch.securityPolicy = new(ua.SecurityPolicyBasic256)
-
-		case ua.SecurityPolicyURIBasic256Sha256:
-			ch.securityPolicy = new(ua.SecurityPolicyBasic256Sha256)
-
-		case ua.SecurityPolicyURIAes128Sha256RsaOaep:
-			ch.securityPolicy = new(ua.SecurityPolicyAes128Sha256RsaOaep)
-
-		case ua.SecurityPolicyURIAes256Sha256RsaPss:
-			ch.securityPolicy = new(ua.SecurityPolicyAes256Sha256RsaPss)
-
-		default:
-			return ua.BadSecurityPolicyRejected
-		}
-
-		ch.localSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
-		ch.localEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
-		ch.localInitializationVector = make([]byte, ch.securityPolicy.SymEncryptionBlockSize())
-		ch.remoteSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
-		ch.remoteEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
-		ch.remoteInitializationVector = make([]byte, ch.securityPolicy.SymEncryptionBlockSize())
-		ch.symSign = func(mac hash.Hash, plainText []byte) ([]byte, error) {
-			mac.Reset()
-			mac.Write(plainText)
-			return mac.Sum(nil), nil
-		}
-		ch.symVerify = func(mac hash.Hash, plainText, signature []byte) error {
-			mac.Reset()
-			mac.Write(plainText)
-			sig := mac.Sum(nil)
-			if !hmac.Equal(sig, signature) {
-				return ua.BadSecurityChecksFailed
-			}
-			return nil
-		}
-
-	default:
-		ch.securityPolicy = new(ua.SecurityPolicyNone)
-
+		ch.remotePublicKeySize = ch.remotePublicKey.Size()
 	}
 
 	ch.pendingResponseCh = make(chan *ua.ServiceOperation, 32)
@@ -579,8 +561,8 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 		switch ch.securityMode {
 		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 			plainHeaderSize = 16 + len(ch.securityPolicyURI) + 28 + len(ch.localCertificate)
-			signatureSize = ch.localPrivateKey.Size()
-			cipherTextBlockSize = ch.remotePublicKey.Size()
+			signatureSize = ch.localPrivateKeySize
+			cipherTextBlockSize = ch.remotePublicKeySize
 			plainTextBlockSize = cipherTextBlockSize - ch.securityPolicy.RSAPaddingSize()
 			if cipherTextBlockSize > 256 {
 				paddingHeaderSize = 2
@@ -598,12 +580,12 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 			chunkSize = plainHeaderSize + (((sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize) / plainTextBlockSize) * cipherTextBlockSize)
 
 		default:
-			plainHeaderSize = int(16 + len(ch.securityPolicyURI) + 8)
+			plainHeaderSize = 16 + len(ch.securityPolicyURI) + 8
 			signatureSize = 0
-			paddingHeaderSize = 0
-			paddingSize = 0
 			cipherTextBlockSize = 1
 			plainTextBlockSize = 1
+			paddingHeaderSize = 0
+			paddingSize = 0
 			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
@@ -1030,6 +1012,8 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request u
 
 	var chunkCount int
 	var bodyCount = int(bodyStream.Len())
+	var signatureSize = ch.securityPolicy.SymSignatureSize()
+	var encryptionBlockSize = ch.securityPolicy.SymEncryptionBlockSize()
 
 	for bodyCount > 0 {
 		chunkCount++
@@ -1047,32 +1031,32 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request u
 		switch ch.securityMode {
 		case ua.MessageSecurityModeSignAndEncrypt:
 			plainHeaderSize = 16
-			if ch.securityPolicy.SymEncryptionBlockSize() > 256 {
+			if encryptionBlockSize > 256 {
 				paddingHeaderSize = 2
 			} else {
 				paddingHeaderSize = 1
 			}
-			maxBodySize = (((int(ch.sendBufferSize) - plainHeaderSize) / ch.securityPolicy.SymEncryptionBlockSize()) * ch.securityPolicy.SymEncryptionBlockSize()) - sequenceHeaderSize - paddingHeaderSize - ch.securityPolicy.SymSignatureSize()
+			maxBodySize = (((int(ch.sendBufferSize) - plainHeaderSize) / encryptionBlockSize) * encryptionBlockSize) - sequenceHeaderSize - paddingHeaderSize - signatureSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
-				paddingSize = (ch.securityPolicy.SymEncryptionBlockSize() - ((sequenceHeaderSize + bodySize + paddingHeaderSize + ch.securityPolicy.SymSignatureSize()) % ch.securityPolicy.SymEncryptionBlockSize())) % ch.securityPolicy.SymEncryptionBlockSize()
+				paddingSize = (encryptionBlockSize - ((sequenceHeaderSize + bodySize + paddingHeaderSize + signatureSize) % encryptionBlockSize)) % encryptionBlockSize
 			} else {
 				bodySize = maxBodySize
 				paddingSize = 0
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + ch.securityPolicy.SymSignatureSize()
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize
 
 		default:
 			plainHeaderSize = 16
 			paddingHeaderSize = 0
 			paddingSize = 0
-			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize - ch.securityPolicy.SymSignatureSize()
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
 			} else {
 				bodySize = maxBodySize
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + ch.securityPolicy.SymSignatureSize()
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
 		}
 
 		var stream = ua.NewWriter(sendBuffer)
@@ -1097,11 +1081,12 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request u
 
 			switch ch.securityMode {
 			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
-				// (re)create local security keys for encrypting the next message sent
+				// (re)create security keys for signing, encrypting
 				localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
 				jj := copy(ch.localSigningKey, localSecurityKey)
 				jj += copy(ch.localEncryptingKey, localSecurityKey[jj:])
 				copy(ch.localInitializationVector, localSecurityKey[jj:])
+
 				// update signer and encrypter with new symmetric keys
 				ch.symSignHMAC = ch.securityPolicy.SymHMACFactory(ch.localSigningKey)
 				if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
@@ -1139,10 +1124,12 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request u
 		// sign
 		switch ch.securityMode {
 		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
-			signature, err := ch.symSign(ch.symSignHMAC, stream.Bytes())
+			ch.symSignHMAC.Reset()
+			_, err := ch.symSignHMAC.Write(stream.Bytes())
 			if err != nil {
 				return err
 			}
+			signature := ch.symSignHMAC.Sum(nil)
 			stream.Write(signature)
 		}
 
@@ -1194,6 +1181,7 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 	var plainHeaderSize int
 	var bodySize int
 	var paddingSize int
+	signatureSize := ch.securityPolicy.SymSignatureSize()
 
 	var bodyStream = buffer.NewPartitionAt(bufferPool)
 	defer bodyStream.Reset()
@@ -1258,11 +1246,12 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 
 				switch ch.securityMode {
 				case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
-					// (re)create remote security keys for decrypting the next message received that has a new TokenId
+					// (re)create remote security keys for verifying, decrypting
 					remoteSecurityKey := calculatePSHA(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
 					jj := copy(ch.remoteSigningKey, remoteSecurityKey)
 					jj += copy(ch.remoteEncryptingKey, remoteSecurityKey[jj:])
 					copy(ch.remoteInitializationVector, remoteSecurityKey[jj:])
+
 					// update verifier and decrypter with new symmetric keys
 					ch.symVerifyHMAC = ch.securityPolicy.SymHMACFactory(ch.remoteSigningKey)
 					if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
@@ -1285,10 +1274,12 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 			// verify
 			switch ch.securityMode {
 			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
-				sigStart := count - ch.securityPolicy.SymSignatureSize()
-				err := ch.symVerify(ch.symVerifyHMAC, receiveBuffer[:sigStart], receiveBuffer[sigStart:count])
-				if err != nil {
-					return nil, err
+				sigStart := count - signatureSize
+				ch.symVerifyHMAC.Reset()
+				ch.symVerifyHMAC.Write(receiveBuffer[:sigStart])
+				sig := ch.symVerifyHMAC.Sum(nil)
+				if !hmac.Equal(sig, receiveBuffer[sigStart:count]) {
+					return nil, ua.BadSecurityChecksFailed
 				}
 			}
 
@@ -1307,17 +1298,17 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 			case ua.MessageSecurityModeSignAndEncrypt:
 				if ch.securityPolicy.SymEncryptionBlockSize() > 256 {
 					paddingHeaderSize = 2
-					start := int(messageLength) - ch.securityPolicy.SymSignatureSize() - paddingHeaderSize
+					start := int(messageLength) - signatureSize - paddingHeaderSize
 					paddingSize = int(binary.LittleEndian.Uint16(receiveBuffer[start : start+2]))
 				} else {
 					paddingHeaderSize = 1
-					start := int(messageLength) - ch.securityPolicy.SymSignatureSize() - paddingHeaderSize
+					start := int(messageLength) - signatureSize - paddingHeaderSize
 					paddingSize = int(receiveBuffer[start])
 				}
-				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - paddingSize - paddingHeaderSize - ch.securityPolicy.SymSignatureSize()
+				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - paddingSize - paddingHeaderSize - signatureSize
 
 			default:
-				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - ch.securityPolicy.SymSignatureSize()
+				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - signatureSize
 			}
 
 			m := plainHeaderSize + sequenceHeaderSize
@@ -1352,7 +1343,7 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 			// decrypt
 			switch ch.securityMode {
 			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
-				cipherTextBlockSize := ch.localPrivateKey.Size()
+				cipherTextBlockSize := ch.localPrivateKeySize
 				cipherText := make([]byte, cipherTextBlockSize)
 				jj := plainHeaderSize
 				for ii := plainHeaderSize; ii < int(messageLength); ii += cipherTextBlockSize {
@@ -1373,7 +1364,7 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 				// verify with remote public key.
 				sigEnd := int(messageLength)
-				sigStart := sigEnd - ch.remotePublicKey.Size()
+				sigStart := sigEnd - ch.remotePublicKeySize
 				err := ch.securityPolicy.RSAVerify(ch.remotePublicKey, receiveBuffer[:sigStart], receiveBuffer[sigStart:sigEnd])
 				if err != nil {
 					return nil, ua.BadDecodingError
@@ -1392,8 +1383,8 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 			// body
 			switch ch.securityMode {
 			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
-				cipherTextBlockSize := ch.localPrivateKey.Size()
-				signatureSize := ch.remotePublicKey.Size()
+				cipherTextBlockSize := ch.localPrivateKeySize
+				signatureSize := ch.remotePublicKeySize
 				if cipherTextBlockSize > 256 {
 					paddingHeaderSize = 2
 					start := int(messageLength) - signatureSize - paddingHeaderSize

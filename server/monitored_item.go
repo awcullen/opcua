@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"math"
 	"reflect"
 	"sync/atomic"
 	"time"
@@ -347,7 +348,7 @@ func (mi *MonitoredItem) notificationsAvailable(tn time.Time, late bool, resend 
 	// update queue and report if queue has notifications available.
 	switch mi.itemToMonitor.AttributeID {
 	case ua.AttributeIDEventNotifier:
-		// TODO:
+		// TODO: implement event queue
 	default:
 		// if in sampling interval mode, queue the last value of each sampling interval
 		if mi.ti > 0 {
@@ -423,7 +424,7 @@ func (mi *MonitoredItem) isDataChange(current, previous ua.DataValue) bool {
 		case ua.DeadbandTypeNone:
 			return !reflect.DeepEqual(current.Value, previous.Value)
 		case ua.DeadbandTypeAbsolute:
-			return !deadbandEqualAbsolute(current.Value, previous.Value, dcf.DeadbandValue)
+			return !equalDeadbandAbsolute(current.Value, previous.Value, dcf.DeadbandValue)
 		case ua.DeadbandTypePercent:
 			return true
 		}
@@ -438,7 +439,7 @@ func (mi *MonitoredItem) isDataChange(current, previous ua.DataValue) bool {
 		case ua.DeadbandTypeNone:
 			return !reflect.DeepEqual(current.Value, previous.Value)
 		case ua.DeadbandTypeAbsolute:
-			return !deadbandEqualAbsolute(current.Value, previous.Value, dcf.DeadbandValue)
+			return !equalDeadbandAbsolute(current.Value, previous.Value, dcf.DeadbandValue)
 		case ua.DeadbandTypePercent:
 			return true
 		}
@@ -446,172 +447,142 @@ func (mi *MonitoredItem) isDataChange(current, previous ua.DataValue) bool {
 	return true
 }
 
-func deadbandEqualAbsolute(current, previous ua.Variant, deadband float64) bool {
-	panic("todo")
-	/*
-		if current == nil {
-			return previous == nil
+func equalDeadbandAbsolute(current, previous ua.Variant, deadband float64) bool {
+	switch c := current.(type) {
+	case nil:
+		return previous == nil
+	case int8:
+		if p, ok := previous.(int8); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
 		}
-		if previous == nil {
-			return false
+	case uint8:
+		if p, ok := previous.(uint8); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
 		}
-		if current.Type() != previous.Type() {
-			return false
+	case int16:
+		if p, ok := previous.(int16); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
 		}
-		a := current.ArrayDimensions()
-		b := previous.ArrayDimensions()
-		if len(a) != len(b) {
-			return false
+	case uint16:
+		if p, ok := previous.(uint16); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
 		}
-		for i := range a {
-			if a[i] != b[i] {
-				return false
+	case int32:
+		if p, ok := previous.(int32); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
+		}
+	case uint32:
+		if p, ok := previous.(uint32); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
+		}
+	case int64:
+		if p, ok := previous.(int64); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
+		}
+	case uint64:
+		if p, ok := previous.(uint64); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
+		}
+	case float32:
+		if p, ok := previous.(float32); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
+		}
+	case float64:
+		if p, ok := previous.(float64); ok {
+			return math.Abs(float64(c)-float64(p)) <= deadband
+		}
+	case []int8:
+		if p, ok := previous.([]int8); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
 			}
+			return true
 		}
-		if len(a) == 0 {
-			switch current.Type() {
-			case ua.VariantTypeSByte:
-				c := current.Value().(int8)
-				p := previous.Value().(int8)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeByte:
-				c := current.Value().(byte)
-				p := previous.Value().(byte)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeInt16:
-				c := current.Value().(int16)
-				p := previous.Value().(int16)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeUInt16:
-				c := current.Value().(uint16)
-				p := previous.Value().(uint16)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeInt32:
-				c := current.Value().(int32)
-				p := previous.Value().(int32)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeUInt32:
-				c := current.Value().(uint32)
-				p := previous.Value().(uint32)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeInt64:
-				c := current.Value().(int64)
-				p := previous.Value().(int64)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeUInt64:
-				c := current.Value().(uint64)
-				p := previous.Value().(uint64)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeFloat:
-				c := current.Value().(float32)
-				p := previous.Value().(float32)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			case ua.VariantTypeDouble:
-				c := current.Value().(float64)
-				p := previous.Value().(float64)
-				return math.Abs(float64(c)-float64(p)) <= deadband
-			default:
-				return false
+	case []uint8:
+		if p, ok := previous.([]uint8); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
 			}
+			return true
 		}
-		if len(a) == 1 {
-			switch current.Type() {
-			case ua.VariantTypeSByte:
-				c := current.Value().([]int8)
-				p := previous.Value().([]int8)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
+	case []int16:
+		if p, ok := previous.([]int16); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
 				}
-				return true
-			case ua.VariantTypeByte:
-				c := current.Value().([]byte)
-				p := previous.Value().([]byte)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			case ua.VariantTypeInt16:
-				c := current.Value().([]int16)
-				p := previous.Value().([]int16)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			case ua.VariantTypeUInt16:
-				c := current.Value().([]uint16)
-				p := previous.Value().([]uint16)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			case ua.VariantTypeInt32:
-				c := current.Value().([]int32)
-				p := previous.Value().([]int32)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			case ua.VariantTypeUInt32:
-				c := current.Value().([]uint32)
-				p := previous.Value().([]uint32)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			case ua.VariantTypeInt64:
-				c := current.Value().([]int64)
-				p := previous.Value().([]int64)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			case ua.VariantTypeUInt64:
-				c := current.Value().([]uint64)
-				p := previous.Value().([]uint64)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			case ua.VariantTypeFloat:
-				c := current.Value().([]float32)
-				p := previous.Value().([]float32)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			case ua.VariantTypeDouble:
-				c := current.Value().([]float64)
-				p := previous.Value().([]float64)
-				for i := 0; i < len(c); i++ {
-					if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-						return false
-					}
-				}
-				return true
-			default:
-				return false
 			}
+			return true
 		}
-		return false
-	*/
+	case []uint16:
+		if p, ok := previous.([]uint16); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
+			}
+			return true
+		}
+	case []int32:
+		if p, ok := previous.([]int32); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
+			}
+			return true
+		}
+	case []uint32:
+		if p, ok := previous.([]uint32); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
+			}
+			return true
+		}
+	case []int64:
+		if p, ok := previous.([]int64); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
+			}
+			return true
+		}
+	case []uint64:
+		if p, ok := previous.([]uint64); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
+			}
+			return true
+		}
+	case []float32:
+		if p, ok := previous.([]float32); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
+			}
+			return true
+		}
+	case []float64:
+		if p, ok := previous.([]float64); ok {
+			for i := 0; i < len(c); i++ {
+				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // withTimestamps returns a new instance of DataValue with only the selected timestamps.

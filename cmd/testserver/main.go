@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"net/http"
 	_ "net/http/pprof"
 	"net/url"
 	"os"
@@ -27,25 +26,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
+var (
+	host, _         = os.Hostname()
 	port            = 46010
-	SoftwareVersion = "0.9.0"
+	SoftwareVersion = "0.3.0"
 )
 
 func main() {
-	// open http://localhost:6060/debug/pprof/ in your browser.
-	go func() {
-		go log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
 
 	// create directory with certificate and key, if not found.
 	if err := ensurePKI(); err != nil {
 		log.Println("Error creating PKI.")
 		return
 	}
-
-	// local hostname
-	host, _ := os.Hostname()
 
 	// userids for testing
 	userids := []ua.UserNameIdentity{
@@ -58,11 +51,14 @@ func main() {
 		userids[i].Password = string(hash)
 	}
 
+	// create the endpoint url from hostname and port
+	endpointURL := fmt.Sprintf("opc.tcp://%s:%d", host, port)
+
 	// create server
 	srv, err := server.New(
 		ua.ApplicationDescription{
 			ApplicationURI: fmt.Sprintf("urn:%s:testserver", host),
-			ProductURI:     "http://github.com/awcullen/opcua/testserver",
+			ProductURI:     "http://github.com/awcullen/opcua",
 			ApplicationName: ua.LocalizedText{
 				Text:   fmt.Sprintf("testserver@%s", host),
 				Locale: "en",
@@ -70,18 +66,19 @@ func main() {
 			ApplicationType:     ua.ApplicationTypeServer,
 			GatewayServerURI:    "",
 			DiscoveryProfileURI: "",
-			DiscoveryURLs:       []string{fmt.Sprintf("opc.tcp://%s:%d", host, port)},
+			DiscoveryURLs:       []string{endpointURL},
 		},
 		"./pki/server.crt",
 		"./pki/server.key",
-		fmt.Sprintf("opc.tcp://%s:%d", host, port),
+		endpointURL,
 		server.WithBuildInfo(
 			ua.BuildInfo{
-				ProductURI:       "http://github.com/awcullen/opcua/testserver",
+				ProductURI:       "http://github.com/awcullen/opcua",
 				ManufacturerName: "awcullen",
 				ProductName:      "testserver",
 				SoftwareVersion:  SoftwareVersion,
 			}),
+		server.WithAnonymousIdentity(true),
 		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
 			valid := false
 			for _, user := range userids {
@@ -98,56 +95,10 @@ func main() {
 			// log.Printf("Login user: %s from %s\n", userIdentity.UserName, applicationURI)
 			return nil
 		}),
-		server.WithRolesProvider(
-			server.NewRulesBasedRolesProvider(
-				[]server.IdentityMappingRule{
-					// WellKnownRoleAnonymous
-					{
-						NodeID: ua.ObjectIDWellKnownRoleAnonymous,
-						Identities: []ua.IdentityMappingRuleType{
-							{CriteriaType: ua.IdentityCriteriaTypeAnonymous},
-						},
-						ApplicationsExclude: true,
-						EndpointsExclude:    true,
-					},
-					// WellKnownRoleAuthenticatedUser
-					{
-						NodeID: ua.ObjectIDWellKnownRoleAuthenticatedUser,
-						Identities: []ua.IdentityMappingRuleType{
-							{CriteriaType: ua.IdentityCriteriaTypeAuthenticatedUser},
-						},
-						ApplicationsExclude: true,
-						EndpointsExclude:    true,
-					},
-					// WellKnownRoleObserver
-					{
-						NodeID: ua.ObjectIDWellKnownRoleObserver,
-						Identities: []ua.IdentityMappingRuleType{
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user1"},
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user2"},
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "root"},
-						},
-						ApplicationsExclude: true,
-						EndpointsExclude:    true,
-					},
-					// WellKnownRoleOperator
-					{
-						NodeID: ua.ObjectIDWellKnownRoleOperator,
-						Identities: []ua.IdentityMappingRuleType{
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user1"},
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user2"},
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "root"},
-						},
-						ApplicationsExclude: true,
-						EndpointsExclude:    true,
-					},
-				},
-			),
-		),
-		server.WithRegistrationInterval(0.0),
+		server.WithSecurityPolicyNone(true),
 		server.WithInsecureSkipVerify(),
 		server.WithServerDiagnostics(true),
-		// server.WithTrace(),
+		server.WithTrace(),
 	)
 	if err != nil {
 		os.Exit(1)
@@ -238,7 +189,7 @@ func main() {
 		srv.Close()
 	}()
 
-	// open server
+	// start server
 	log.Printf("Starting server '%s' at '%s'\n", srv.LocalDescription().ApplicationName.Text, srv.EndpointURL())
 	if err := srv.ListenAndServe(); err != ua.BadServerHalted {
 		log.Println(errors.Wrap(err, "Error opening server"))

@@ -84,7 +84,7 @@ func (n *MethodNode) UserRolePermissions(ctx context.Context) []ua.RolePermissio
 	}
 	rolePermissions := n.RolePermissions()
 	if rolePermissions == nil {
-		rolePermissions = session.server.rolePermissions
+		rolePermissions = session.Server().RolePermissions()
 	}
 	for _, rp := range rolePermissions {
 		for _, r := range roles {

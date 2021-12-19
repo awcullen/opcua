@@ -3,13 +3,13 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
 	"sort"
@@ -58,7 +58,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 
 	// if client certificate is not set then limit secuity policy to none
 	securityPolicyURI := cli.securityPolicyURI
-	if securityPolicyURI == ua.SecurityPolicyURIBestAvailable && len(cli.applicationCertificate.Certificate) == 0 {
+	if securityPolicyURI == ua.SecurityPolicyURIBestAvailable && len(cli.localCertificate) == 0 {
 		securityPolicyURI = ua.SecurityPolicyURINone
 	}
 
@@ -90,7 +90,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 	cli.endpointURL = selectedEndpoint.EndpointURL
 	cli.securityPolicyURI = selectedEndpoint.SecurityPolicyURI
 	cli.securityMode = selectedEndpoint.SecurityMode
-	cli.serverCertificate = selectedEndpoint.ServerCertificate
+	cli.serverCertificate = []byte(selectedEndpoint.ServerCertificate)
 	cli.userTokenPolicies = selectedEndpoint.UserIdentityTokens
 
 	cli.localDescription = ua.ApplicationDescription{
@@ -98,14 +98,9 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		ApplicationType: ua.ApplicationTypeClient,
 	}
 
-	var localCertificate []byte
-	var localPrivateKey *rsa.PrivateKey
-
-	if len(cli.applicationCertificate.Certificate) > 0 {
-		localCertificate = cli.applicationCertificate.Certificate[0]
-		localPrivateKey = cli.applicationCertificate.PrivateKey.(*rsa.PrivateKey)
-		crt, _ := x509.ParseCertificate(localCertificate)
+	if len(cli.localCertificate) > 0 {
 		// if cert has URI then update local description
+		crt, _ := x509.ParseCertificate(cli.localCertificate)
 		if len(crt.URIs) > 0 {
 			cli.localDescription.ApplicationURI = crt.URIs[0].String()
 		}
@@ -113,14 +108,13 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 
 	cli.channel = newClientSecureChannel(
 		cli.localDescription,
-		localCertificate,
-		localPrivateKey,
+		cli.localCertificate,
+		cli.localPrivateKey,
 		cli.endpointURL,
 		cli.securityPolicyURI,
 		cli.securityMode,
-		[]byte(cli.serverCertificate),
+		cli.serverCertificate,
 		cli.connectTimeout,
-		cli.applicationCertificate,
 		cli.trustedCertsFile,
 		cli.suppressHostNameInvalid,
 		cli.suppressCertificateExpired,
@@ -147,7 +141,7 @@ type Client struct {
 	endpointURL                        string
 	securityPolicyURI                  string
 	securityMode                       ua.MessageSecurityMode
-	serverCertificate                  ua.ByteString
+	serverCertificate                  []byte
 	userTokenPolicies                  []ua.UserTokenPolicy
 	userIdentity                       interface{}
 	sessionID                          ua.NodeID
@@ -160,7 +154,8 @@ type Client struct {
 	timeoutHint                        uint32
 	diagnosticsHint                    uint32
 	tokenLifetime                      uint32
-	applicationCertificate             tls.Certificate
+	localCertificate                   []byte
+	localPrivateKey                    *rsa.PrivateKey
 	trustedCertsFile                   string
 	suppressHostNameInvalid            bool
 	suppressCertificateExpired         bool
@@ -223,7 +218,7 @@ func (ch *Client) open(ctx context.Context) error {
 	remoteNonce = []byte(createSessionResponse.ServerNonce)
 
 	// verify the server's certificate is the same as the certificate from the selected endpoint.
-	if ch.serverCertificate != "" && ch.serverCertificate != createSessionResponse.ServerCertificate {
+	if !bytes.Equal(ch.serverCertificate, []byte(createSessionResponse.ServerCertificate)) {
 		return ua.BadCertificateInvalid
 	}
 
@@ -266,7 +261,7 @@ func (ch *Client) open(ctx context.Context) error {
 	switch ch.securityPolicyURI {
 	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 		hash := crypto.SHA1.New()
-		hash.Write([]byte(ch.serverCertificate))
+		hash.Write(ch.serverCertificate)
 		hash.Write(remoteNonce)
 		hashed := hash.Sum(nil)
 		signature, err := rsa.SignPKCS1v15(rand.Reader, ch.channel.localPrivateKey, crypto.SHA1, hashed)
@@ -280,7 +275,7 @@ func (ch *Client) open(ctx context.Context) error {
 
 	case ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 		hash := crypto.SHA256.New()
-		hash.Write([]byte(ch.serverCertificate))
+		hash.Write(ch.serverCertificate)
 		hash.Write(remoteNonce)
 		hashed := hash.Sum(nil)
 		signature, err := rsa.SignPKCS1v15(rand.Reader, ch.channel.localPrivateKey, crypto.SHA256, hashed)
@@ -294,7 +289,7 @@ func (ch *Client) open(ctx context.Context) error {
 
 	case ua.SecurityPolicyURIAes256Sha256RsaPss:
 		hash := crypto.SHA256.New()
-		hash.Write([]byte(ch.serverCertificate))
+		hash.Write(ch.serverCertificate)
 		hash.Write(remoteNonce)
 		hashed := hash.Sum(nil)
 		signature, err := rsa.SignPSS(rand.Reader, ch.channel.localPrivateKey, crypto.SHA256, hashed, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
@@ -455,7 +450,7 @@ func (ch *Client) open(ctx context.Context) error {
 		switch secPolicyURI {
 		case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
 			hash := crypto.SHA1.New()
-			hash.Write([]byte(ch.serverCertificate))
+			hash.Write(ch.serverCertificate)
 			hash.Write(remoteNonce)
 			hashed := hash.Sum(nil)
 			signature, err := rsa.SignPKCS1v15(rand.Reader, ui.Key, crypto.SHA1, hashed)
@@ -473,7 +468,7 @@ func (ch *Client) open(ctx context.Context) error {
 
 		case ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 			hash := crypto.SHA256.New()
-			hash.Write([]byte(ch.serverCertificate))
+			hash.Write(ch.serverCertificate)
 			hash.Write(remoteNonce)
 			hashed := hash.Sum(nil)
 			signature, err := rsa.SignPKCS1v15(rand.Reader, ui.Key, crypto.SHA256, hashed)
@@ -491,7 +486,7 @@ func (ch *Client) open(ctx context.Context) error {
 
 		case ua.SecurityPolicyURIAes256Sha256RsaPss:
 			hash := crypto.SHA256.New()
-			hash.Write([]byte(ch.serverCertificate))
+			hash.Write(ch.serverCertificate)
 			hash.Write(remoteNonce)
 			hashed := hash.Sum(nil)
 			signature, err := rsa.SignPSS(rand.Reader, ui.Key, crypto.SHA256, hashed, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})

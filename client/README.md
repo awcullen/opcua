@@ -1,13 +1,10 @@
 # client - [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua/client) [![License](http://img.shields.io/badge/license-mit-blue.svg?style=flat-square)](https://raw.githubusercontent.com/awcullen/opcua/master/LICENSE)
-Browse, read, write and subscribe to the live data published by the OPC UA servers on your network.
+Browse, read, write and subscribe to data published by the OPC UA servers in your network.
 
-This package supports OPC UA TCP transport protocol with secure channel and binary encoding.  For more information, visit https://reference.opcfoundation.org/v104/.
-
+With this package, you can call any service of the OPC Unified Architecture, see https://reference.opcfoundation.org/v104/Core/docs/Part4/
 
 ## Usage
 To connect to your OPC UA server, call client.Dial, passing the endpoint URL of the server and various security options. Dial returns a connected client or an error.
-
-With this client, you can call any service of the OPC Unified Architecture, see https://reference.opcfoundation.org/v104/Core/docs/Part4/
 
 For example, to connect to an OPC UA Demo Server, and read the server's status: 
 

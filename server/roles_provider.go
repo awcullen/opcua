@@ -64,13 +64,19 @@ var (
 		},
 		// WellKnownRoleObserver
 		{
-			NodeID:              ua.ObjectIDWellKnownRoleObserver,
+			NodeID: ua.ObjectIDWellKnownRoleObserver,
+			Identities: []ua.IdentityMappingRuleType{
+				{CriteriaType: ua.IdentityCriteriaTypeAuthenticatedUser},
+			},
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},
 		// WellKnownRoleOperator
 		{
-			NodeID:              ua.ObjectIDWellKnownRoleOperator,
+			NodeID: ua.ObjectIDWellKnownRoleOperator,
+			Identities: []ua.IdentityMappingRuleType{
+				{CriteriaType: ua.IdentityCriteriaTypeAuthenticatedUser},
+			},
 			ApplicationsExclude: true,
 			EndpointsExclude:    true,
 		},

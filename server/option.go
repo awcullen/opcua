@@ -7,13 +7,6 @@ import "github.com/awcullen/opcua/ua"
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
 
-// WithEndpoint ...
-func WithEndpoint(endpointURL string, securityPolicyURI string, securityMode ua.MessageSecurityMode, transportProfileURI string) Option {
-	return func(srv *Server) error {
-		return nil
-	}
-}
-
 // WithSessionTimeout sets the number of milliseconds that a session may be unused before being closed by the server. (default: 2 min)
 func WithSessionTimeout(value float64) Option {
 	return func(srv *Server) error {
@@ -82,22 +75,6 @@ func WithMaxWorkerThreads(value int) Option {
 	}
 }
 
-// WithRegistrationURL sets the url of the discovery server.
-func WithRegistrationURL(value string) Option {
-	return func(opts *Server) error {
-		opts.registrationURL = value
-		return nil
-	}
-}
-
-// WithRegistrationInterval sets the number of milliseconds to wait to update this server's registration with the discovery server.
-func WithRegistrationInterval(value float64) Option {
-	return func(opts *Server) error {
-		opts.registrationInterval = value
-		return nil
-	}
-}
-
 // WithServerDiagnostics sets whether to enable the collection of data used for ServerDiagnostics node.
 func WithServerDiagnostics(value bool) Option {
 	return func(opts *Server) error {
@@ -110,6 +87,22 @@ func WithServerDiagnostics(value bool) Option {
 func WithTrace() Option {
 	return func(srv *Server) error {
 		srv.trace = true
+		return nil
+	}
+}
+
+// WithAnonymousIdentity sets whether to allow anonymous identity.
+func WithAnonymousIdentity(value bool) Option {
+	return func(srv *Server) error {
+		srv.allowAnonymousIdentity = value
+		return nil
+	}
+}
+
+// WithSecurityPolicyNone sets whether to allow security policy with no encryption.
+func WithSecurityPolicyNone(value bool) Option {
+	return func(srv *Server) error {
+		srv.allowSecurityPolicyNone = value
 		return nil
 	}
 }

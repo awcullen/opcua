@@ -4,7 +4,6 @@ package client
 
 import (
 	"context"
-	"crypto/tls"
 
 	"github.com/awcullen/opcua/ua"
 )
@@ -44,7 +43,6 @@ func FindServers(ctx context.Context, request *ua.FindServersRequest) (*ua.FindS
 		ua.MessageSecurityModeNone,
 		nil,
 		defaultConnectTimeout,
-		tls.Certificate{},
 		"",
 		false,
 		false,
@@ -86,7 +84,6 @@ func GetEndpoints(ctx context.Context, request *ua.GetEndpointsRequest) (*ua.Get
 		ua.MessageSecurityModeNone,
 		nil,
 		defaultConnectTimeout,
-		tls.Certificate{},
 		"",
 		false,
 		false,
@@ -101,110 +98,6 @@ func GetEndpoints(ctx context.Context, request *ua.GetEndpointsRequest) (*ua.Get
 		return nil, err
 	}
 	res, err := ch.GetEndpoints(ctx, request)
-	if err != nil {
-		ch.Abort(ctx)
-		return nil, err
-	}
-	err = ch.Close(ctx)
-	if err != nil {
-		ch.Abort(ctx)
-		return nil, err
-	}
-	return res, nil
-}
-
-// RegisterServer registers a server with a discovery server.
-// See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.5/
-func (ch *clientSecureChannel) RegisterServer(ctx context.Context, request *ua.RegisterServerRequest) (*ua.RegisterServerResponse, error) {
-	response, err := ch.Request(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	return response.(*ua.RegisterServerResponse), nil
-}
-
-// RegisterServer2 registers a server with a discovery server.
-// See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.6/
-func (ch *clientSecureChannel) RegisterServer2(ctx context.Context, request *ua.RegisterServer2Request) (*ua.RegisterServer2Response, error) {
-	response, err := ch.Request(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-	return response.(*ua.RegisterServer2Response), nil
-}
-
-// RegisterServer registers a server with a discovery server.
-// See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.5/
-func RegisterServer(ctx context.Context, endpointURL string, request *ua.RegisterServerRequest) (*ua.RegisterServerResponse, error) {
-	ch := newClientSecureChannel(
-		ua.ApplicationDescription{
-			ApplicationName: ua.LocalizedText{Text: "RegistrationClient"},
-			ApplicationType: ua.ApplicationTypeClient,
-		},
-		nil,
-		nil,
-		endpointURL,
-		ua.SecurityPolicyURIBestAvailable,
-		ua.MessageSecurityModeInvalid,
-		nil,
-		defaultConnectTimeout,
-		tls.Certificate{},
-		"",
-		false,
-		false,
-		false,
-		defaultTimeoutHint,
-		defaultDiagnosticsHint,
-		defaultTokenRequestedLifetime,
-		false)
-
-	err := ch.Open(ctx)
-	if err != nil {
-		return nil, err
-	}
-	res, err := ch.RegisterServer(ctx, request)
-	if err != nil {
-		ch.Abort(ctx)
-		return nil, err
-	}
-	err = ch.Close(ctx)
-	if err != nil {
-		ch.Abort(ctx)
-		return nil, err
-	}
-	return res, nil
-}
-
-// RegisterServer2 registers a server with a discovery server.
-// See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.6/
-func RegisterServer2(ctx context.Context, endpointURL string, request *ua.RegisterServer2Request) (*ua.RegisterServer2Response, error) {
-	ch := newClientSecureChannel(
-		ua.ApplicationDescription{
-			ApplicationName: ua.LocalizedText{Text: "RegistrationClient"},
-			ApplicationType: ua.ApplicationTypeClient,
-		},
-		nil,
-		nil,
-		endpointURL,
-		ua.SecurityPolicyURIBestAvailable,
-		ua.MessageSecurityModeInvalid,
-		nil,
-		defaultConnectTimeout,
-		tls.Certificate{},
-		"",
-		false,
-		false,
-		false,
-		defaultTimeoutHint,
-		defaultDiagnosticsHint,
-		defaultTokenRequestedLifetime,
-		false)
-
-	err := ch.Open(ctx)
-	if err != nil {
-		return nil, err
-	}
-	res, err := ch.RegisterServer2(ctx, request)
 	if err != nil {
 		ch.Abort(ctx)
 		return nil, err

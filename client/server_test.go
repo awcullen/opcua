@@ -12,15 +12,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const (
+var (
+	host, _         = os.Hostname()
 	port            = 46010
-	SoftwareVersion = "0.9.0"
+	SoftwareVersion = "0.3.0"
 )
 
 func NewTestServer() (*server.Server, error) {
-
-	// local hostname
-	host, _ := os.Hostname()
 
 	// userids for testing
 	userids := []ua.UserNameIdentity{
@@ -37,7 +35,7 @@ func NewTestServer() (*server.Server, error) {
 	srv, err := server.New(
 		ua.ApplicationDescription{
 			ApplicationURI: fmt.Sprintf("urn:%s:testserver", host),
-			ProductURI:     "http://github.com/awcullen/opcua/testserver",
+			ProductURI:     "http://github.com/awcullen/opcua",
 			ApplicationName: ua.LocalizedText{
 				Text:   fmt.Sprintf("testserver@%s", host),
 				Locale: "en",
@@ -52,7 +50,7 @@ func NewTestServer() (*server.Server, error) {
 		fmt.Sprintf("opc.tcp://%s:%d", host, port),
 		server.WithBuildInfo(
 			ua.BuildInfo{
-				ProductURI:       "http://github.com/awcullen/opcua/testserver",
+				ProductURI:       "http://github.com/awcullen/opcua",
 				ManufacturerName: "awcullen",
 				ProductName:      "testserver",
 				SoftwareVersion:  SoftwareVersion,
@@ -73,56 +71,9 @@ func NewTestServer() (*server.Server, error) {
 			// log.Printf("Login user: %s from %s\n", userIdentity.UserName, applicationURI)
 			return nil
 		}),
-		server.WithRolesProvider(
-			server.NewRulesBasedRolesProvider(
-				[]server.IdentityMappingRule{
-					// WellKnownRoleAnonymous
-					{
-						NodeID: ua.ObjectIDWellKnownRoleAnonymous,
-						Identities: []ua.IdentityMappingRuleType{
-							{CriteriaType: ua.IdentityCriteriaTypeAnonymous},
-						},
-						ApplicationsExclude: true,
-						EndpointsExclude:    true,
-					},
-					// WellKnownRoleAuthenticatedUser
-					{
-						NodeID: ua.ObjectIDWellKnownRoleAuthenticatedUser,
-						Identities: []ua.IdentityMappingRuleType{
-							{CriteriaType: ua.IdentityCriteriaTypeAuthenticatedUser},
-						},
-						ApplicationsExclude: true,
-						EndpointsExclude:    true,
-					},
-					// WellKnownRoleObserver
-					{
-						NodeID: ua.ObjectIDWellKnownRoleObserver,
-						Identities: []ua.IdentityMappingRuleType{
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user1"},
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user2"},
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "root"},
-						},
-						ApplicationsExclude: true,
-						EndpointsExclude:    true,
-					},
-					// WellKnownRoleOperator
-					{
-						NodeID: ua.ObjectIDWellKnownRoleOperator,
-						Identities: []ua.IdentityMappingRuleType{
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user1"},
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "user2"},
-							{CriteriaType: ua.IdentityCriteriaTypeUserName, Criteria: "root"},
-						},
-						ApplicationsExclude: true,
-						EndpointsExclude:    true,
-					},
-				},
-			),
-		),
-		server.WithRegistrationInterval(0.0),
+		server.WithAnonymousIdentity(true),
+		server.WithSecurityPolicyNone(true),
 		server.WithInsecureSkipVerify(),
-		server.WithServerDiagnostics(true),
-		// server.WithTrace(),
 	)
 	if err != nil {
 		return nil, err

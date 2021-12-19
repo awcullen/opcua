@@ -35,8 +35,6 @@ const (
 	defaultMaxSubscriptionCount uint32 = 0
 	// the default number of worker threads that may be created.
 	defaultMaxWorkerThreads int = 4
-	// the default number of milliseconds to wait to reregister this server with the discovery server. (30 sec)
-	defaultRegistrationInterval float64 = 30 * 1000
 	// the length of nonce in bytes.
 	nonceLength int = 32
 )
@@ -66,7 +64,8 @@ type Server struct {
 	registrationInterval               float64
 	serverDiagnostics                  bool
 	trace                              bool
-	applicationCertificate             tls.Certificate
+	localCertificate                   []byte
+	localPrivateKey                    *rsa.PrivateKey
 	listeners                          []net.Listener
 	closed                             chan struct{}
 	closing                            chan struct{}
@@ -80,13 +79,14 @@ type Server struct {
 	sessionManager                     *SessionManager
 	subscriptionManager                *SubscriptionManager
 	namespaceManager                   *NamespaceManager
-	registrationManager                *RegistrationManager
 	serverUris                         []string
 	startTime                          time.Time
 	serverDiagnosticsSummary           *ua.ServerDiagnosticsSummaryDataType
 	useRegisterServer2                 bool
 	scheduler                          *Scheduler
 	historian                          HistoryReadWriter
+	allowAnonymousIdentity             bool
+	allowSecurityPolicyNone            bool
 	userNameIdentityAuthenticator      UserNameIdentityAuthenticator
 	x509IdentityAuthenticator          X509IdentityAuthenticator
 	issuedIdentityAuthenticator        IssuedIdentityAuthenticator
@@ -113,8 +113,6 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		maxMessageSize:                     defaultMaxMessageSize,
 		maxChunkCount:                      defaultMaxChunkCount,
 		maxWorkerThreads:                   defaultMaxWorkerThreads,
-		registrationURL:                    "opc.tcp://127.0.0.1:4840",
-		registrationInterval:               defaultRegistrationInterval,
 		serverDiagnostics:                  true,
 		trace:                              false,
 		closed:                             make(chan struct{}),
@@ -126,6 +124,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		startTime:                          time.Now(),
 		serverDiagnosticsSummary:           &ua.ServerDiagnosticsSummaryDataType{},
 		useRegisterServer2:                 true,
+		rolesProvider:                      NewRulesBasedRolesProvider(DefaultIdentityMappingRules),
 		rolePermissions:                    DefaultRolePermissions,
 	}
 
@@ -141,14 +140,15 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 	srv.sessionManager = NewSessionManager(srv)
 	srv.subscriptionManager = NewSubscriptionManager(srv)
 	srv.namespaceManager = NewNamespaceManager(srv)
-	srv.registrationManager = NewRegistrationManager(srv)
 	srv.scheduler = NewScheduler(srv)
 
-	var err error
-	if srv.applicationCertificate, err = tls.LoadX509KeyPair(srv.certPath, srv.keyPath); err != nil {
+	cert, err := tls.LoadX509KeyPair(srv.certPath, srv.keyPath)
+	if err != nil {
 		log.Printf("Error loading x509 key pair. %s\n", err)
 		return nil, err
 	}
+	srv.localCertificate = cert.Certificate[0]
+	srv.localPrivateKey, _ = cert.PrivateKey.(*rsa.PrivateKey)
 
 	if err := srv.initializeNamespace(); err != nil {
 		log.Printf("Error initializing namespace. %s\n", err)
@@ -168,14 +168,7 @@ func (srv *Server) LocalDescription() ua.ApplicationDescription {
 func (srv *Server) LocalCertificate() []byte {
 	srv.RLock()
 	defer srv.RUnlock()
-	return srv.applicationCertificate.Certificate[0]
-}
-
-// LocalPrivateKey gets the local private key.
-func (srv *Server) LocalPrivateKey() *rsa.PrivateKey {
-	srv.RLock()
-	defer srv.RUnlock()
-	return srv.applicationCertificate.PrivateKey.(*rsa.PrivateKey)
+	return srv.localCertificate
 }
 
 // EndpointURL gets the endpoint url.
@@ -363,9 +356,6 @@ func (srv *Server) Close() error {
 
 	// close subscriptions
 	close(srv.closing)
-
-	// allow managers to close
-	srv.registrationManager.Wait()
 
 	// close listeners
 	for _, l := range srv.listeners {
@@ -921,8 +911,21 @@ func (srv *Server) initializeNamespace() error {
 }
 
 func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
-	var eds []ua.EndpointDescription
-	if true {
+	eds := []ua.EndpointDescription{}
+	if srv.allowSecurityPolicyNone {
+		toks := []ua.UserTokenPolicy{}
+		if srv.allowAnonymousIdentity {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          ua.UserTokenTypeAnonymous.String(),
+				TokenType:         ua.UserTokenTypeAnonymous,
+				SecurityPolicyURI: ua.SecurityPolicyURINone,
+			})
+		}
+		toks = append(toks, ua.UserTokenPolicy{
+			PolicyID:          ua.UserTokenTypeUserName.String(),
+			TokenType:         ua.UserTokenTypeUserName,
+			SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
+		})
 		eds = append(eds, ua.EndpointDescription{
 			EndpointURL:         srv.endpointURL,
 			Server:              srv.localDescription,
@@ -930,39 +933,41 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 			SecurityMode:        ua.MessageSecurityModeNone,
 			SecurityPolicyURI:   ua.SecurityPolicyURINone,
 			TransportProfileURI: ua.TransportProfileURIUaTcpTransport,
-			SecurityLevel:       byte(0),
-			UserIdentityTokens: []ua.UserTokenPolicy{
-				{
-					PolicyID:          ua.UserTokenTypeAnonymous.String(),
-					TokenType:         ua.UserTokenTypeAnonymous,
-					SecurityPolicyURI: ua.SecurityPolicyURINone,
-				},
-			},
+			SecurityLevel:       byte(len(eds)),
+			UserIdentityTokens:  toks,
 		})
 	}
-	if true {
+
+	uris := []string{
+		ua.SecurityPolicyURIBasic256Sha256,
+		ua.SecurityPolicyURIAes128Sha256RsaOaep,
+		ua.SecurityPolicyURIAes256Sha256RsaPss,
+	}
+	for _, uri := range uris {
+		toks := []ua.UserTokenPolicy{}
+		if srv.allowAnonymousIdentity {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          ua.UserTokenTypeAnonymous.String(),
+				TokenType:         ua.UserTokenTypeAnonymous,
+				SecurityPolicyURI: ua.SecurityPolicyURINone,
+			})
+		}
+		toks = append(toks, ua.UserTokenPolicy{
+			PolicyID:          ua.UserTokenTypeUserName.String(),
+			TokenType:         ua.UserTokenTypeUserName,
+			SecurityPolicyURI: uri,
+		})
+
 		eds = append(eds, ua.EndpointDescription{
 			EndpointURL:         srv.endpointURL,
 			Server:              srv.localDescription,
 			ServerCertificate:   ua.ByteString(srv.LocalCertificate()),
 			SecurityMode:        ua.MessageSecurityModeSignAndEncrypt,
-			SecurityPolicyURI:   ua.SecurityPolicyURIBasic256Sha256,
+			SecurityPolicyURI:   uri,
 			TransportProfileURI: ua.TransportProfileURIUaTcpTransport,
-			SecurityLevel:       byte(1),
-			UserIdentityTokens: []ua.UserTokenPolicy{
-				{
-					PolicyID:          ua.UserTokenTypeAnonymous.String(),
-					TokenType:         ua.UserTokenTypeAnonymous,
-					SecurityPolicyURI: ua.SecurityPolicyURINone,
-				},
-				{
-					PolicyID:          ua.UserTokenTypeUserName.String(),
-					TokenType:         ua.UserTokenTypeUserName,
-					SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
-				},
-			},
+			SecurityLevel:       byte(len(eds)),
+			UserIdentityTokens:  toks,
 		})
 	}
-
 	return eds
 }

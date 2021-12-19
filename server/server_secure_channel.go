@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -42,7 +41,9 @@ var (
 type serverSecureChannel struct {
 	sync.RWMutex
 	srv                         *Server
+	localCertificate            []byte
 	remoteCertificate           []byte
+	localPrivateKey             *rsa.PrivateKey
 	remotePublicKey             *rsa.PublicKey
 	remoteApplicationURI        string
 	localNonce                  []byte
@@ -52,6 +53,7 @@ type serverSecureChannel struct {
 	tokenID                     uint32
 	tokenLock                   sync.RWMutex
 	securityPolicyURI           string
+	securityPolicy              ua.SecurityPolicy
 	securityMode                ua.MessageSecurityMode
 	remoteCertificateThumbprint []byte
 	localEndpoint               ua.EndpointDescription
@@ -77,28 +79,8 @@ type serverSecureChannel struct {
 	sendBuffer                 []byte
 	receiveBuffer              []byte
 
-	asymLocalKeySize              int
-	asymRemoteKeySize             int
-	asymLocalPlainTextBlockSize   int
-	asymLocalCipherTextBlockSize  int
-	asymLocalSignatureSize        int
-	asymRemotePlainTextBlockSize  int
-	asymRemoteCipherTextBlockSize int
-	asymRemoteSignatureSize       int
-	symEncryptionBlockSize        int
-	symEncryptionKeySize          int
-	symSignatureSize              int
-	symSignatureKeySize           int
-
-	asymSign       func(priv *rsa.PrivateKey, plainText []byte) ([]byte, error)
-	asymVerify     func(pub *rsa.PublicKey, plainText, signature []byte) error
-	asymEncrypt    func(pub *rsa.PublicKey, plainText []byte) ([]byte, error)
-	asymDecrypt    func(priv *rsa.PrivateKey, cipherText []byte) ([]byte, error)
-	symHMACFactory func(key []byte) hash.Hash
-	symSignHMAC    hash.Hash
-	symVerifyHMAC  hash.Hash
-	symSign        func(mac hash.Hash, plainText []byte) ([]byte, error)
-	symVerify      func(mac hash.Hash, plainText, signature []byte) error
+	symSignHMAC   hash.Hash
+	symVerifyHMAC hash.Hash
 
 	symEncryptingBlockCipher cipher.Block
 	symDecryptingBlockCipher cipher.Block
@@ -124,23 +106,12 @@ func newServerSecureChannel(srv *Server, conn net.Conn, receiveBufferSize, sendB
 		maxChunkCount:     maxChunkCount,
 		trace:             trace,
 		channelID:         getNextServerChannelID(),
+		securityPolicyURI: ua.SecurityPolicyURINone,
+		securityPolicy:    new(ua.SecurityPolicyNone),
+		localCertificate:  srv.localCertificate,
+		localPrivateKey:   srv.localPrivateKey,
 	}
 	return ch
-}
-
-// LocalDescription gets the application description for the local application.
-func (ch *serverSecureChannel) LocalDescription() ua.ApplicationDescription {
-	return ch.srv.LocalDescription()
-}
-
-// LocalCertificate gets the certificate for the local application.
-func (ch *serverSecureChannel) LocalCertificate() []byte {
-	return ch.srv.LocalCertificate()
-}
-
-// LocalPrivateKey gets the local private key.
-func (ch *serverSecureChannel) LocalPrivateKey() *rsa.PrivateKey {
-	return ch.srv.LocalPrivateKey()
 }
 
 // LocalEndpoint gets the endpoint for the local application.
@@ -379,7 +350,7 @@ func (ch *serverSecureChannel) onOpen() error {
 		// log.Printf("Error opening Transport Channel: %s \n", err.Error())
 		return ua.BadEncodingError
 	}
-	// log.Printf("<- Ack { ver: %d, rec: %d, snd: %d, msg: %d, chk: %d, ep: %s }\n", serverProtocolVersion, ch.localReceiveBufferSize, ch.localSendBufferSize, ch.localMaxMessageSize, ch.localMaxChunkCount, ch.conn.RemoteAddr())
+	// log.Printf("<- Ack { ver: %d, rec: %d, snd: %d, msg: %d, chk: %d, ep: %s }\n", protocolVersion, ch.receiveBufferSize, ch.sendBufferSize, ch.maxMessageSize, ch.maxChunkCount, ch.conn.RemoteAddr())
 
 	ch.sendBuffer = make([]byte, ch.sendBufferSize)
 	ch.receiveBuffer = make([]byte, ch.receiveBufferSize)
@@ -391,7 +362,6 @@ func (ch *serverSecureChannel) onOpen() error {
 		ua.ServiceResponse
 		uint32
 	}, 32)
-	ch.setSecurityPolicy(ua.SecurityPolicyURINone)
 
 	// read first request, which must be an OpenSecureChannelRequest
 	req, rid, err := ch.readRequest()
@@ -407,7 +377,7 @@ func (ch *serverSecureChannel) onOpen() error {
 	ch.tokenID = ch.getNextTokenID()
 	ch.securityMode = oscr.SecurityMode
 	if ch.securityMode != ua.MessageSecurityModeNone {
-		ch.localNonce = getNextNonce(int(ch.symEncryptionKeySize))
+		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
 	} else {
 		ch.localNonce = []byte{}
 	}
@@ -452,6 +422,7 @@ func (ch *serverSecureChannel) onOpen() error {
 		if !valid {
 			return err
 		}
+		ch.remotePublicKey = cert.PublicKey.(*rsa.PublicKey)
 		if len(cert.URIs) > 0 {
 			ch.remoteApplicationURI = cert.URIs[0].String()
 		}
@@ -472,7 +443,7 @@ func (ch *serverSecureChannel) onOpen() error {
 	}
 	ch.Write(res, rid)
 
-	// log.Printf("Issued security token. %d , lifetime: %d\n", res.SecurityToken.TokenId, res.SecurityToken.RevisedLifetime)
+	// log.Printf("Issued security token. %d , lifetime: %d\n", res.SecurityToken.TokenID, res.SecurityToken.RevisedLifetime)
 
 	go ch.requestWorker()
 
@@ -561,41 +532,50 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 			return ua.BadEncodingLimitsExceeded
 		}
 
-		// plan
 		var plainHeaderSize int
+		var signatureSize int
 		var paddingHeaderSize int
 		var maxBodySize int
 		var bodySize int
 		var paddingSize int
 		var chunkSize int
-		if ch.securityMode != ua.MessageSecurityModeNone {
-			plainHeaderSize = 16 + len(ch.securityPolicyURI) + 28 + len(ch.LocalCertificate())
-			if ch.asymRemoteCipherTextBlockSize > 256 {
+		var cipherTextBlockSize int
+		var plainTextBlockSize int
+		switch ch.securityMode {
+		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
+			plainHeaderSize = 16 + len(ch.securityPolicyURI) + 28 + len(ch.localCertificate)
+			signatureSize = ch.localPrivateKey.Size()
+			cipherTextBlockSize = ch.remotePublicKey.Size()
+			plainTextBlockSize = cipherTextBlockSize - ch.securityPolicy.RSAPaddingSize()
+			if cipherTextBlockSize > 256 {
 				paddingHeaderSize = 2
 			} else {
 				paddingHeaderSize = 1
 			}
-			maxBodySize = (((int(ch.sendBufferSize) - plainHeaderSize) / ch.asymRemoteCipherTextBlockSize) * ch.asymRemotePlainTextBlockSize) - sequenceHeaderSize - paddingHeaderSize - ch.asymLocalSignatureSize
+			maxBodySize = (((int(ch.sendBufferSize) - plainHeaderSize) / cipherTextBlockSize) * plainTextBlockSize) - sequenceHeaderSize - paddingHeaderSize - signatureSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
-				paddingSize = (ch.asymRemotePlainTextBlockSize - ((sequenceHeaderSize + bodySize + paddingHeaderSize + ch.asymLocalSignatureSize) % ch.asymRemotePlainTextBlockSize)) % ch.asymRemotePlainTextBlockSize
+				paddingSize = (plainTextBlockSize - ((sequenceHeaderSize + bodySize + paddingHeaderSize + signatureSize) % plainTextBlockSize)) % plainTextBlockSize
 			} else {
 				bodySize = maxBodySize
 				paddingSize = 0
 			}
-			chunkSize = plainHeaderSize + (((sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + ch.asymLocalSignatureSize) / ch.asymRemotePlainTextBlockSize) * ch.asymRemoteCipherTextBlockSize)
+			chunkSize = plainHeaderSize + (((sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize) / plainTextBlockSize) * cipherTextBlockSize)
 
-		} else {
+		default:
 			plainHeaderSize = int(16 + len(ch.securityPolicyURI) + 8)
+			signatureSize = 0
 			paddingHeaderSize = 0
 			paddingSize = 0
-			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize - ch.asymLocalSignatureSize
+			cipherTextBlockSize = 1
+			plainTextBlockSize = 1
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
 			} else {
 				bodySize = maxBodySize
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + ch.asymLocalSignatureSize
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
 		}
 
 		var stream = ua.NewWriter(ch.sendBuffer)
@@ -609,7 +589,7 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 		// asymmetric security header
 		encoder.WriteString(ch.securityPolicyURI)
 		if ch.securityMode != ua.MessageSecurityModeNone {
-			encoder.WriteByteArray(ch.LocalCertificate())
+			encoder.WriteByteArray(ch.localCertificate)
 			thumbprint := sha1.Sum(ch.remoteCertificate)
 			encoder.WriteByteArray(thumbprint[:])
 		} else {
@@ -652,11 +632,11 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 
 		// sign
 		if ch.securityMode != ua.MessageSecurityModeNone {
-			signature, err := ch.asymSign(ch.LocalPrivateKey(), stream.Bytes())
+			signature, err := ch.securityPolicy.RSASign(ch.localPrivateKey, stream.Bytes())
 			if err != nil {
 				return err
 			}
-			if len(signature) != ch.asymLocalSignatureSize {
+			if len(signature) != signatureSize {
 				return ua.BadEncodingError
 			}
 			_, err = stream.Write(signature)
@@ -669,20 +649,20 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 		if ch.securityMode != ua.MessageSecurityModeNone {
 			plaintextLen := stream.Len()
 			copy(ch.encryptionBuffer, stream.Bytes()[:plainHeaderSize])
-			plainText := make([]byte, ch.asymRemotePlainTextBlockSize)
+			plainText := make([]byte, plainTextBlockSize)
 			jj := plainHeaderSize
-			for ii := plainHeaderSize; ii < plaintextLen; ii += ch.asymRemotePlainTextBlockSize {
+			for ii := plainHeaderSize; ii < plaintextLen; ii += plainTextBlockSize {
 				copy(plainText, stream.Bytes()[ii:])
 				// encrypt with remote public key.
-				cipherText, err := ch.asymEncrypt(ch.remotePublicKey, plainText)
+				cipherText, err := ch.securityPolicy.RSAEncrypt(ch.remotePublicKey, plainText)
 				if err != nil {
 					return err
 				}
-				if len(cipherText) != ch.asymRemoteCipherTextBlockSize {
+				if len(cipherText) != cipherTextBlockSize {
 					return ua.BadEncodingError
 				}
 				copy(ch.encryptionBuffer[jj:], cipherText)
-				jj += ch.asymRemoteCipherTextBlockSize
+				jj += cipherTextBlockSize
 			}
 			if jj != chunkSize {
 				return ua.BadEncodingError
@@ -706,7 +686,6 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 		}
 	}
 
-	// log.Printf("<- %s, %d, %s\n", reflect.TypeOf(res).Elem().Name(), res.Header().RequestHandle, res.Header().ServiceResult)
 	return nil
 }
 
@@ -1015,6 +994,8 @@ func (ch *serverSecureChannel) sendServiceResponse(response ua.ServiceResponse, 
 
 	var chunkCount int
 	var bodyCount = int(bodyStream.Len())
+	var signatureSize = ch.securityPolicy.SymSignatureSize()
+	var encryptionBlockSize = ch.securityPolicy.SymEncryptionBlockSize()
 
 	for bodyCount > 0 {
 		chunkCount++
@@ -1022,41 +1003,41 @@ func (ch *serverSecureChannel) sendServiceResponse(response ua.ServiceResponse, 
 			return ua.BadEncodingLimitsExceeded
 		}
 
-		// plan
 		var plainHeaderSize int
 		var paddingHeaderSize int
 		var maxBodySize int
 		var bodySize int
 		var paddingSize int
 		var chunkSize int
-		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
+		switch ch.securityMode {
+		case ua.MessageSecurityModeSignAndEncrypt:
 			plainHeaderSize = 16
-			if ch.symEncryptionBlockSize > 256 {
+			if encryptionBlockSize > 256 {
 				paddingHeaderSize = 2
 			} else {
 				paddingHeaderSize = 1
 			}
-			maxBodySize = (((int(ch.sendBufferSize) - plainHeaderSize) / ch.symEncryptionBlockSize) * ch.symEncryptionBlockSize) - sequenceHeaderSize - paddingHeaderSize - ch.symSignatureSize
+			maxBodySize = (((int(ch.sendBufferSize) - plainHeaderSize) / encryptionBlockSize) * encryptionBlockSize) - sequenceHeaderSize - paddingHeaderSize - signatureSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
-				paddingSize = (ch.symEncryptionBlockSize - ((sequenceHeaderSize + bodySize + paddingHeaderSize + ch.symSignatureSize) % ch.symEncryptionBlockSize)) % ch.symEncryptionBlockSize
+				paddingSize = (encryptionBlockSize - ((sequenceHeaderSize + bodySize + paddingHeaderSize + signatureSize) % encryptionBlockSize)) % encryptionBlockSize
 			} else {
 				bodySize = maxBodySize
 				paddingSize = 0
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + ch.symSignatureSize
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize
 
-		} else {
+		default:
 			plainHeaderSize = 16
 			paddingHeaderSize = 0
 			paddingSize = 0
-			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize - ch.symSignatureSize
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
 			} else {
 				bodySize = maxBodySize
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + ch.symSignatureSize
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
 		}
 
 		var stream = ua.NewWriter(ch.sendBuffer)
@@ -1105,11 +1086,14 @@ func (ch *serverSecureChannel) sendServiceResponse(response ua.ServiceResponse, 
 
 		// sign
 		if ch.securityMode != ua.MessageSecurityModeNone {
-			signature, err := ch.symSign(ch.symSignHMAC, stream.Bytes())
-			if err != nil {
+			ch.symSignHMAC.Reset()
+			if _, err := ch.symSignHMAC.Write(stream.Bytes()); err != nil {
 				return err
 			}
-			stream.Write(signature)
+			signature := ch.symSignHMAC.Sum(nil)
+			if _, err = stream.Write(signature); err != nil {
+				return err
+			}
 		}
 
 		// encrypt
@@ -1123,10 +1107,8 @@ func (ch *serverSecureChannel) sendServiceResponse(response ua.ServiceResponse, 
 		if err != nil {
 			return err
 		}
-		//fmt.Printf("%t, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d \n", bodyCount == 0, ch.sequenceNumber, id, bodySize, chunkSize, plainHeaderSize, serverSequenceHeaderSize, paddingSize, paddingHeaderSize, ch.symSignatureSize, stream.Len(), written)
 	}
 
-	// log.Printf("<- %s, %d, %s\n", reflect.TypeOf(res).Elem().Name(), res.Header().RequestHandle, res.Header().ServiceResult)
 	return nil
 }
 
@@ -1142,6 +1124,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 	var paddingSize int
 	var channelID uint32
 	var tokenID uint32
+
 	var bodyStream = buffer.NewPartitionAt(bufferPool)
 	defer bodyStream.Reset()
 	var bodyDecoder = ua.NewBinaryDecoder(bodyStream, ch)
@@ -1199,16 +1182,14 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 				ch.receivingTokenID = tokenID
 
 				if ch.securityMode != ua.MessageSecurityModeNone {
-					// (re)create security keys for decrypting, verifying
-					remoteSecurityKey := calculatePSHA(ch.localNonce, ch.remoteNonce, ch.symSignatureKeySize+ch.symEncryptionKeySize+ch.symEncryptionBlockSize, ch.securityPolicyURI)
-					ch.remoteSigningKey = make([]byte, ch.symSignatureKeySize)
-					ch.remoteEncryptingKey = make([]byte, ch.symEncryptionKeySize)
-					ch.remoteInitializationVector = make([]byte, ch.symEncryptionBlockSize)
-					copy(ch.remoteSigningKey[:ch.symSignatureKeySize], remoteSecurityKey)
-					copy(ch.remoteEncryptingKey[:ch.symEncryptionKeySize], remoteSecurityKey[ch.symSignatureKeySize:])
-					copy(ch.remoteInitializationVector[:ch.symEncryptionBlockSize], remoteSecurityKey[ch.symSignatureKeySize+ch.symEncryptionKeySize:])
-					// update with new keys
-					ch.symVerifyHMAC = ch.symHMACFactory(ch.remoteSigningKey)
+					// (re)create security keys for verifying, decrypting
+					remoteSecurityKey := calculatePSHA(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
+					jj := copy(ch.remoteSigningKey, remoteSecurityKey)
+					jj += copy(ch.remoteEncryptingKey, remoteSecurityKey[jj:])
+					copy(ch.remoteInitializationVector, remoteSecurityKey[jj:])
+
+					// update verifier and decrypter with new symmetric keys
+					ch.symVerifyHMAC = ch.securityPolicy.SymHMACFactory(ch.remoteSigningKey)
 					if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
 						if cipher, err := aes.NewCipher(ch.remoteEncryptingKey); err == nil {
 							ch.symDecryptingBlockCipher = cipher
@@ -1223,16 +1204,13 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 				if ch.securityMode != ua.MessageSecurityModeNone {
 
 					// (re)create security keys for signing, encrypting
-					localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, ch.symSignatureKeySize+ch.symEncryptionKeySize+ch.symEncryptionBlockSize, ch.securityPolicyURI)
-					ch.localSigningKey = make([]byte, ch.symSignatureKeySize)
-					ch.localEncryptingKey = make([]byte, ch.symEncryptionKeySize)
-					ch.localInitializationVector = make([]byte, ch.symEncryptionBlockSize)
-					copy(ch.localSigningKey[:ch.symSignatureKeySize], localSecurityKey)
-					copy(ch.localEncryptingKey[:ch.symEncryptionKeySize], localSecurityKey[ch.symSignatureKeySize:])
-					copy(ch.localInitializationVector[:ch.symEncryptionBlockSize], localSecurityKey[ch.symSignatureKeySize+ch.symEncryptionKeySize:])
+					localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
+					jj := copy(ch.localSigningKey, localSecurityKey)
+					jj += copy(ch.localEncryptingKey, localSecurityKey[jj:])
+					copy(ch.localInitializationVector, localSecurityKey[jj:])
 
 					// update signer and encrypter with new symmetric keys
-					ch.symSignHMAC = ch.symHMACFactory(ch.localSigningKey)
+					ch.symSignHMAC = ch.securityPolicy.SymHMACFactory(ch.localSigningKey)
 					if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
 						if cipher, err := aes.NewCipher(ch.localEncryptingKey); err == nil {
 							ch.symEncryptingBlockCipher = cipher
@@ -1252,7 +1230,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 			if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
 				span := ch.receiveBuffer[plainHeaderSize:count]
 				if len(span)%ch.symDecryptingBlockCipher.BlockSize() != 0 {
-					return nil, 0, ua.BadEncodingError
+					return nil, 0, ua.BadDecodingError
 				}
 				symDecryptor := cipher.NewCBCDecrypter(ch.symDecryptingBlockCipher, ch.remoteInitializationVector)
 				symDecryptor.CryptBlocks(span, span)
@@ -1261,10 +1239,14 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 			// verify
 			if ch.securityMode != ua.MessageSecurityModeNone {
 				sigEnd := int(messageLength)
-				sigStart := sigEnd - ch.symSignatureSize
-				err := ch.symVerify(ch.symVerifyHMAC, ch.receiveBuffer[:sigStart], ch.receiveBuffer[sigStart:sigEnd])
-				if err != nil {
-					return nil, 0, err
+				sigStart := sigEnd - ch.securityPolicy.SymSignatureSize()
+				ch.symVerifyHMAC.Reset()
+				if _, err := ch.symVerifyHMAC.Write(ch.receiveBuffer[:sigStart]); err != nil {
+					return nil, 0, ua.BadDecodingError
+				}
+				sig := ch.symVerifyHMAC.Sum(nil)
+				if !hmac.Equal(sig, ch.receiveBuffer[sigStart:sigEnd]) {
+					return nil, 0, ua.BadSecurityChecksFailed
 				}
 			}
 
@@ -1279,20 +1261,22 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 			}
 
 			// body
+			var symEncryptionBlockSize = ch.securityPolicy.SymEncryptionBlockSize()
+			var symSignatureSize = ch.securityPolicy.SymSignatureSize()
 			if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
-				if ch.symEncryptionBlockSize > 256 {
+				if symEncryptionBlockSize > 256 {
 					paddingHeaderSize = 2
-					start := int(messageLength) - ch.symSignatureSize - paddingHeaderSize
+					start := int(messageLength) - symSignatureSize - paddingHeaderSize
 					paddingSize = int(binary.LittleEndian.Uint16(ch.receiveBuffer[start : start+2]))
 				} else {
 					paddingHeaderSize = 1
-					start := int(messageLength) - ch.symSignatureSize - paddingHeaderSize
+					start := int(messageLength) - symSignatureSize - paddingHeaderSize
 					paddingSize = int(ch.receiveBuffer[start])
 				}
-				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - paddingSize - paddingHeaderSize - ch.symSignatureSize
+				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - paddingSize - paddingHeaderSize - symSignatureSize
 
 			} else {
-				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - ch.symSignatureSize
+				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - symSignatureSize
 			}
 
 			m := plainHeaderSize + sequenceHeaderSize
@@ -1308,8 +1292,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 				return nil, 0, ua.BadDecodingError
 			}
 			// asymmetric header
-			var securityPolicyURI string
-			if err := decoder.ReadString(&securityPolicyURI); err != nil {
+			if err := decoder.ReadString(&ch.securityPolicyURI); err != nil {
 				return nil, 0, ua.BadDecodingError
 			}
 			if err := decoder.ReadByteArray(&ch.remoteCertificate); err != nil {
@@ -1320,40 +1303,82 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 			}
 			plainHeaderSize = count - stream.Len()
 
-			err = ch.setSecurityPolicy(securityPolicyURI)
-			if err != nil {
-				return nil, 0, ua.BadDecodingError
+			// setSecurityPolicy
+			switch ch.securityPolicyURI {
+			case ua.SecurityPolicyURINone:
+				ch.securityPolicy = new(ua.SecurityPolicyNone)
+
+			case ua.SecurityPolicyURIBasic128Rsa15:
+				ch.securityPolicy = new(ua.SecurityPolicyBasic128Rsa15)
+
+			case ua.SecurityPolicyURIBasic256:
+				ch.securityPolicy = new(ua.SecurityPolicyBasic256)
+
+			case ua.SecurityPolicyURIBasic256Sha256:
+				ch.securityPolicy = new(ua.SecurityPolicyBasic256Sha256)
+
+			case ua.SecurityPolicyURIAes128Sha256RsaOaep:
+				ch.securityPolicy = new(ua.SecurityPolicyAes128Sha256RsaOaep)
+
+			case ua.SecurityPolicyURIAes256Sha256RsaPss:
+				ch.securityPolicy = new(ua.SecurityPolicyAes256Sha256RsaPss)
+
+			default:
+				return nil, 0, ua.BadSecurityPolicyRejected
 			}
+
+			ch.localSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
+			ch.localEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
+			ch.localInitializationVector = make([]byte, ch.securityPolicy.SymEncryptionBlockSize())
+			ch.remoteSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
+			ch.remoteEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
+			ch.remoteInitializationVector = make([]byte, ch.securityPolicy.SymEncryptionBlockSize())
 
 			// decrypt
 			if ch.securityPolicyURI != ua.SecurityPolicyURINone {
 
-				cipherText := make([]byte, ch.asymLocalCipherTextBlockSize)
+				if ch.localCertificate == nil {
+					return nil, 0, ua.BadSecurityChecksFailed
+				}
+
+				if ch.localPrivateKey == nil {
+					return nil, 0, ua.BadSecurityChecksFailed
+				}
+
+				if ch.remoteCertificate == nil {
+					return nil, 0, ua.BadSecurityChecksFailed
+				}
+
+				if crt, err := x509.ParseCertificate(ch.remoteCertificate); err == nil {
+					ch.remotePublicKey = crt.PublicKey.(*rsa.PublicKey)
+				}
+
+				if ch.remotePublicKey == nil {
+					return nil, 0, ua.BadSecurityChecksFailed
+				}
+
+				cipherTextBlockSize := ch.localPrivateKey.Size()
+				cipherText := make([]byte, cipherTextBlockSize)
 				jj := plainHeaderSize
-				for ii := plainHeaderSize; ii < int(messageLength); ii += ch.asymLocalCipherTextBlockSize {
+				for ii := plainHeaderSize; ii < int(messageLength); ii += cipherTextBlockSize {
 					copy(cipherText, ch.receiveBuffer[ii:])
 					// decrypt with local private key.
-					plainText, err := ch.asymDecrypt(ch.LocalPrivateKey(), cipherText)
+					plainText, err := ch.securityPolicy.RSADecrypt(ch.localPrivateKey, cipherText)
 					if err != nil {
 						return nil, 0, err
 					}
-					if len(plainText) != ch.asymLocalPlainTextBlockSize {
-						return nil, 0, ua.BadEncodingError
-					}
-					copy(ch.receiveBuffer[jj:], plainText)
-					jj += ch.asymLocalPlainTextBlockSize
+					jj += copy(ch.receiveBuffer[jj:], plainText)
 				}
 
 				messageLength = uint32(jj) // msg is shorter after decryption
-
 			}
 
 			// verify
 			if ch.securityPolicyURI != ua.SecurityPolicyURINone {
 				// verify with remote public key.
 				sigEnd := int(messageLength)
-				sigStart := sigEnd - ch.asymRemoteSignatureSize
-				err := ch.asymVerify(ch.remotePublicKey, ch.receiveBuffer[:sigStart], ch.receiveBuffer[sigStart:sigEnd])
+				sigStart := sigEnd - ch.remotePublicKey.Size()
+				err := ch.securityPolicy.RSAVerify(ch.remotePublicKey, ch.receiveBuffer[:sigStart], ch.receiveBuffer[sigStart:sigEnd])
 				if err != nil {
 					return nil, 0, ua.BadDecodingError
 				}
@@ -1371,19 +1396,21 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 
 			// body
 			if ch.securityPolicyURI != ua.SecurityPolicyURINone {
-				if ch.asymLocalCipherTextBlockSize > 256 {
+				cipherTextBlockSize := ch.localPrivateKey.Size()
+				signatureSize := ch.remotePublicKey.Size()
+				if cipherTextBlockSize > 256 {
 					paddingHeaderSize = 2
-					start := int(messageLength) - ch.asymRemoteSignatureSize - paddingHeaderSize
+					start := int(messageLength) - signatureSize - paddingHeaderSize
 					paddingSize = int(binary.LittleEndian.Uint16(ch.receiveBuffer[start : start+2]))
 				} else {
 					paddingHeaderSize = 1
-					start := int(messageLength) - ch.asymRemoteSignatureSize - paddingHeaderSize
+					start := int(messageLength) - signatureSize - paddingHeaderSize
 					paddingSize = int(ch.receiveBuffer[start])
 				}
-				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - paddingSize - paddingHeaderSize - ch.asymRemoteSignatureSize
+				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - paddingSize - paddingHeaderSize - signatureSize
 
 			} else {
-				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize - ch.asymRemoteSignatureSize
+				bodySize = int(messageLength) - plainHeaderSize - sequenceHeaderSize //- ch.asymRemoteSignatureSize
 			}
 
 			m := plainHeaderSize + sequenceHeaderSize
@@ -1403,7 +1430,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 			if err := decoder.ReadString(&message); err != nil {
 				return nil, 0, ua.BadDecodingError
 			}
-			log.Printf("Server sent error response. %s %s\n", ua.StatusCode(statusCode).Error(), message)
+			// log.Printf("Server sent error response. %s %s\n", ua.StatusCode(statusCode).Error(), message)
 			return nil, 0, ua.StatusCode(statusCode)
 
 		default:
@@ -1625,7 +1652,7 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 	ch.tokenLock.Lock()
 	ch.tokenID = ch.getNextTokenID()
 	if ch.securityMode != ua.MessageSecurityModeNone {
-		ch.localNonce = getNextNonce(int(ch.symEncryptionKeySize))
+		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
 	} else {
 		ch.localNonce = []byte{}
 	}
@@ -1724,225 +1751,6 @@ func calculatePSHA(secret, seed []byte, sizeBytes int, securityPolicyURI string)
 	}
 
 	return output
-}
-
-func (ch *serverSecureChannel) setSecurityPolicy(securityPolicyURI string) error {
-	if ch.securityPolicyURI == securityPolicyURI {
-		// log.Printf("bypassed set %s\n", securityPolicyUri)
-		return nil
-	}
-	ch.securityPolicyURI = securityPolicyURI
-	switch securityPolicyURI {
-	case ua.SecurityPolicyURIBasic128Rsa15:
-		if ch.LocalCertificate() == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		if ch.LocalPrivateKey() == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		if ch.remoteCertificate != nil && len(ch.remoteCertificate) > 0 {
-			if crt, err := x509.ParseCertificate(ch.remoteCertificate); err == nil {
-				ch.remotePublicKey = crt.PublicKey.(*rsa.PublicKey)
-			}
-		}
-
-		if ch.remotePublicKey == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		ch.asymSign = func(priv *rsa.PrivateKey, plainText []byte) ([]byte, error) {
-			hashed := sha1.Sum(plainText)
-			return rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA1, hashed[:])
-		}
-		ch.asymVerify = func(pub *rsa.PublicKey, plainText, signature []byte) error {
-			hashed := sha1.Sum(plainText)
-			return rsa.VerifyPKCS1v15(pub, crypto.SHA1, hashed[:], signature)
-		}
-		ch.asymEncrypt = func(pub *rsa.PublicKey, plainText []byte) ([]byte, error) {
-			return rsa.EncryptPKCS1v15(rand.Reader, pub, plainText)
-		}
-		ch.asymDecrypt = func(priv *rsa.PrivateKey, cipherText []byte) ([]byte, error) {
-			return rsa.DecryptPKCS1v15(rand.Reader, priv, cipherText)
-		}
-		ch.symHMACFactory = func(key []byte) hash.Hash {
-			return hmac.New(sha1.New, key)
-		}
-		ch.symSign = func(mac hash.Hash, plainText []byte) ([]byte, error) {
-			mac.Reset()
-			mac.Write(plainText)
-			return mac.Sum(nil), nil
-		}
-		ch.symVerify = func(mac hash.Hash, plainText, signature []byte) error {
-			mac.Reset()
-			mac.Write(plainText)
-			sig := mac.Sum(nil)
-			if !hmac.Equal(sig, signature) {
-				return ua.BadSecurityChecksFailed
-			}
-			return nil
-		}
-		ch.asymLocalKeySize = len(ch.LocalPrivateKey().D.Bytes())
-		ch.asymRemoteKeySize = len(ch.remotePublicKey.N.Bytes())
-		ch.asymLocalPlainTextBlockSize = ch.asymLocalKeySize - 11
-		ch.asymRemotePlainTextBlockSize = ch.asymRemoteKeySize - 11
-		ch.asymLocalSignatureSize = ch.asymLocalKeySize
-		ch.asymRemoteSignatureSize = ch.asymRemoteKeySize
-		ch.asymLocalCipherTextBlockSize = ch.asymLocalKeySize
-		ch.asymRemoteCipherTextBlockSize = ch.asymRemoteKeySize
-		ch.symSignatureSize = 20
-		ch.symSignatureKeySize = 16
-		ch.symEncryptionBlockSize = 16
-		ch.symEncryptionKeySize = 16
-
-	case ua.SecurityPolicyURIBasic256:
-
-		if ch.LocalCertificate() == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		if ch.LocalPrivateKey() == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		if ch.remoteCertificate != nil && len(ch.remoteCertificate) > 0 {
-			if crt, err := x509.ParseCertificate(ch.remoteCertificate); err == nil {
-				ch.remotePublicKey = crt.PublicKey.(*rsa.PublicKey)
-			}
-		}
-
-		if ch.remotePublicKey == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		ch.asymSign = func(priv *rsa.PrivateKey, plainText []byte) ([]byte, error) {
-			hashed := sha1.Sum(plainText)
-			return rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA1, hashed[:])
-		}
-		ch.asymVerify = func(pub *rsa.PublicKey, plainText, signature []byte) error {
-			hashed := sha1.Sum(plainText)
-			return rsa.VerifyPKCS1v15(pub, crypto.SHA1, hashed[:], signature)
-		}
-		ch.asymEncrypt = func(pub *rsa.PublicKey, plainText []byte) ([]byte, error) {
-			return rsa.EncryptOAEP(sha1.New(), rand.Reader, pub, plainText, []byte{})
-		}
-		ch.asymDecrypt = func(priv *rsa.PrivateKey, cipherText []byte) ([]byte, error) {
-			return rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, cipherText, []byte{})
-		}
-		ch.symHMACFactory = func(key []byte) hash.Hash {
-			return hmac.New(sha1.New, key)
-		}
-		ch.symSign = func(mac hash.Hash, plainText []byte) ([]byte, error) {
-			mac.Reset()
-			mac.Write(plainText)
-			return mac.Sum(nil), nil
-		}
-		ch.symVerify = func(mac hash.Hash, plainText, signature []byte) error {
-			mac.Reset()
-			mac.Write(plainText)
-			sig := mac.Sum(nil)
-			if !hmac.Equal(sig, signature) {
-				return ua.BadSecurityChecksFailed
-			}
-			return nil
-		}
-		ch.asymLocalKeySize = len(ch.LocalPrivateKey().D.Bytes())
-		ch.asymRemoteKeySize = len(ch.remotePublicKey.N.Bytes())
-		ch.asymLocalPlainTextBlockSize = ch.asymLocalKeySize - 42
-		ch.asymRemotePlainTextBlockSize = ch.asymRemoteKeySize - 42
-		ch.asymLocalSignatureSize = ch.asymLocalKeySize
-		ch.asymRemoteSignatureSize = ch.asymRemoteKeySize
-		ch.asymLocalCipherTextBlockSize = ch.asymLocalKeySize
-		ch.asymRemoteCipherTextBlockSize = ch.asymRemoteKeySize
-		ch.symSignatureSize = 20
-		ch.symSignatureKeySize = 24
-		ch.symEncryptionBlockSize = 16
-		ch.symEncryptionKeySize = 32
-
-	case ua.SecurityPolicyURIBasic256Sha256:
-
-		if ch.LocalCertificate() == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		if ch.LocalPrivateKey() == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		if ch.remoteCertificate != nil && len(ch.remoteCertificate) > 0 {
-			if crt, err := x509.ParseCertificate(ch.remoteCertificate); err == nil {
-				ch.remotePublicKey = crt.PublicKey.(*rsa.PublicKey)
-			}
-		}
-
-		if ch.remotePublicKey == nil {
-			return ua.BadSecurityChecksFailed
-		}
-
-		ch.asymSign = func(priv *rsa.PrivateKey, plainText []byte) ([]byte, error) {
-			hashed := sha256.Sum256(plainText)
-			return rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, hashed[:])
-		}
-		ch.asymVerify = func(pub *rsa.PublicKey, plainText, signature []byte) error {
-			hashed := sha256.Sum256(plainText)
-			return rsa.VerifyPKCS1v15(pub, crypto.SHA256, hashed[:], signature)
-		}
-		ch.asymEncrypt = func(pub *rsa.PublicKey, plainText []byte) ([]byte, error) {
-			return rsa.EncryptOAEP(sha1.New(), rand.Reader, pub, plainText, []byte{})
-		}
-		ch.asymDecrypt = func(priv *rsa.PrivateKey, cipherText []byte) ([]byte, error) {
-			return rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, cipherText, []byte{})
-		}
-		ch.symHMACFactory = func(key []byte) hash.Hash {
-			return hmac.New(sha256.New, key)
-		}
-		ch.symSign = func(mac hash.Hash, plainText []byte) ([]byte, error) {
-			mac.Reset()
-			mac.Write(plainText)
-			return mac.Sum(nil), nil
-		}
-		ch.symVerify = func(mac hash.Hash, plainText, signature []byte) error {
-			mac.Reset()
-			mac.Write(plainText)
-			sig := mac.Sum(nil)
-			if !hmac.Equal(sig, signature) {
-				return ua.BadSecurityChecksFailed
-			}
-			return nil
-		}
-		ch.asymLocalKeySize = len(ch.LocalPrivateKey().D.Bytes())
-		ch.asymRemoteKeySize = len(ch.remotePublicKey.N.Bytes())
-		ch.asymLocalPlainTextBlockSize = ch.asymLocalKeySize - 42
-		ch.asymRemotePlainTextBlockSize = ch.asymRemoteKeySize - 42
-		ch.asymLocalSignatureSize = ch.asymLocalKeySize
-		ch.asymRemoteSignatureSize = ch.asymRemoteKeySize
-		ch.asymLocalCipherTextBlockSize = ch.asymLocalKeySize
-		ch.asymRemoteCipherTextBlockSize = ch.asymRemoteKeySize
-		ch.symSignatureSize = 32
-		ch.symSignatureKeySize = 32
-		ch.symEncryptionBlockSize = 16
-		ch.symEncryptionKeySize = 32
-
-	case ua.SecurityPolicyURINone:
-		ch.asymLocalKeySize = 0
-		ch.asymRemoteKeySize = 0
-		ch.asymLocalPlainTextBlockSize = 1
-		ch.asymRemotePlainTextBlockSize = 1
-		ch.asymLocalSignatureSize = 0
-		ch.asymRemoteSignatureSize = 0
-		ch.asymLocalCipherTextBlockSize = 1
-		ch.asymRemoteCipherTextBlockSize = 1
-		ch.symSignatureSize = 0
-		ch.symSignatureKeySize = 0
-		ch.symEncryptionBlockSize = 1
-		ch.symEncryptionKeySize = 0
-
-	default:
-		return ua.BadSecurityPolicyRejected
-	}
-
-	return nil
 }
 
 // Read receives a chunk from the remote endpoint.

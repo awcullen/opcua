@@ -8,9 +8,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
-	"log"
 	"math"
 	"net/url"
 	"sort"
@@ -102,12 +102,22 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		}
 	}
 	if !valid {
-		log.Printf("Error verifying EndpointUrl hostname matches certificate hostname.\n")
-		// TODO: raise AuditUrlMismatchEventType event
+		ch.Write(
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
+					Timestamp:     time.Now(),
+					RequestHandle: req.RequestHandle,
+					ServiceResult: ua.BadCertificateHostNameInvalid,
+				},
+			},
+			requestid,
+		)
+		return nil
 	}
 	// check nonce
 	switch ch.SecurityPolicyURI() {
-	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256:
+	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256,
+		ua.SecurityPolicyURIAes128Sha256RsaOaep, ua.SecurityPolicyURIAes256Sha256RsaPss:
 
 		// check client application uri matches one of the client certificate's san.
 		valid := false
@@ -157,7 +167,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		hash.Write([]byte(req.ClientCertificate))
 		hash.Write([]byte(req.ClientNonce))
 		hashed := hash.Sum(nil)
-		signature, err := rsa.SignPKCS1v15(rand.Reader, srv.LocalPrivateKey(), crypto.SHA1, hashed)
+		signature, err := rsa.SignPKCS1v15(rand.Reader, srv.localPrivateKey, crypto.SHA1, hashed)
 		if err != nil {
 			return err
 		}
@@ -166,18 +176,32 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			Algorithm: ua.RsaSha1Signature,
 		}
 
-	case ua.SecurityPolicyURIBasic256Sha256:
+	case ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 		hash := crypto.SHA256.New()
 		hash.Write([]byte(req.ClientCertificate))
 		hash.Write([]byte(req.ClientNonce))
 		hashed := hash.Sum(nil)
-		signature, err := rsa.SignPKCS1v15(rand.Reader, srv.LocalPrivateKey(), crypto.SHA256, hashed)
+		signature, err := rsa.SignPKCS1v15(rand.Reader, srv.localPrivateKey, crypto.SHA256, hashed)
 		if err != nil {
 			return err
 		}
 		serverSignature = ua.SignatureData{
 			Signature: ua.ByteString(signature),
 			Algorithm: ua.RsaSha256Signature,
+		}
+
+	case ua.SecurityPolicyURIAes256Sha256RsaPss:
+		hash := crypto.SHA256.New()
+		hash.Write([]byte(req.ClientCertificate))
+		hash.Write([]byte(req.ClientNonce))
+		hashed := hash.Sum(nil)
+		signature, err := rsa.SignPSS(rand.Reader, srv.localPrivateKey, crypto.SHA256, hashed, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
+		if err != nil {
+			return err
+		}
+		serverSignature = ua.SignatureData{
+			Signature: ua.ByteString(signature),
+			Algorithm: ua.RsaPssSha256Signature,
 		}
 
 	default:
@@ -272,12 +296,19 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		hashed := hash.Sum(nil)
 		err = rsa.VerifyPKCS1v15(ch.RemotePublicKey(), crypto.SHA1, hashed, []byte(req.ClientSignature.Signature))
 
-	case ua.SecurityPolicyURIBasic256Sha256:
+	case ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 		hash := crypto.SHA256.New()
 		hash.Write(srv.LocalCertificate())
 		hash.Write([]byte(session.SessionNonce()))
 		hashed := hash.Sum(nil)
 		err = rsa.VerifyPKCS1v15(ch.RemotePublicKey(), crypto.SHA256, hashed, []byte(req.ClientSignature.Signature))
+
+	case ua.SecurityPolicyURIAes256Sha256RsaPss:
+		hash := crypto.SHA256.New()
+		hash.Write(srv.LocalCertificate())
+		hash.Write([]byte(session.SessionNonce()))
+		hashed := hash.Sum(nil)
+		err = rsa.VerifyPSS(ch.RemotePublicKey(), crypto.SHA256, hashed, []byte(req.ClientSignature.Signature), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 	}
 	if err != nil {
 		ch.Write(
@@ -317,7 +348,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			)
 			return nil
 		}
-		// TODO:
+		// TODO: validate IssuedIdentity
 		userIdentity = ua.IssuedIdentity{TokenData: userIdentityToken.TokenData}
 
 	case ua.X509IdentityToken:
@@ -382,12 +413,19 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			hashed := hash.Sum(nil)
 			err = rsa.VerifyPKCS1v15(userKey, crypto.SHA1, hashed, []byte(req.UserTokenSignature.Signature))
 
-		case ua.SecurityPolicyURIBasic256Sha256:
+		case ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 			hash := crypto.SHA256.New()
 			hash.Write(srv.LocalCertificate())
 			hash.Write([]byte(session.SessionNonce()))
 			hashed := hash.Sum(nil)
 			err = rsa.VerifyPKCS1v15(userKey, crypto.SHA256, hashed, []byte(req.UserTokenSignature.Signature))
+
+		case ua.SecurityPolicyURIAes256Sha256RsaPss:
+			hash := crypto.SHA256.New()
+			hash.Write(srv.LocalCertificate())
+			hash.Write([]byte(session.SessionNonce()))
+			hashed := hash.Sum(nil)
+			err = rsa.VerifyPSS(userKey, crypto.SHA256, hashed, []byte(req.UserTokenSignature.Signature), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 		}
 		if err != nil {
 			ch.Write(
@@ -462,11 +500,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf.Write(cipherBytes)
-			cipherText := make([]byte, int32(len(ch.LocalPrivateKey().D.Bytes())))
+			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
 			for cipherBuf.Len() > 0 {
 				cipherBuf.Read(cipherText)
 				// decrypt with local private key.
-				plainText, err := rsa.DecryptPKCS1v15(rand.Reader, ch.LocalPrivateKey(), cipherText)
+				plainText, err := rsa.DecryptPKCS1v15(rand.Reader, srv.localPrivateKey, cipherText)
 				if err != nil {
 					return err
 				}
@@ -495,7 +533,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf.Reset()
 			userIdentity = ua.UserNameIdentity{UserName: userIdentityToken.UserName, Password: string(passwordBytes)}
 
-		case ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256:
+		case ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 			if userIdentityToken.EncryptionAlgorithm != ua.RsaOaepKeyWrap {
 				ch.Write(
 					&ua.ServiceFault{
@@ -512,11 +550,61 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf := buffer.NewPartitionAt(bufferPool)
 			cipherBuf.Write(cipherBytes)
-			cipherText := make([]byte, int32(len(ch.LocalPrivateKey().D.Bytes())))
+			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
 			for cipherBuf.Len() > 0 {
 				cipherBuf.Read(cipherText)
 				// decrypt with local private key.
-				plainText, err := rsa.DecryptOAEP(sha1.New(), rand.Reader, ch.LocalPrivateKey(), cipherText, []byte{})
+				plainText, err := rsa.DecryptOAEP(sha1.New(), rand.Reader, srv.localPrivateKey, cipherText, []byte{})
+				if err != nil {
+					return err
+				}
+				plainBuf.Write(plainText)
+			}
+			plainLength := uint32(0)
+			if plainBuf.Len() > 0 {
+				binary.Read(plainBuf, binary.LittleEndian, &plainLength)
+			}
+			if plainLength < 32 || plainLength > 96 {
+				ch.Write(
+					&ua.ServiceFault{
+						ResponseHeader: ua.ResponseHeader{
+							Timestamp:     time.Now(),
+							RequestHandle: req.RequestHandle,
+							ServiceResult: ua.BadIdentityTokenRejected,
+						},
+					},
+					requestid,
+				)
+				return nil
+			}
+			passwordBytes := make([]byte, plainLength-32)
+			plainBuf.Read(passwordBytes)
+			cipherBuf.Reset()
+			plainBuf.Reset()
+			userIdentity = ua.UserNameIdentity{UserName: userIdentityToken.UserName, Password: string(passwordBytes)}
+
+		case ua.SecurityPolicyURIAes256Sha256RsaPss:
+			if userIdentityToken.EncryptionAlgorithm != ua.RsaOaepSha256KeyWrap {
+				ch.Write(
+					&ua.ServiceFault{
+						ResponseHeader: ua.ResponseHeader{
+							Timestamp:     time.Now(),
+							RequestHandle: req.RequestHandle,
+							ServiceResult: ua.BadIdentityTokenInvalid,
+						},
+					},
+					requestid,
+				)
+				return nil
+			}
+			plainBuf := buffer.NewPartitionAt(bufferPool)
+			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			cipherBuf.Write(cipherBytes)
+			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
+			for cipherBuf.Len() > 0 {
+				cipherBuf.Read(cipherText)
+				// decrypt with local private key.
+				plainText, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, srv.localPrivateKey, cipherText, []byte{})
 				if err != nil {
 					return err
 				}
@@ -578,7 +666,11 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	// authenticate user
 	switch id := userIdentity.(type) {
 	case ua.AnonymousIdentity:
-		err = nil
+		if srv.allowAnonymousIdentity {
+			err = nil
+		} else {
+			err = ua.BadUserAccessDenied
+		}
 
 	case ua.UserNameIdentity:
 		if auth := srv.userNameIdentityAuthenticator; auth != nil {
@@ -5227,7 +5319,7 @@ func (srv *Server) writeValue(ctx context.Context, writeValue ua.WriteValue) ua.
 					return ua.BadTypeMismatch
 				}
 			default:
-			// case ua.ExtensionObject:
+				// case ua.ExtensionObject:
 				if destType != ua.VariantTypeExtensionObject && destType != ua.VariantTypeVariant {
 					return ua.BadTypeMismatch
 				}
