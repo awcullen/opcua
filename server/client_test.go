@@ -1,6 +1,6 @@
 // Copyright 2021 Converter Systems LLC. All rights reserved.
 
-package client_test
+package server_test
 
 import (
 	"context"

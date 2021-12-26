@@ -60,8 +60,6 @@ type Server struct {
 	maxMessageSize                     uint32
 	maxChunkCount                      uint32
 	maxWorkerThreads                   int
-	registrationURL                    string
-	registrationInterval               float64
 	serverDiagnostics                  bool
 	trace                              bool
 	localCertificate                   []byte

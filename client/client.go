@@ -253,7 +253,6 @@ func (ch *Client) open(ctx context.Context) error {
 		if err != nil {
 			return ua.BadApplicationSignatureInvalid
 		}
-
 	}
 
 	// create client signature

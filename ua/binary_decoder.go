@@ -143,7 +143,7 @@ func getStructDecoder(typ reflect.Type) (decoderFunc, error) {
 		}
 		offset := field.Offset
 		decoders = append(decoders, func(buf *BinaryDecoder, p unsafe.Pointer) error {
-			return dec(buf, unsafe.Add(p, offset))
+			return dec(buf, unsafe.Pointer(uintptr(p)+offset))
 		})
 	}
 	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
@@ -165,7 +165,7 @@ func getStructPtrDecoder(typ reflect.Type) (decoderFunc, error) {
 		}
 		offset := field.Offset
 		decoders = append(decoders, func(buf *BinaryDecoder, p unsafe.Pointer) error {
-			return dec(buf, unsafe.Add(p, offset))
+			return dec(buf, unsafe.Pointer(uintptr(p)+offset))
 		})
 	}
 	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
@@ -213,7 +213,7 @@ func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 			if err := elemDecoder(buf, p2); err != nil {
 				return err
 			}
-			p2 = unsafe.Add(p2, elemSize)
+			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 		}
 		return nil
 	}, nil

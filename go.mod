@@ -1,6 +1,6 @@
 module github.com/awcullen/opcua
 
-go 1.17
+go 1.16
 
 require (
 	github.com/djherbis/buffer v1.2.0
