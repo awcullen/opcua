@@ -4,7 +4,7 @@ Publish data to the OPC UA clients in your network.
 With this package, you can create a server of the OPC Unified Architecture, see https://reference.opcfoundation.org/v104/Core/docs/Part4/
 
 ## Usage
-To create your OPC UA server, call server.New(). Pass in the server's description, certificate, private key, endpoint URL, and various options. 
+To create your OPC UA server, call server.New(). Specify the server's description, certificate, private key, endpoint URL, and various options. 
 
 Create a namespace, and add nodes of types Object, Variable, Method and DataType.
 

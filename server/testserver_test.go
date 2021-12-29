@@ -1,28 +1,14 @@
 // Copyright 2021 Converter Systems LLC. All rights reserved.
 
-package main
+package server_test
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha1"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"fmt"
-	"log"
-	"math/big"
-	_ "net/http/pprof"
-	"net/url"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/awcullen/opcua/server"
 	"github.com/awcullen/opcua/ua"
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -32,13 +18,7 @@ var (
 	SoftwareVersion = "0.3.0"
 )
 
-func main() {
-
-	// create directory with certificate and key, if not found.
-	if err := ensurePKI(); err != nil {
-		log.Println("Error creating PKI.")
-		return
-	}
+func NewTestServer() (*server.Server, error) {
 
 	// userids for testing
 	userids := []ua.UserNameIdentity{
@@ -50,9 +30,6 @@ func main() {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(userids[i].Password), 8)
 		userids[i].Password = string(hash)
 	}
-
-	// create the endpoint url from hostname and port
-	endpointURL := fmt.Sprintf("opc.tcp://%s:%d", host, port)
 
 	// create server
 	srv, err := server.New(
@@ -66,11 +43,11 @@ func main() {
 			ApplicationType:     ua.ApplicationTypeServer,
 			GatewayServerURI:    "",
 			DiscoveryProfileURI: "",
-			DiscoveryURLs:       []string{endpointURL},
+			DiscoveryURLs:       []string{fmt.Sprintf("opc.tcp://%s:%d", host, port)},
 		},
 		"./pki/server.crt",
 		"./pki/server.key",
-		endpointURL,
+		fmt.Sprintf("opc.tcp://%s:%d", host, port),
 		server.WithBuildInfo(
 			ua.BuildInfo{
 				ProductURI:       "http://github.com/awcullen/opcua",
@@ -78,7 +55,6 @@ func main() {
 				ProductName:      "testserver",
 				SoftwareVersion:  SoftwareVersion,
 			}),
-		server.WithAnonymousIdentity(true),
 		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
 			valid := false
 			for _, user := range userids {
@@ -95,19 +71,18 @@ func main() {
 			// log.Printf("Login user: %s from %s\n", userIdentity.UserName, applicationURI)
 			return nil
 		}),
+		server.WithAnonymousIdentity(true),
 		server.WithSecurityPolicyNone(true),
 		server.WithInsecureSkipVerify(),
-		server.WithServerDiagnostics(true),
-		server.WithTrace(),
 	)
 	if err != nil {
-		os.Exit(1)
+		return nil, err
 	}
 
 	// load nodeset
 	nm := srv.NamespaceManager()
-	if err := nm.LoadNodeSetFromBuffer([]byte(nodeset)); err != nil {
-		os.Exit(2)
+	if err := nm.LoadNodeSetFromBuffer([]byte(testnodeset)); err != nil {
+		return nil, err
 	}
 
 	// install MethodNoArgs method
@@ -179,105 +154,5 @@ func main() {
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
 		})
 	}
-
-	go func() {
-		// wait for signal (this conflicts with debugger currently)
-		log.Println("Press Ctrl-C to exit...")
-		waitForSignal()
-
-		log.Println("Stopping server...")
-		srv.Close()
-	}()
-
-	// start server
-	log.Printf("Starting server '%s' at '%s'\n", srv.LocalDescription().ApplicationName.Text, srv.EndpointURL())
-	if err := srv.ListenAndServe(); err != ua.BadServerHalted {
-		log.Println(errors.Wrap(err, "Error starting server"))
-	}
-}
-
-func waitForSignal() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	<-sigs
-}
-
-func createNewCertificate(appName, certFile, keyFile string) error {
-
-	// create a keypair.
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return ua.BadCertificateInvalid
-	}
-
-	// create a certificate.
-	host, _ := os.Hostname()
-	applicationURI, _ := url.Parse(fmt.Sprintf("urn:%s:%s", host, appName))
-	serialNumber, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	subjectKeyHash := sha1.New()
-	subjectKeyHash.Write(key.PublicKey.N.Bytes())
-	subjectKeyId := subjectKeyHash.Sum(nil)
-
-	template := x509.Certificate{
-		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{CommonName: appName},
-		SubjectKeyId:          subjectKeyId,
-		AuthorityKeyId:        subjectKeyId,
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(1, 0, 0),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageContentCommitment | x509.KeyUsageKeyEncipherment | x509.KeyUsageDataEncipherment | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		BasicConstraintsValid: true,
-		DNSNames:              []string{host},
-		URIs:                  []*url.URL{applicationURI},
-	}
-
-	rawcrt, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
-	if err != nil {
-		return ua.BadCertificateInvalid
-	}
-
-	if f, err := os.Create(certFile); err == nil {
-		block := &pem.Block{Type: "CERTIFICATE", Bytes: rawcrt}
-		if err := pem.Encode(f, block); err != nil {
-			f.Close()
-			return err
-		}
-		f.Close()
-	} else {
-		return err
-	}
-
-	if f, err := os.Create(keyFile); err == nil {
-		block := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}
-		if err := pem.Encode(f, block); err != nil {
-			f.Close()
-			return err
-		}
-		f.Close()
-	} else {
-		return err
-	}
-
-	return nil
-}
-
-func ensurePKI() error {
-
-	// check if ./pki already exists
-	if _, err := os.Stat("./pki"); !os.IsNotExist(err) {
-		return nil
-	}
-
-	// make a pki directory, if not exist
-	if err := os.MkdirAll("./pki", os.ModeDir|0755); err != nil {
-		return err
-	}
-
-	// create a server cert in ./pki/server.crt
-	if err := createNewCertificate("testserver", "./pki/server.crt", "./pki/server.key"); err != nil {
-		return err
-	}
-
-	return nil
+	return srv, nil
 }

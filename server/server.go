@@ -71,7 +71,6 @@ type Server struct {
 	state                              ua.ServerState
 	secondsTillShutdown                uint32
 	shutdownReason                     ua.LocalizedText
-	stateListener                      func(state ua.ServerState)
 	workerpool                         *workerpool.WorkerPool
 	channelManager                     *ChannelManager
 	sessionManager                     *SessionManager
@@ -80,7 +79,6 @@ type Server struct {
 	serverUris                         []string
 	startTime                          time.Time
 	serverDiagnosticsSummary           *ua.ServerDiagnosticsSummaryDataType
-	useRegisterServer2                 bool
 	scheduler                          *Scheduler
 	historian                          HistoryReadWriter
 	allowAnonymousIdentity             bool
@@ -92,7 +90,10 @@ type Server struct {
 	rolePermissions                    []ua.RolePermissionType
 }
 
-// New initializes a new instance of the UaTcpServer.
+// New initializes a new instance of the Server.
+// Specify the ApplicationDescription as defined in https://reference.opcfoundation.org/v104/Core/docs/Part4/7.1/
+// The files must contain PEM encoded data.
+// The endpointURL is in the form opc.tcp://[host]:[port]
 func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpointURL string, options ...Option) (*Server, error) {
 	srv := &Server{
 		localDescription:                   localDescription,
@@ -121,7 +122,6 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		state:                              ua.ServerStateUnknown,
 		startTime:                          time.Now(),
 		serverDiagnosticsSummary:           &ua.ServerDiagnosticsSummaryDataType{},
-		useRegisterServer2:                 true,
 		rolesProvider:                      NewRulesBasedRolesProvider(DefaultIdentityMappingRules),
 		rolePermissions:                    DefaultRolePermissions,
 	}
@@ -202,19 +202,8 @@ func (srv *Server) State() ua.ServerState {
 
 func (srv *Server) setState(value ua.ServerState) {
 	srv.Lock()
-	srv.state = value
-	listener := srv.stateListener
-	srv.Unlock()
-	if listener != nil {
-		listener(srv.state)
-	}
-}
-
-// SetStateListener sets a func that listens for change of ServerState.
-func (srv *Server) SetStateListener(listener func(state ua.ServerState)) {
-	srv.Lock()
 	defer srv.Unlock()
-	srv.stateListener = listener
+	srv.state = value
 }
 
 // NamespaceUris gets the namespace uris.
@@ -233,6 +222,8 @@ func (srv *Server) ServerUris() []string {
 
 // RolePermissions gets the RolePermissions.
 func (srv *Server) RolePermissions() []ua.RolePermissionType {
+	srv.RLock()
+	defer srv.RUnlock()
 	return srv.rolePermissions
 }
 

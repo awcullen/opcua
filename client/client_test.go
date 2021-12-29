@@ -38,16 +38,16 @@ func TestMain(m *testing.M) {
 	// check if server is listening at endpointURL
 	_, err := client.FindServers(context.Background(), &ua.FindServersRequest{EndpointURL: endpointURL})
 	if err != nil {
-		// if testserver not listening, start it.
+		// if a server is not listening, start our TestServer.
 		srv, err := NewTestServer()
 		if err != nil {
-			fmt.Println(errors.Wrap(err, "Error creating server"))
+			fmt.Println(errors.Wrap(err, "Error constructing server"))
 			os.Exit(2)
 		}
 		defer srv.Close()
 		go func() {
 			if err := srv.ListenAndServe(); err != ua.BadServerHalted {
-				fmt.Println(errors.Wrap(err, "Error opening server"))
+				fmt.Println(errors.Wrap(err, "Error starting server"))
 				os.Exit(3)
 			}
 		}()
@@ -99,6 +99,8 @@ func TestOpenClientlWithoutSecurity(t *testing.T) {
 		return
 	}
 	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
+	t.Logf("  SecurityMode: %s", ch.SecurityMode())
 	ch.Close(ctx)
 }
 

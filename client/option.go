@@ -12,54 +12,6 @@ import (
 // Option is a functional option to be applied to a client during initialization.
 type Option func(*Client) error
 
-// WithSecurityPolicyNone selects endpoint with security policy of None.
-func WithSecurityPolicyNone() Option {
-	return func(c *Client) error {
-		c.securityPolicyURI = ua.SecurityPolicyURINone
-		return nil
-	}
-}
-
-// WithSecurityPolicyBasic128Rsa15 selects endpoint with security policy of Basic128Rsa15.
-func WithSecurityPolicyBasic128Rsa15() Option {
-	return func(c *Client) error {
-		c.securityPolicyURI = ua.SecurityPolicyURIBasic128Rsa15
-		return nil
-	}
-}
-
-// WithSecurityPolicyBasic256 selects endpoint with security policy of Basic256.
-func WithSecurityPolicyBasic256() Option {
-	return func(c *Client) error {
-		c.securityPolicyURI = ua.SecurityPolicyURIBasic256
-		return nil
-	}
-}
-
-// WithSecurityPolicyBasic256Sha256 selects endpoint with security policy of Basic256Sha256.
-func WithSecurityPolicyBasic256Sha256() Option {
-	return func(c *Client) error {
-		c.securityPolicyURI = ua.SecurityPolicyURIBasic256Sha256
-		return nil
-	}
-}
-
-// WithSecurityPolicyAes128Sha256RsaOaep selects endpoint with security policy of Aes128Sha256RsaOaep.
-func WithSecurityPolicyAes128Sha256RsaOaep() Option {
-	return func(c *Client) error {
-		c.securityPolicyURI = ua.SecurityPolicyURIAes128Sha256RsaOaep
-		return nil
-	}
-}
-
-// WithSecurityPolicyAes256Sha256RsaPss selects endpoint with security policy of Aes256Sha256RsaPss.
-func WithSecurityPolicyAes256Sha256RsaPss() Option {
-	return func(c *Client) error {
-		c.securityPolicyURI = ua.SecurityPolicyURIAes256Sha256RsaPss
-		return nil
-	}
-}
-
 // WithSecurityPolicyURI selects endpoint with given security policy URI. (default: "" selects most secure endpoint)
 func WithSecurityPolicyURI(uri string) Option {
 	return func(c *Client) error {
@@ -126,6 +78,7 @@ func WithClientCertificate(cert []byte, privateKey *rsa.PrivateKey) Option {
 }
 
 // WithClientCertificateFile sets the file paths of the client certificate and private key.
+// Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
 func WithClientCertificateFile(certPath, keyPath string) Option {
 	return func(c *Client) error {
 		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
@@ -139,6 +92,7 @@ func WithClientCertificateFile(certPath, keyPath string) Option {
 }
 
 // WithTrustedCertificatesFile sets the file path of the trusted server certificates or certificate authorities.
+// The files must contain PEM encoded data.
 func WithTrustedCertificatesFile(path string) Option {
 	return func(c *Client) error {
 		c.trustedCertsFile = path
