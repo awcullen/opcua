@@ -3,6 +3,7 @@
 package client_test
 
 const testnodeset = `
+
 <UANodeSet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:uax="http://opcfoundation.org/UA/2008/02/Types.xsd" xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
     <NamespaceUris>
         <Uri>http://github.com/awcullen/opcua/testserver/</Uri>
@@ -37,6 +38,7 @@ const testnodeset = `
         <Alias Alias="HasSubtype">i=45</Alias>
         <Alias Alias="HasProperty">i=46</Alias>
         <Alias Alias="HasComponent">i=47</Alias>
+        <Alias Alias="HasNotifier">i=48</Alias>
         <Alias Alias="NodeClass">i=257</Alias>
         <Alias Alias="Duration">i=290</Alias>
         <Alias Alias="UtcTime">i=294</Alias>
@@ -1722,5 +1724,35 @@ const testnodeset = `
       <Reference ReferenceType="Organizes" IsForward="false">ns=1;s=Demo.NodeClasses.View1</Reference>
     </References>
   </UAView>
+  <UAObject NodeId="ns=1;s=Area1" BrowseName="1:Area1" EventNotifier="1">
+    <DisplayName>Area1</DisplayName>
+    <Description>Events in Area1</Description>
+    <References>
+      <Reference ReferenceType="HasNotifier" IsForward="false">i=2253</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=58</Reference>
+    </References>
+  </UAObject>
+  <UAMethod DataType="Boolean" NodeId="ns=1;s=EventTrigger1" BrowseName="1:EventTrigger1" UserAccessLevel="3" AccessLevel="3">
+    <DisplayName>EventTrigger1</DisplayName>
+    <Description>Triggers event in Area1. This method is added for compliance testing only.</Description>
+    <References>
+      <Reference ReferenceType="Organizes" IsForward="false">ns=1;s=Area1</Reference>
+    </References>
+  </UAMethod>
+  <UAObject NodeId="ns=1;s=Area2" BrowseName="1:Area2" EventNotifier="1">
+    <DisplayName>Area2</DisplayName>
+    <Description>Events in Area2</Description>
+    <References>
+      <Reference ReferenceType="HasNotifier" IsForward="false">i=2253</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=58</Reference>
+    </References>
+  </UAObject>
+  <UAMethod DataType="Boolean" NodeId="ns=1;s=EventTrigger2" BrowseName="1:EventTrigger2" UserAccessLevel="3" AccessLevel="3">
+    <DisplayName>EventTrigger1</DisplayName>
+    <Description>Triggers event in Area2. This method is added for compliance testing only.</Description>
+    <References>
+      <Reference ReferenceType="Organizes" IsForward="false">ns=1;s=Area2</Reference>
+    </References>
+  </UAMethod>
 </UANodeSet>
 `

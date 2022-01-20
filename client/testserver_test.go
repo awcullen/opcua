@@ -4,8 +4,10 @@ package client_test
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/awcullen/opcua/server"
 	"github.com/awcullen/opcua/ua"
@@ -154,5 +156,37 @@ func NewTestServer() (*server.Server, error) {
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
 		})
 	}
+
+	go func() {
+		source, _ := nm.FindObject(ua.ParseNodeID("ns=2;s=Area1"))
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				evt := &ua.BaseEvent{
+					EventID:     getNextEventID(),
+					EventType:   ua.ObjectTypeIDBaseEventType,
+					SourceNode:  source.NodeID(),
+					SourceName:  "Area1",
+					Time:        time.Now(),
+					ReceiveTime: time.Now(),
+					Message:     ua.LocalizedText{Text: "BaseEvent is triggered in Area1"},
+					Severity:    500,
+				}
+				nm.OnEvent(source, evt)
+			case <-srv.Closing():
+				return
+			}
+		}
+	}()
+
 	return srv, nil
+}
+
+// getNextEventID gets next random eventID.
+func getNextEventID() ua.ByteString {
+	var nonce = make([]byte, 16)
+	rand.Read(nonce)
+	return ua.ByteString(nonce)
 }

@@ -492,6 +492,29 @@ func (m *NamespaceManager) GetChildren(node Node, uris []string, withRefTypes []
 	return children
 }
 
+// OnEvent raises the event, starting from the target node, follows HasNotifier references until the Server node.
+func (m *NamespaceManager) OnEvent(target *ObjectNode, evt ua.Event) error {
+	for target.nodeID != ua.ObjectIDServer {
+		target.OnEvent(evt)
+		found := false
+		for _, r := range target.References() {
+			if r.IsInverse && r.ReferenceTypeID == ua.ReferenceTypeIDHasNotifier {
+				if target1, ok1 := m.FindObject(ua.ToNodeID(r.TargetID, m.NamespaceUris())); ok1 {
+					found = true
+					target = target1
+					break
+				}
+				return ua.BadNodeIDUnknown
+			}
+		}
+		if !found {
+			return nil
+		}
+	}
+	target.OnEvent(evt)
+	return nil
+}
+
 // Any returns true if the given function returns true for any of the given nodes.
 func Any(nodes []ua.NodeID, f func(n ua.NodeID) bool) bool {
 	for _, n := range nodes {

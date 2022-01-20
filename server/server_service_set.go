@@ -3501,9 +3501,6 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadUserAccessDenied}
 				continue
 			}
-			if item.RequestedParameters.Filter == nil {
-				item.RequestedParameters.Filter = ua.EventFilter{} // TODO: get EventBase select clause
-			}
 			_, ok = item.RequestedParameters.Filter.(ua.EventFilter)
 			if !ok {
 				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadFilterNotAllowed}
@@ -4004,7 +4001,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			removeResults[i] = ua.BadMonitoredItemIDInvalid
 			continue
 		}
-		if trigger.RemoveTriggeredItem(triggered) {
+		if trigger.removeTriggeredItem(triggered) {
 			removeResults[i] = ua.Good
 		} else {
 			removeResults[i] = ua.BadMonitoredItemIDInvalid
@@ -4018,7 +4015,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			addResults[i] = ua.BadMonitoredItemIDInvalid
 			continue
 		}
-		if trigger.AddTriggeredItem(triggered) {
+		if trigger.addTriggeredItem(triggered) {
 			addResults[i] = ua.Good
 		} else {
 			addResults[i] = ua.BadMonitoredItemIDInvalid

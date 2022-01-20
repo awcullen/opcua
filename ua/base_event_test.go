@@ -15,12 +15,17 @@ func TestDeserializeBaseEvent(t *testing.T) {
 	f := []ua.Variant{
 		ua.ByteString("foo"),
 		ua.NewNodeIDString(1, "bar"),
+		ua.NewNodeIDString(1, "bar"),
 		"source",
+		time.Now().UTC(),
 		time.Now().UTC(),
 		ua.NewLocalizedText("Temperature is high.", "en"),
 		uint16(255),
 	}
-	e := ua.NewBaseEvent(f)
+	e := ua.BaseEvent{}
+	if err := e.UnmarshalFields(f); err != nil {
+		t.Error(errors.Wrap(err, "Error unmarshalling fields"))
+	}
 	t.Logf("%+v", e)
 }
 
@@ -28,7 +33,9 @@ func TestDeserializeCondition(t *testing.T) {
 	f := []ua.Variant{
 		ua.ByteString("foo"),
 		ua.NewNodeIDString(1, "bar"),
+		ua.NewNodeIDString(1, "bar"),
 		"source",
+		time.Now().UTC(),
 		time.Now().UTC(),
 		ua.NewLocalizedText("Temperature is high.", "en"),
 		uint16(255),
@@ -37,7 +44,10 @@ func TestDeserializeCondition(t *testing.T) {
 		nil,
 		true,
 	}
-	e := ua.NewCondition(f)
+	e := ua.Condition{}
+	if err := e.UnmarshalFields(f); err != nil {
+		t.Error(errors.Wrap(err, "Error unmarshalling fields"))
+	}
 	t.Logf("%+v", e)
 }
 
@@ -115,7 +125,12 @@ func TestSubscribeBaseEvent(t *testing.T) {
 					case ua.EventNotificationList:
 						for _, z := range body.Events {
 							if z.ClientHandle == 42 {
-								e := ua.NewBaseEvent(z.EventFields)
+								e := ua.BaseEvent{}
+								if err := e.UnmarshalFields(z.EventFields); err != nil {
+									t.Error(errors.Wrap(err, "Error unmarshalling fields"))
+									wg.Done()
+									return
+								}
 								t.Logf("%+v", e)
 								wg.Done()
 								return
@@ -236,7 +251,12 @@ func TestSubscribeAlarm(t *testing.T) {
 					case ua.EventNotificationList:
 						for _, z := range body.Events {
 							if z.ClientHandle == 42 {
-								e := ua.NewAlarmCondition(z.EventFields)
+								e := ua.AlarmCondition{}
+								if err := e.UnmarshalFields(z.EventFields); err != nil {
+									t.Error(errors.Wrap(err, "Error unmarshalling fields"))
+									wg.Done()
+									return
+								}
 								t.Logf("%+v", e)
 								wg.Done()
 								return

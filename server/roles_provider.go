@@ -33,8 +33,8 @@ type IdentityMappingRule struct {
 var (
 	// DefaultRolePermissions returns RolePermissionTypes for the well known roles.
 	DefaultRolePermissions []ua.RolePermissionType = []ua.RolePermissionType{
-		{RoleID: ua.ObjectIDWellKnownRoleAnonymous, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead)},
-		{RoleID: ua.ObjectIDWellKnownRoleAuthenticatedUser, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead)},
+		{RoleID: ua.ObjectIDWellKnownRoleAnonymous, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents)},
+		{RoleID: ua.ObjectIDWellKnownRoleAuthenticatedUser, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents)},
 		{RoleID: ua.ObjectIDWellKnownRoleObserver, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents)},
 		{RoleID: ua.ObjectIDWellKnownRoleOperator, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeWrite | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents | ua.PermissionTypeCall)},
 		{RoleID: ua.ObjectIDWellKnownRoleEngineer, Permissions: (ua.PermissionTypeBrowse | ua.PermissionTypeRead | ua.PermissionTypeWrite | ua.PermissionTypeReadHistory | ua.PermissionTypeReceiveEvents | ua.PermissionTypeCall | ua.PermissionTypeWriteHistorizing)},

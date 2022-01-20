@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -520,13 +521,13 @@ func TestSubscribe(t *testing.T) {
 	// loop until 3 data changes received.
 	numChanges := 0
 	for numChanges < 3 {
-		res, err := ch.Publish(ctx, req3)
+		res3, err := ch.Publish(ctx, req3)
 		if err != nil {
 			t.Error(errors.Wrap(err, "Error publishing"))
 			break
 		}
 		// loop thru all the notifications.
-		for _, data := range res.NotificationMessage.NotificationData {
+		for _, data := range res3.NotificationMessage.NotificationData {
 			switch body := data.(type) {
 			case ua.DataChangeNotification:
 				for _, z := range body.MonitoredItems {
@@ -541,7 +542,94 @@ func TestSubscribe(t *testing.T) {
 		req3 = &ua.PublishRequest{
 			RequestHeader: ua.RequestHeader{TimeoutHint: 60000},
 			SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{
-				{SequenceNumber: res.NotificationMessage.SequenceNumber, SubscriptionID: res.SubscriptionID},
+				{SequenceNumber: res3.NotificationMessage.SequenceNumber, SubscriptionID: res3.SubscriptionID},
+			},
+		}
+	}
+	// success after receiving 3 data changes.
+	ch.Close(ctx)
+}
+
+// TestSubscribeEvents tests subscribing to receive events.
+func TestSubscribeEvents(t *testing.T) {
+	ctx := context.Background()
+	ch, err := client.Dial(
+		ctx,
+		endpointURL,
+		client.WithInsecureSkipVerify(),
+	)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error opening client"))
+		return
+	}
+	t.Logf("Success opening client: %s", ch.EndpointURL())
+	req := &ua.CreateSubscriptionRequest{
+		RequestedPublishingInterval: 1000.0,
+		RequestedMaxKeepAliveCount:  30,
+		RequestedLifetimeCount:      30 * 3,
+		PublishingEnabled:           true,
+	}
+	res, err := ch.CreateSubscription(ctx, req)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error creating subscription"))
+		ch.Abort(ctx)
+		return
+	}
+	req2 := &ua.CreateMonitoredItemsRequest{
+		SubscriptionID:     res.SubscriptionID,
+		TimestampsToReturn: ua.TimestampsToReturnBoth,
+		ItemsToCreate: []ua.MonitoredItemCreateRequest{
+			{
+				ItemToMonitor: ua.ReadValueID{
+					AttributeID: ua.AttributeIDEventNotifier,
+					NodeID:      ua.ObjectIDServer,
+				},
+				MonitoringMode: ua.MonitoringModeReporting,
+				RequestedParameters: ua.MonitoringParameters{
+					ClientHandle: 42, QueueSize: 100, DiscardOldest: true, Filter: ua.EventFilter{
+						SelectClauses: ua.BaseEventSelectClauses,
+					},
+				},
+			},
+		},
+	}
+	res2, err := ch.CreateMonitoredItems(ctx, req2)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error creating item"))
+	}
+	_ = res2
+	// prepare an initial publish request
+	req3 := &ua.PublishRequest{
+		RequestHeader:                ua.RequestHeader{TimeoutHint: 60000},
+		SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{},
+	}
+	// loop until 3 events received.
+	numEvents := 0
+	for numEvents < 3 {
+		res3, err := ch.Publish(ctx, req3)
+		if err != nil {
+			t.Error(errors.Wrap(err, "Error publishing"))
+			break
+		}
+		// loop thru all the notifications.
+		for _, data := range res3.NotificationMessage.NotificationData {
+			switch body := data.(type) {
+			case ua.EventNotificationList:
+				for _, z := range body.Events {
+					if z.ClientHandle == 42 {
+						e := &ua.BaseEvent{}
+						e.UnmarshalFields(z.EventFields)
+						t.Logf(" + %s: %s, Source: %s, Severity: %d\n", e.Time, e.Message, e.SourceName, e.Severity)
+						numEvents++
+					}
+				}
+			}
+		}
+		// prepare another publish request
+		req3 = &ua.PublishRequest{
+			RequestHeader: ua.RequestHeader{TimeoutHint: 60000},
+			SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{
+				{SequenceNumber: res3.NotificationMessage.SequenceNumber, SubscriptionID: res3.SubscriptionID},
 			},
 		}
 	}
@@ -793,8 +881,18 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 		return ua.BadCertificateInvalid
 	}
 
-	// Create a certificate.
+	// get local hostname.
 	host, _ := os.Hostname()
+
+	// get local ip address.
+	conn, err := net.Dial("udp", "8.8.8.8:53")
+	if err != nil {
+		return ua.BadCertificateInvalid
+	}
+	conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	// Create a certificate.
 	applicationURI, _ := url.Parse(fmt.Sprintf("urn:%s:%s", host, appName))
 	serialNumber, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	subjectKeyHash := sha1.New()
@@ -812,6 +910,7 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
 		DNSNames:              []string{host},
+		IPAddresses:           []net.IP{localAddr.IP},
 		URIs:                  []*url.URL{applicationURI},
 	}
 
