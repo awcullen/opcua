@@ -8,9 +8,9 @@ This package supports OPC UA TCP transport protocol with secure channel and bina
 
 ## Includes Client and Server
 
-To learn how to connect to an OPC UA server to read, write and subscribe to data, see [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua/client)
+To create you own client that connects to an OPC UA server, start here [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua/client)
 
-To learn how to create your own OPC UA server, see [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua/server)
+To create your own OPC UA server, start here [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua/server)
 
 
  [1]: robot6.jpg
