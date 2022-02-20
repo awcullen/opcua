@@ -1732,13 +1732,6 @@ const testnodeset = `
       <Reference ReferenceType="HasTypeDefinition">i=58</Reference>
     </References>
   </UAObject>
-  <UAMethod DataType="Boolean" NodeId="ns=1;s=EventTrigger1" BrowseName="1:EventTrigger1" UserAccessLevel="3" AccessLevel="3">
-    <DisplayName>EventTrigger1</DisplayName>
-    <Description>Triggers event in Area1. This method is added for compliance testing only.</Description>
-    <References>
-      <Reference ReferenceType="Organizes" IsForward="false">ns=1;s=Area1</Reference>
-    </References>
-  </UAMethod>
   <UAObject NodeId="ns=1;s=Area2" BrowseName="1:Area2" EventNotifier="1">
     <DisplayName>Area2</DisplayName>
     <Description>Events in Area2</Description>
@@ -1747,12 +1740,5 @@ const testnodeset = `
       <Reference ReferenceType="HasTypeDefinition">i=58</Reference>
     </References>
   </UAObject>
-  <UAMethod DataType="Boolean" NodeId="ns=1;s=EventTrigger2" BrowseName="1:EventTrigger2" UserAccessLevel="3" AccessLevel="3">
-    <DisplayName>EventTrigger1</DisplayName>
-    <Description>Triggers event in Area2. This method is added for compliance testing only.</Description>
-    <References>
-      <Reference ReferenceType="Organizes" IsForward="false">ns=1;s=Area2</Reference>
-    </References>
-  </UAMethod>
 </UANodeSet>
 `

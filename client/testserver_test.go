@@ -171,10 +171,51 @@ func NewTestServer() (*server.Server, error) {
 					SourceName:  "Area1",
 					Time:        time.Now(),
 					ReceiveTime: time.Now(),
-					Message:     ua.LocalizedText{Text: "BaseEvent is triggered in Area1"},
+					Message:     ua.LocalizedText{Text: "Event in Area1"},
 					Severity:    500,
 				}
 				nm.OnEvent(source, evt)
+			case <-srv.Closing():
+				return
+			}
+		}
+	}()
+
+	go func() {
+		active, acked := true, false
+		source, _ := nm.FindObject(ua.ParseNodeID("ns=2;s=Area2"))
+
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				evt := &ua.AlarmCondition{
+					EventID:       getNextEventID(),
+					EventType:     ua.ObjectTypeIDAlarmConditionType,
+					SourceNode:    source.NodeID(),
+					SourceName:    "Area2",
+					Time:          time.Now(),
+					ReceiveTime:   time.Now(),
+					Message:       ua.LocalizedText{Text: "Alarm in Area2"},
+					ConditionID:   ua.ObjectTypeIDOffNormalAlarmType,
+					ConditionName: "OffNormalAlarm",
+					Severity:      500,
+					Retain:        true,
+					AckedState:    acked,
+					ActiveState:   active,
+				}
+				nm.OnEvent(source, evt)
+				if !active {
+					active = true
+				} else {
+					if !acked {
+						acked = true
+					} else {
+						active, acked = false, false
+					}
+				}
+
 			case <-srv.Closing():
 				return
 			}

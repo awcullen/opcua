@@ -81,6 +81,12 @@ func (e *AlarmCondition) GetAttribute(clause SimpleAttributeOperand) Variant {
 		return Variant(e.ConfirmedState)
 	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[14]):
 		return Variant(e.ActiveState)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauseActiveStateEffectiveDisplayName):
+		if e.ActiveState {
+			return Variant(LocalizedText{Locale: "en", Text: "Active"})
+		} else {
+			return Variant(LocalizedText{Locale: "en", Text: "Inactive"})
+		}
 	default:
 		return nil
 	}
@@ -104,3 +110,5 @@ var AlarmConditionSelectClauses []SimpleAttributeOperand = []SimpleAttributeOper
 	{TypeDefinitionID: ObjectTypeIDAcknowledgeableConditionType, BrowsePath: ParseBrowsePath("ConfirmedState/Id"), AttributeID: AttributeIDValue},
 	{TypeDefinitionID: ObjectTypeIDAlarmConditionType, BrowsePath: ParseBrowsePath("ActiveState/Id"), AttributeID: AttributeIDValue},
 }
+
+var AlarmConditionSelectClauseActiveStateEffectiveDisplayName SimpleAttributeOperand = SimpleAttributeOperand{TypeDefinitionID: ObjectTypeIDAlarmConditionType, BrowsePath: ParseBrowsePath("ActiveState/EffectiveDisplayName"), AttributeID: AttributeIDValue}

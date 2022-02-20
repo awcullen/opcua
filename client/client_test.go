@@ -550,7 +550,7 @@ func TestSubscribe(t *testing.T) {
 	ch.Close(ctx)
 }
 
-// TestSubscribeEvents tests subscribing to receive events.
+// TestSubscribeEvents tests subscribing to receive events from Area1.
 func TestSubscribeEvents(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
@@ -582,7 +582,7 @@ func TestSubscribeEvents(t *testing.T) {
 			{
 				ItemToMonitor: ua.ReadValueID{
 					AttributeID: ua.AttributeIDEventNotifier,
-					NodeID:      ua.ObjectIDServer,
+					NodeID:      ua.ParseNodeID("ns=2;s=Area1"),
 				},
 				MonitoringMode: ua.MonitoringModeReporting,
 				RequestedParameters: ua.MonitoringParameters{
@@ -637,7 +637,7 @@ func TestSubscribeEvents(t *testing.T) {
 	ch.Close(ctx)
 }
 
-// TestSubscribeAlarms tests subscribing to receive alarm events.
+// TestSubscribeAlarms tests subscribing to receive alarms from Area2.
 func TestSubscribeAlarms(t *testing.T) {
 	ctx := context.Background()
 	ch, err := client.Dial(
@@ -669,7 +669,7 @@ func TestSubscribeAlarms(t *testing.T) {
 			{
 				ItemToMonitor: ua.ReadValueID{
 					AttributeID: ua.AttributeIDEventNotifier,
-					NodeID:      ua.ObjectIDServer,
+					NodeID:      ua.ParseNodeID("ns=2;s=Area2"),
 				},
 				MonitoringMode: ua.MonitoringModeReporting,
 				RequestedParameters: ua.MonitoringParameters{
@@ -706,7 +706,7 @@ func TestSubscribeAlarms(t *testing.T) {
 					if z.ClientHandle == 42 {
 						e := &ua.AlarmCondition{}
 						e.UnmarshalFields(z.EventFields)
-						t.Logf(" + %s: %s, Source: %s, Severity: %d\n", e.Time, e.Message, e.SourceName, e.Severity)
+						t.Logf(" + %s: %s, Source: %s, Severity: %d, Active: %t, Acked: %t\n", e.Time, e.Message, e.SourceName, e.Severity, e.ActiveState, e.AckedState)
 						numEvents++
 					}
 				}
