@@ -3,7 +3,7 @@
 package ua
 
 func EqualSimpleAttributeOperand(a, b SimpleAttributeOperand) bool {
-	if a.TypeDefinitionID != b.TypeDefinitionID {
+	if a.TypeDefinitionID != ObjectTypeIDBaseEventType && a.TypeDefinitionID != b.TypeDefinitionID {
 		return false
 	}
 	if len(a.BrowsePath) != len(b.BrowsePath) {

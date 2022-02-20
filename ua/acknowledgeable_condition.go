@@ -46,47 +46,40 @@ func (evt *AcknowledgeableCondition) UnmarshalFields(eventFields []Variant) erro
 	return nil
 }
 
-func (e *AcknowledgeableCondition) Where(clause ContentFilter) bool {
-	return true
-}
-
-func (e *AcknowledgeableCondition) Select(clauses []SimpleAttributeOperand) []Variant {
-	ret := make([]Variant, len(clauses))
-	for i, clause := range clauses {
-		switch {
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[0]):
-			ret[i] = Variant(e.EventID)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[1]):
-			ret[i] = Variant(e.EventType)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[2]):
-			ret[i] = Variant(e.SourceName)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[3]):
-			ret[i] = Variant(e.SourceName)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[4]):
-			ret[i] = Variant(e.Time)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[5]):
-			ret[i] = Variant(e.ReceiveTime)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[6]):
-			ret[i] = Variant(e.Message)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[7]):
-			ret[i] = Variant(e.Severity)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[8]):
-			ret[i] = Variant(e.ConditionID)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[9]):
-			ret[i] = Variant(e.ConditionName)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[10]):
-			ret[i] = Variant(e.BranchID)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[11]):
-			ret[i] = Variant(e.Retain)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[12]):
-			ret[i] = Variant(e.AckedState)
-		case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[13]):
-			ret[i] = Variant(e.ConfirmedState)
-		default:
-			ret[i] = nil
-		}
+// GetAttribute ...
+func (e *AcknowledgeableCondition) GetAttribute(clause SimpleAttributeOperand) Variant {
+	switch {
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[0]):
+		return Variant(e.EventID)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[1]):
+		return Variant(e.EventType)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[2]):
+		return Variant(e.SourceName)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[3]):
+		return Variant(e.SourceName)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[4]):
+		return Variant(e.Time)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[5]):
+		return Variant(e.ReceiveTime)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[6]):
+		return Variant(e.Message)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[7]):
+		return Variant(e.Severity)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[8]):
+		return Variant(e.ConditionID)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[9]):
+		return Variant(e.ConditionName)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[10]):
+		return Variant(e.BranchID)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[11]):
+		return Variant(e.Retain)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[12]):
+		return Variant(e.AckedState)
+	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[13]):
+		return Variant(e.ConfirmedState)
+	default:
+		return nil
 	}
-	return ret
 }
 
 // AcknowledgeableConditionSelectClauses ...

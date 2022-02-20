@@ -42,44 +42,36 @@ func (evt *Condition) UnmarshalFields(eventFields []Variant) error {
 	return nil
 }
 
-
-func (e *Condition) Where(clause ContentFilter) bool {
-	return true
-}
-
-func (e *Condition) Select(clauses []SimpleAttributeOperand) []Variant {
-	ret := make([]Variant, len(clauses))
-	for i, clause := range clauses {
-		switch {
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[0]):
-			ret[i] = Variant(e.EventID)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[1]):
-			ret[i] = Variant(e.EventType)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[2]):
-			ret[i] = Variant(e.SourceName)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[3]):
-			ret[i] = Variant(e.SourceName)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[4]):
-			ret[i] = Variant(e.Time)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[5]):
-			ret[i] = Variant(e.ReceiveTime)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[6]):
-			ret[i] = Variant(e.Message)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[7]):
-			ret[i] = Variant(e.Severity)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[8]):
-			ret[i] = Variant(e.ConditionID)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[9]):
-			ret[i] = Variant(e.ConditionName)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[10]):
-			ret[i] = Variant(e.BranchID)
-		case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[11]):
-			ret[i] = Variant(e.Retain)
-		default:
-			ret[i] = nil
-		}
+// GetAttribute ...
+func (e *Condition) GetAttribute(clause SimpleAttributeOperand) Variant {
+	switch {
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[0]):
+		return Variant(e.EventID)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[1]):
+		return Variant(e.EventType)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[2]):
+		return Variant(e.SourceName)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[3]):
+		return Variant(e.SourceName)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[4]):
+		return Variant(e.Time)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[5]):
+		return Variant(e.ReceiveTime)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[6]):
+		return Variant(e.Message)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[7]):
+		return Variant(e.Severity)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[8]):
+		return Variant(e.ConditionID)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[9]):
+		return Variant(e.ConditionName)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[10]):
+		return Variant(e.BranchID)
+	case EqualSimpleAttributeOperand(clause, ConditionSelectClauses[11]):
+		return Variant(e.Retain)
+	default:
+		return nil
 	}
-	return ret
 }
 
 // ConditionSelectClauses ...

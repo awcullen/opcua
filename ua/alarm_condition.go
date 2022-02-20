@@ -48,49 +48,42 @@ func (evt *AlarmCondition) UnmarshalFields(eventFields []Variant) error {
 	return nil
 }
 
-func (e *AlarmCondition) Where(clause ContentFilter) bool {
-	return true
-}
-
-func (e *AlarmCondition) Select(clauses []SimpleAttributeOperand) []Variant {
-	ret := make([]Variant, len(clauses))
-	for i, clause := range clauses {
-		switch {
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[0]):
-			ret[i] = Variant(e.EventID)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[1]):
-			ret[i] = Variant(e.EventType)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[2]):
-			ret[i] = Variant(e.SourceName)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[3]):
-			ret[i] = Variant(e.SourceName)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[4]):
-			ret[i] = Variant(e.Time)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[5]):
-			ret[i] = Variant(e.ReceiveTime)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[6]):
-			ret[i] = Variant(e.Message)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[7]):
-			ret[i] = Variant(e.Severity)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[8]):
-			ret[i] = Variant(e.ConditionID)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[9]):
-			ret[i] = Variant(e.ConditionName)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[10]):
-			ret[i] = Variant(e.BranchID)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[11]):
-			ret[i] = Variant(e.Retain)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[12]):
-			ret[i] = Variant(e.AckedState)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[13]):
-			ret[i] = Variant(e.ConfirmedState)
-		case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[14]):
-			ret[i] = Variant(e.ActiveState)
-		default:
-			ret[i] = nil
-		}
+// GetAttribute ...
+func (e *AlarmCondition) GetAttribute(clause SimpleAttributeOperand) Variant {
+	switch {
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[0]):
+		return Variant(e.EventID)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[1]):
+		return Variant(e.EventType)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[2]):
+		return Variant(e.SourceName)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[3]):
+		return Variant(e.SourceName)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[4]):
+		return Variant(e.Time)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[5]):
+		return Variant(e.ReceiveTime)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[6]):
+		return Variant(e.Message)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[7]):
+		return Variant(e.Severity)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[8]):
+		return Variant(e.ConditionID)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[9]):
+		return Variant(e.ConditionName)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[10]):
+		return Variant(e.BranchID)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[11]):
+		return Variant(e.Retain)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[12]):
+		return Variant(e.AckedState)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[13]):
+		return Variant(e.ConfirmedState)
+	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[14]):
+		return Variant(e.ActiveState)
+	default:
+		return nil
 	}
-	return ret
 }
 
 // AlarmConditionSelectClauses ...
