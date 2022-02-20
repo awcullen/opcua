@@ -229,6 +229,9 @@ func (mi *MonitoredItem) startMonitoring(ctx context.Context) {
 
 	switch mi.itemToMonitor.AttributeID {
 	case ua.AttributeIDEventNotifier:
+		if n2, ok := mi.node.(*ObjectNode); ok {
+			n2.AddEventListener(mi)
+		}
 
 	default:
 		v := mi.srv.readValue(ctx, mi.itemToMonitor)
@@ -239,9 +242,81 @@ func (mi *MonitoredItem) startMonitoring(ctx context.Context) {
 	}
 }
 
+func (mi *MonitoredItem) OnEvent(evt ua.Event) {
+	mi.Lock()
+	if res, ok := mi.whereClause(evt, 0).(bool); ok && res {
+		mi.enqueue(mi.selectFields(evt))
+	}
+	mi.Unlock()
+}
+
+var (
+	attributeOperandEventType = ua.SimpleAttributeOperand{TypeDefinitionID: ua.ObjectTypeIDBaseEventType, BrowsePath: ua.ParseBrowsePath("EventType"), AttributeID: ua.AttributeIDValue}
+)
+
+func (mi *MonitoredItem) whereClause(evt ua.Event, idx int) interface{} {
+	if idx >= len(mi.eventFilter.WhereClause.Elements) {
+		return true
+	}
+	element := mi.eventFilter.WhereClause.Elements[idx]
+	switch element.FilterOperator {
+
+	case ua.FilterOperatorEquals:
+		var a, b ua.Variant
+		switch c := element.FilterOperands[0].(type) {
+		case ua.LiteralOperand:
+			a = c.Value
+		case ua.SimpleAttributeOperand:
+			a = evt.GetAttribute(c)
+		case ua.ElementOperand:
+			a = mi.whereClause(evt, int(c.Index))
+		default:
+			return false
+		}
+		switch c := element.FilterOperands[1].(type) {
+		case ua.LiteralOperand:
+			b = c.Value
+		case ua.SimpleAttributeOperand:
+			b = evt.GetAttribute(c)
+		case ua.ElementOperand:
+			b = mi.whereClause(evt, int(c.Index))
+		default:
+			return false
+		}
+		return a == b
+
+	case ua.FilterOperatorOfType:
+		if a, ok := element.FilterOperands[0].(ua.LiteralOperand); ok {
+			if b, ok := a.Value.(ua.NodeID); ok {
+				if c, ok := evt.GetAttribute(attributeOperandEventType).(ua.NodeID); ok {
+					if c == b || mi.srv.namespaceManager.IsSubtype(c, b) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+
+	default:
+		return false
+	}
+}
+
+func (mi *MonitoredItem) selectFields(evt ua.Event) []ua.Variant {
+	clauses := mi.eventFilter.SelectClauses
+	ret := make([]ua.Variant, len(clauses))
+	for i, clause := range clauses {
+		ret[i] = evt.GetAttribute(clause)
+	}
+	return ret
+}
+
 func (mi *MonitoredItem) stopMonitoring() {
 	switch mi.itemToMonitor.AttributeID {
 	case ua.AttributeIDEventNotifier:
+		if n2, ok := mi.node.(*ObjectNode); ok {
+			n2.RemoveEventListener(mi)
+		}
 
 	default:
 		mi.Unlock()
@@ -261,16 +336,16 @@ func (mi *MonitoredItem) Poll() {
 	mi.Unlock()
 }
 
-// AddTriggeredItem adds a item to be triggered by this item.
-func (mi *MonitoredItem) AddTriggeredItem(item *MonitoredItem) bool {
+// addTriggeredItem adds a item to be triggered by this item.
+func (mi *MonitoredItem) addTriggeredItem(item *MonitoredItem) bool {
 	mi.Lock()
 	mi.triggeredItems = append(mi.triggeredItems, item)
 	mi.Unlock()
 	return true
 }
 
-// RemoveTriggeredItem removes an item to be triggered by this item.
-func (mi *MonitoredItem) RemoveTriggeredItem(item *MonitoredItem) bool {
+// removeTriggeredItem removes an item to be triggered by this item.
+func (mi *MonitoredItem) removeTriggeredItem(item *MonitoredItem) bool {
 	mi.Lock()
 	ret := false
 	for i, e := range mi.triggeredItems {
@@ -348,7 +423,7 @@ func (mi *MonitoredItem) notificationsAvailable(tn time.Time, late bool, resend 
 	// update queue and report if queue has notifications available.
 	switch mi.itemToMonitor.AttributeID {
 	case ua.AttributeIDEventNotifier:
-		// TODO: implement event queue
+
 	default:
 		// if in sampling interval mode, queue the last value of each sampling interval
 		if mi.ti > 0 {

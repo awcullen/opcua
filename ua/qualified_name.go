@@ -37,6 +37,9 @@ func ParseQualifiedName(s string) QualifiedName {
 // ParseBrowsePath returns a slice of QualifiedNames from a string, e.g. ParseBrowsePath("2:Demo/2:Dynamic")
 func ParseBrowsePath(s string) []QualifiedName {
 	//TODO: see part4 Annex A.2
+	if len(s) == 0 {
+		return []QualifiedName{}
+	}
 	toks := strings.Split(s, "/")
 	path := make([]QualifiedName, len(toks))
 	for i, tok := range toks {

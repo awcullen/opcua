@@ -76,7 +76,7 @@ func (m *ChannelManager) checkForClosedChannels() {
 	for k, ch := range m.channelsByID {
 		if ch.closed {
 			delete(m.channelsByID, k)
-			// log.Printf("Deleted expired channel '%d'.\n", ch.channelId)
+			// log.Printf("Deleted expired channel '%d'.\n", ch.channelID)
 		}
 	}
 	m.Unlock()

@@ -28,7 +28,6 @@ func ExampleClient_Browse() {
 
 	// prepare browse request
 	req := &ua.BrowseRequest{
-		View: ua.ViewDescription{},
 		NodesToBrowse: []ua.BrowseDescription{
 			{
 				NodeID:          ua.ParseNodeID("i=85"), // Objects folder

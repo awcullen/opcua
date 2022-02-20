@@ -37,6 +37,7 @@ const nodeset = `
         <Alias Alias="HasSubtype">i=45</Alias>
         <Alias Alias="HasProperty">i=46</Alias>
         <Alias Alias="HasComponent">i=47</Alias>
+        <Alias Alias="HasNotifier">i=48</Alias>
         <Alias Alias="NodeClass">i=257</Alias>
         <Alias Alias="Duration">i=290</Alias>
         <Alias Alias="UtcTime">i=294</Alias>
@@ -1722,5 +1723,21 @@ const nodeset = `
       <Reference ReferenceType="Organizes" IsForward="false">ns=1;s=Demo.NodeClasses.View1</Reference>
     </References>
   </UAView>
+  <UAObject NodeId="ns=1;s=Area1" BrowseName="1:Area1" EventNotifier="1">
+    <DisplayName>Area1</DisplayName>
+    <Description>Events in Area1</Description>
+    <References>
+      <Reference ReferenceType="HasNotifier" IsForward="false">i=2253</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=58</Reference>
+    </References>
+  </UAObject>
+  <UAObject NodeId="ns=1;s=Area2" BrowseName="1:Area2" EventNotifier="1">
+    <DisplayName>Area2</DisplayName>
+    <Description>Events in Area2</Description>
+    <References>
+      <Reference ReferenceType="HasNotifier" IsForward="false">i=2253</Reference>
+      <Reference ReferenceType="HasTypeDefinition">i=58</Reference>
+    </References>
+  </UAObject>
 </UANodeSet>
 `

@@ -21,6 +21,7 @@ type ObjectNode struct {
 	accessRestrictions uint16
 	references         []ua.Reference
 	eventNotifier      byte
+	subs               map[EventListener]struct{}
 }
 
 var _ Node = (*ObjectNode)(nil)
@@ -37,6 +38,7 @@ func NewObjectNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua
 		accessRestrictions: 0,
 		references:         references,
 		eventNotifier:      eventNotifier,
+		subs:               map[EventListener]struct{}{},
 	}
 }
 
@@ -110,6 +112,31 @@ func (n *ObjectNode) SetReferences(value []ua.Reference) {
 // EventNotifier returns the EventNotifier attribute of this node.
 func (n *ObjectNode) EventNotifier() byte {
 	return n.eventNotifier
+}
+
+// OnEvent raises an event from this node.
+func (n *ObjectNode) OnEvent(evt ua.Event) {
+	n.RLock()
+	defer n.RUnlock()
+	for sub := range n.subs {
+		sub.OnEvent(evt)
+	}
+}
+
+type EventListener interface {
+	OnEvent(ua.Event)
+}
+
+func (n *ObjectNode) AddEventListener(listener EventListener) {
+	n.Lock()
+	n.subs[listener] = struct{}{}
+	n.Unlock()
+}
+
+func (n *ObjectNode) RemoveEventListener(listener EventListener) {
+	n.Lock()
+	delete(n.subs, listener)
+	n.Unlock()
 }
 
 // IsAttributeIDValid returns true if attributeId is supported for the node.

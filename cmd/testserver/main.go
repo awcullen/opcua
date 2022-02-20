@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net"
 	_ "net/http/pprof"
 	"net/url"
 	"os"
@@ -98,7 +99,7 @@ func main() {
 		server.WithSecurityPolicyNone(true),
 		server.WithInsecureSkipVerify(),
 		server.WithServerDiagnostics(true),
-		server.WithTrace(),
+		// server.WithTrace(),
 	)
 	if err != nil {
 		os.Exit(1)
@@ -181,6 +182,71 @@ func main() {
 	}
 
 	go func() {
+		source, _ := nm.FindObject(ua.ParseNodeID("ns=2;s=Area1"))
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				evt := &ua.BaseEvent{
+					EventID:     getNextEventID(),
+					EventType:   ua.ObjectTypeIDBaseEventType,
+					SourceNode:  source.NodeID(),
+					SourceName:  "Area1",
+					Time:        time.Now(),
+					ReceiveTime: time.Now(),
+					Message:     ua.LocalizedText{Text: "Event in Area1"},
+					Severity:    500,
+				}
+				nm.OnEvent(source, evt)
+			case <-srv.Closing():
+				return
+			}
+		}
+	}()
+
+	go func() {
+		active, acked := true, false
+		source, _ := nm.FindObject(ua.ParseNodeID("ns=2;s=Area2"))
+
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				evt := &ua.AlarmCondition{
+					EventID:       getNextEventID(),
+					EventType:     ua.ObjectTypeIDAlarmConditionType,
+					SourceNode:    source.NodeID(),
+					SourceName:    "Area2",
+					Time:          time.Now(),
+					ReceiveTime:   time.Now(),
+					Message:       ua.LocalizedText{Text: "Alarm in Area2"},
+					ConditionID:   ua.ObjectTypeIDOffNormalAlarmType,
+					ConditionName: "OffNormalAlarm",
+					Severity:      500,
+					Retain:        true,
+					AckedState:    acked,
+					ActiveState:   active,
+				}
+				nm.OnEvent(source, evt)
+				if !active {
+					active = true
+				} else {
+					if !acked {
+						acked = true
+					} else {
+						active, acked = false, false
+					}
+				}
+
+			case <-srv.Closing():
+				return
+			}
+		}
+	}()
+
+	go func() {
 		// wait for signal (this conflicts with debugger currently)
 		log.Println("Press Ctrl-C to exit...")
 		waitForSignal()
@@ -210,8 +276,18 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 		return ua.BadCertificateInvalid
 	}
 
-	// create a certificate.
+	// get local hostname.
 	host, _ := os.Hostname()
+
+	// get local ip address.
+	conn, err := net.Dial("udp", "8.8.8.8:53")
+	if err != nil {
+		return ua.BadCertificateInvalid
+	}
+	conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	// create a certificate.
 	applicationURI, _ := url.Parse(fmt.Sprintf("urn:%s:%s", host, appName))
 	serialNumber, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	subjectKeyHash := sha1.New()
@@ -229,6 +305,7 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
 		DNSNames:              []string{host},
+		IPAddresses:           []net.IP{localAddr.IP},
 		URIs:                  []*url.URL{applicationURI},
 	}
 
@@ -280,4 +357,11 @@ func ensurePKI() error {
 	}
 
 	return nil
+}
+
+// getNextEventID gets next random eventID.
+func getNextEventID() ua.ByteString {
+	var nonce = make([]byte, 16)
+	rand.Read(nonce)
+	return ua.ByteString(nonce)
 }
