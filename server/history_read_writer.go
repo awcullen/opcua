@@ -25,7 +25,7 @@ type HistoryWriter interface {
 	// WriteValue writes the value to storage. Implementation records variable nodeId
 	// and DataValue (a struct of value, quality and source timestamp). Implementation
 	// may check context for timeout.
-	WriteValue(ctx context.Context, nodeID ua.NodeID, value *ua.DataValue) error
+	WriteValue(ctx context.Context, nodeID ua.NodeID, value ua.DataValue) error
 }
 
 // HistoryReader provides methods to read historical data.

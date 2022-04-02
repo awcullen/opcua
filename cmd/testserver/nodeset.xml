@@ -1,9 +1,3 @@
-// Copyright 2021 Converter Systems LLC. All rights reserved.
-
-package client_test
-
-const testnodeset = `
-
 <UANodeSet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:uax="http://opcfoundation.org/UA/2008/02/Types.xsd" xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
     <NamespaceUris>
         <Uri>http://github.com/awcullen/opcua/testserver/</Uri>
@@ -1610,8 +1604,8 @@ const testnodeset = `
             <uax:XmlElement><foo>bar</foo></uax:XmlElement>
         </Value>
     </UAVariable>
-    <UAObject NodeId="ns=1;i=15182" BrowseName="1:http://github.com/awcullen/opcua//testserver/" >
-    <DisplayName>http://github.com/awcullen/opcua//testserver/</DisplayName>
+    <UAObject NodeId="ns=1;i=15182" BrowseName="1:http://github.com/awcullen/opcua/testserver/" >
+    <DisplayName>http://github.com/awcullen/opcua/testserver/</DisplayName>
     <References>
       <Reference ReferenceType="HasProperty">ns=1;i=15183</Reference>
       <Reference ReferenceType="HasProperty">ns=1;i=15184</Reference>
@@ -1632,7 +1626,7 @@ const testnodeset = `
       <Reference ReferenceType="HasProperty" IsForward="false">ns=1;i=15182</Reference>
     </References>
     <Value>
-      <String xmlns="http://opcfoundation.org/UA/2008/02/Types.xsd">http://github.com/awcullen/opcua//testserver/</String>
+      <String xmlns="http://opcfoundation.org/UA/2008/02/Types.xsd">http://github.com/awcullen/opcua/testserver/</String>
     </Value>
   </UAVariable>
   <UAVariable NodeId="ns=1;i=15184" BrowseName="NamespaceVersion" DataType="String" UserAccessLevel="1" AccessLevel="1">
@@ -1741,4 +1735,3 @@ const testnodeset = `
     </References>
   </UAObject>
 </UANodeSet>
-`

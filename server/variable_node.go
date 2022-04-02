@@ -24,13 +24,14 @@ type VariableNode struct {
 	accessLevel             byte
 	minimumSamplingInterval float64
 	historizing             bool
+	historian               HistoryReadWriter
 	readValueHandler        func(context.Context, ua.ReadValueID) ua.DataValue
-	writeValueHandler       func(context.Context, ua.WriteValue) ua.StatusCode
+	writeValueHandler       func(context.Context, ua.WriteValue) (ua.DataValue, ua.StatusCode)
 }
 
 var _ Node = (*VariableNode)(nil)
 
-func NewVariableNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, value ua.DataValue, dataType ua.NodeID, valueRank int32, arrayDimensions []uint32, accessLevel byte, minimumSamplingInterval float64, historizing bool) *VariableNode {
+func NewVariableNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, value ua.DataValue, dataType ua.NodeID, valueRank int32, arrayDimensions []uint32, accessLevel byte, minimumSamplingInterval float64, historizing bool, historian HistoryReadWriter) *VariableNode {
 	return &VariableNode{
 		nodeId:                  nodeID,
 		nodeClass:               ua.NodeClassVariable,
@@ -47,6 +48,7 @@ func NewVariableNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName 
 		accessLevel:             accessLevel,
 		minimumSamplingInterval: minimumSamplingInterval,
 		historizing:             historizing,
+		historian:               historian,
 	}
 }
 
@@ -110,7 +112,7 @@ func (n *VariableNode) References() []ua.Reference {
 	return res
 }
 
-// SetReferences sets the References of the Variable.
+// SetReferences sets the References of this node.
 func (n *VariableNode) SetReferences(value []ua.Reference) {
 	n.Lock()
 	n.references = value
@@ -129,6 +131,9 @@ func (n *VariableNode) Value() ua.DataValue {
 func (n *VariableNode) SetValue(value ua.DataValue) {
 	n.Lock()
 	n.value = value
+	if n.historizing {
+		n.historian.WriteValue(context.Background(), n.nodeId, value)
+	}
 	n.Unlock()
 }
 
@@ -220,7 +225,7 @@ func (n *VariableNode) SetReadValueHandler(value func(context.Context, ua.ReadVa
 }
 
 // SetWriteValueHandler sets the WriteValueHandler of this node.
-func (n *VariableNode) SetWriteValueHandler(value func(context.Context, ua.WriteValue) ua.StatusCode) {
+func (n *VariableNode) SetWriteValueHandler(value func(context.Context, ua.WriteValue) (ua.DataValue, ua.StatusCode)) {
 	n.Lock()
 	n.writeValueHandler = value
 	n.Unlock()

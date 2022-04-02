@@ -603,9 +603,9 @@ func TestSubscribeEvents(t *testing.T) {
 		RequestHeader:                ua.RequestHeader{TimeoutHint: 60000},
 		SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{},
 	}
-	// loop until 3 events received.
+	// loop until 1 events received.
 	numEvents := 0
-	for numEvents < 3 {
+	for numEvents < 1 {
 		res3, err := ch.Publish(ctx, req3)
 		if err != nil {
 			t.Error(errors.Wrap(err, "Error publishing"))
@@ -690,9 +690,9 @@ func TestSubscribeAlarms(t *testing.T) {
 		RequestHeader:                ua.RequestHeader{TimeoutHint: 60000},
 		SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{},
 	}
-	// loop until 3 events received.
+	// loop until 1 events received.
 	numEvents := 0
-	for numEvents < 3 {
+	for numEvents < 1 {
 		res3, err := ch.Publish(ctx, req3)
 		if err != nil {
 			t.Error(errors.Wrap(err, "Error publishing"))
@@ -818,147 +818,6 @@ func TestTranslate(t *testing.T) {
 		}
 	}
 }
-
-/*
-// TestReadHistory demonstrates reading history from the UaCPPServer available from https://www.unified-automation.com/
-func TestReadHistory(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping long running test")
-	}
-	ctx := context.Background()
-	ch, err := client.Dial(
-		ctx,
-		"opc.tcp://localhost:48010",
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-		client.WithInsecureSkipVerify(), // skips verification of server certificate
-		client.WithUserNameIdentity("root", "secret"),
-	)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
-		return
-	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
-
-	t.Logf("Start logging of data...")
-	req := &ua.CallRequest{
-		MethodsToCall: []ua.CallMethodRequest{
-			{
-				ObjectID:       ua.ParseNodeID("ns=2;s=Demo.History"), // parent node
-				MethodID:       ua.ParseNodeID("ns=2;s=Demo.History.StartLogging"),
-				InputArguments: []ua.Variant{},
-			},
-		},
-	}
-
-	res, err := ch.Call(ctx, req)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error calling method"))
-		ch.Abort(ctx)
-		return
-	}
-	_ = res
-
-	t.Logf("Collecting 10 seconds of data...")
-	time.Sleep(10 * time.Second)
-
-	t.Log("Reading history for last 10 seconds")
-	var cp ua.ByteString
-	for {
-		req2 := &ua.HistoryReadRequest{
-			HistoryReadDetails: ua.ReadRawModifiedDetails{
-				StartTime:        time.Now().Add(-1 * time.Minute),
-				EndTime:          time.Now(),
-				NumValuesPerNode: 100,
-				ReturnBounds:     false,
-			},
-			TimestampsToReturn:        ua.TimestampsToReturnBoth,
-			ReleaseContinuationPoints: false,
-			NodesToRead: []ua.HistoryReadValueID{
-				{NodeID: ua.ParseNodeID("ns=2;s=Demo.History.DoubleWithHistory"), ContinuationPoint: cp},
-			},
-		}
-
-		res2, err := ch.HistoryRead(ctx, req2)
-		if err != nil {
-			t.Error(errors.Wrap(err, "Error reading"))
-			ch.Abort(ctx)
-			return
-		}
-
-		if res2.Results[0].StatusCode.IsBad() {
-			t.Errorf("Error reading values for node '%s'. %s", req2.NodesToRead[0].NodeID, res2.Results[0].StatusCode)
-			ch.Abort(ctx)
-			return
-		}
-
-		if historyData, ok := res2.Results[0].HistoryData.(ua.HistoryData); ok {
-			t.Logf("Found %d value(s) for node '%s':", len(historyData.DataValues), req2.NodesToRead[0].NodeID)
-			for _, result := range historyData.DataValues {
-				t.Logf("Read %v, q: %#X, ts: %s", result.Value, uint32(result.StatusCode), result.SourceTimestamp)
-			}
-		}
-
-		cp = res2.Results[0].ContinuationPoint
-		if cp == "" {
-			break
-		}
-	}
-	t.Log("Now read the 1 sec average of the last 10 seconds...")
-
-	req3 := &ua.HistoryReadRequest{
-		HistoryReadDetails: ua.ReadProcessedDetails{
-			StartTime:          time.Now().Add(-10 * time.Second),
-			EndTime:            time.Now(),
-			ProcessingInterval: 1000.0,
-			AggregateType:      []ua.NodeID{ua.ObjectIDAggregateFunctionAverage},
-		},
-		TimestampsToReturn:        ua.TimestampsToReturnBoth,
-		ReleaseContinuationPoints: false,
-		NodesToRead: []ua.HistoryReadValueID{
-			{NodeID: ua.ParseNodeID("ns=2;s=Demo.History.DoubleWithHistory")},
-		},
-	}
-
-	res3, err := ch.HistoryRead(ctx, req3)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error reading"))
-		ch.Abort(ctx)
-		return
-	}
-
-	if res3.Results[0].StatusCode.IsBad() {
-		t.Errorf("Error reading values for node '%s'. %s", req3.NodesToRead[0].NodeID, res3.Results[0].StatusCode)
-		ch.Abort(ctx)
-		return
-	}
-
-	if historyData, ok := res3.Results[0].HistoryData.(ua.HistoryData); ok {
-		t.Logf("Found %d average value(s) for node '%s':", len(historyData.DataValues), req3.NodesToRead[0].NodeID)
-		for _, result := range historyData.DataValues {
-			t.Logf("Read %v, q: %#X, ts: %s", result.Value, uint32(result.StatusCode), result.SourceTimestamp)
-		}
-	}
-
-	t.Logf("Stop logging of data...")
-	req4 := &ua.CallRequest{
-		MethodsToCall: []ua.CallMethodRequest{{
-			ObjectID:       ua.ParseNodeID("ns=2;s=Demo.History"), // parent node
-			MethodID:       ua.ParseNodeID("ns=2;s=Demo.History.StopLogging"),
-			InputArguments: []ua.Variant{}},
-		},
-	}
-
-	res4, err := ch.Call(ctx, req4)
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error calling method"))
-		ch.Abort(ctx)
-		return
-	}
-	_ = res4
-
-	ch.Close(ctx)
-}
-*/
 
 func createNewCertificate(appName, certFile, keyFile string) error {
 

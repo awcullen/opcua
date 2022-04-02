@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	_ "embed"
 	"encoding/pem"
 	"fmt"
 	"log"
@@ -31,6 +32,8 @@ var (
 	host, _         = os.Hostname()
 	port            = 46010
 	SoftwareVersion = "0.3.0"
+	//go:embed nodeset.xml
+	nodeset []byte
 )
 
 func main() {
@@ -107,7 +110,7 @@ func main() {
 
 	// load nodeset
 	nm := srv.NamespaceManager()
-	if err := nm.LoadNodeSetFromBuffer([]byte(nodeset)); err != nil {
+	if err := nm.LoadNodeSetFromBuffer(nodeset); err != nil {
 		os.Exit(2)
 	}
 

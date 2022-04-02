@@ -298,7 +298,7 @@ func (m *NamespaceManager) SetMultiStateValueDiscreteTypeBehavior(node *Variable
 	if !ok {
 		return ua.BadNodeIDUnknown
 	}
-	node.SetWriteValueHandler(func(ctx context.Context, req ua.WriteValue) ua.StatusCode {
+	node.SetWriteValueHandler(func(ctx context.Context, req ua.WriteValue) (ua.DataValue, ua.StatusCode) {
 		var value int64
 		switch v := req.Value.Value.(type) {
 		case uint8:
@@ -322,7 +322,7 @@ func (m *NamespaceManager) SetMultiStateValueDiscreteTypeBehavior(node *Variable
 		case float64:
 			value = int64(v)
 		default:
-			return ua.Good
+			return req.Value, ua.Good
 		}
 		// validate
 		enumValues := toEnumValues(enumValuesNode.Value().Value.([]ua.ExtensionObject))
@@ -333,7 +333,7 @@ func (m *NamespaceManager) SetMultiStateValueDiscreteTypeBehavior(node *Variable
 				break
 			}
 		}
-		return ua.Good
+		return req.Value, ua.Good
 	})
 	return nil
 }
@@ -595,7 +595,7 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 				nil,
 				toRefs(n.References, aliases, nsMap),
 				toDataValue(n.Value, n.DataType, aliases, nsMap, toInt32(n.ValueRank, -1), m),
-				toNodeID(n.NodeID, aliases, nsMap),
+				toNodeID(n.DataType, aliases, nsMap),
 				toInt32(n.ValueRank, -1),
 				toDims(n.ArrayDimensions, toInt32(n.ValueRank, -1)),
 				n.IsAbstract,
@@ -647,6 +647,7 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 				toUint8(n.AccessLevel, 1),
 				n.MinimumSamplingInterval,
 				n.Historizing,
+				m.server.historian,
 			)
 		case "UAMethod":
 			nodes[i] = NewMethodNode(

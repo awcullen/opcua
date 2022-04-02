@@ -149,6 +149,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	subscriptionDiagnosticsVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		s.RLock()
@@ -206,6 +207,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.sessionId, 0, time.Now(), 0, time.Now(), 0)
@@ -229,6 +231,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.id, 0, time.Now(), 0, time.Now(), 0)
@@ -251,6 +254,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.priority, 0, time.Now(), 0, time.Now(), 0)
@@ -273,6 +277,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.publishingInterval, 0, time.Now(), 0, time.Now(), 0)
@@ -295,6 +300,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.maxKeepAliveCount, 0, time.Now(), 0, time.Now(), 0)
@@ -317,6 +323,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.lifetimeCount, 0, time.Now(), 0, time.Now(), 0)
@@ -339,6 +346,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.maxNotificationsPerPublish, 0, time.Now(), 0, time.Now(), 0)
@@ -361,6 +369,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.publishingEnabled, 0, time.Now(), 0, time.Now(), 0)
@@ -383,6 +392,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.modifyCount, 0, time.Now(), 0, time.Now(), 0)
@@ -405,6 +415,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
@@ -427,6 +438,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
@@ -449,6 +461,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.republishRequestCount, 0, time.Now(), 0, time.Now(), 0)
@@ -471,6 +484,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.republishMessageRequestCount, 0, time.Now(), 0, time.Now(), 0)
@@ -493,6 +507,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.republishMessageCount, 0, time.Now(), 0, time.Now(), 0)
@@ -515,6 +530,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
@@ -537,6 +553,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
@@ -559,6 +576,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
@@ -581,6 +599,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.publishRequestCount, 0, time.Now(), 0, time.Now(), 0)
@@ -603,6 +622,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.dataChangeNotificationsCount, 0, time.Now(), 0, time.Now(), 0)
@@ -625,6 +645,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.eventNotificationsCount, 0, time.Now(), 0, time.Now(), 0)
@@ -647,6 +668,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.notificationsCount, 0, time.Now(), 0, time.Now(), 0)
@@ -669,6 +691,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.latePublishRequestCount, 0, time.Now(), 0, time.Now(), 0)
@@ -691,6 +714,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.keepAliveCounter, 0, time.Now(), 0, time.Now(), 0)
@@ -713,6 +737,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.lifetimeCounter, 0, time.Now(), 0, time.Now(), 0)
@@ -735,6 +760,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.unacknowledgedMessageCount, 0, time.Now(), 0, time.Now(), 0)
@@ -757,6 +783,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
@@ -779,6 +806,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.monitoredItemCount, 0, time.Now(), 0, time.Now(), 0)
@@ -801,6 +829,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.disabledMonitoredItemCount, 0, time.Now(), 0, time.Now(), 0)
@@ -823,6 +852,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.monitoringQueueOverflowCount, 0, time.Now(), 0, time.Now(), 0)
@@ -845,6 +875,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.seqNum, 0, time.Now(), 0, time.Now(), 0)
@@ -867,6 +898,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)

@@ -134,6 +134,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	sessionDiagnosticsVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		subCount := 0
@@ -207,6 +208,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.sessionId, 0, time.Now(), 0, time.Now(), 0)
@@ -229,6 +231,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.sessionName, 0, time.Now(), 0, time.Now(), 0)
@@ -251,6 +254,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.clientDescription, 0, time.Now(), 0, time.Now(), 0)
@@ -273,6 +277,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.serverUri, 0, time.Now(), 0, time.Now(), 0)
@@ -295,6 +300,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.endpointUrl, 0, time.Now(), 0, time.Now(), 0)
@@ -317,6 +323,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.localeIds, 0, time.Now(), 0, time.Now(), 0)
@@ -339,6 +346,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(float64(s.timeout.Nanoseconds()/1000000), 0, time.Now(), 0, time.Now(), 0)
@@ -361,6 +369,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.maxResponseMessageSize, 0, time.Now(), 0, time.Now(), 0)
@@ -383,6 +392,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.timeCreated, 0, time.Now(), 0, time.Now(), 0)
@@ -405,6 +415,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.lastAccess, 0, time.Now(), 0, time.Now(), 0)
@@ -427,6 +438,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(len(srv.subscriptionManager.GetBySession(s))), 0, time.Now(), 0, time.Now(), 0)
@@ -449,6 +461,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		itemCount := 0
@@ -476,6 +489,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(len(s.publishRequests)), 0, time.Now(), 0, time.Now(), 0)
@@ -498,6 +512,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.requestCount, ErrorCount: s.errorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -520,6 +535,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.unauthorizedRequestCount, 0, time.Now(), 0, time.Now(), 0)
@@ -542,6 +558,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.readCount, ErrorCount: s.readErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -564,6 +581,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.historyReadCount, ErrorCount: s.historyReadErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -586,6 +604,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.writeCount, ErrorCount: s.writeErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -608,6 +627,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.historyUpdateCount, ErrorCount: s.historyUpdateErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -630,6 +650,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.callCount, ErrorCount: s.callErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -652,6 +673,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.createMonitoredItemsCount, ErrorCount: s.createMonitoredItemsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -674,6 +696,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.modifyMonitoredItemsCount, ErrorCount: s.modifyMonitoredItemsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -696,6 +719,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.setMonitoringModeCount, ErrorCount: s.setMonitoringModeErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -718,6 +742,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.setTriggeringCount, ErrorCount: s.setTriggeringErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -740,6 +765,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.deleteMonitoredItemsCount, ErrorCount: s.deleteMonitoredItemsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -762,6 +788,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.createSubscriptionCount, ErrorCount: s.createSubscriptionErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -784,6 +811,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.modifySubscriptionCount, ErrorCount: s.modifySubscriptionErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -806,6 +834,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.setPublishingModeCount, ErrorCount: s.setPublishingModeErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -828,6 +857,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.publishCount, ErrorCount: s.publishErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -850,6 +880,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.republishCount, ErrorCount: s.republishErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -872,6 +903,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.transferSubscriptionsCount, ErrorCount: s.transferSubscriptionsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -894,6 +926,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.deleteSubscriptionsCount, ErrorCount: s.deleteSubscriptionsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -916,6 +949,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.addNodesCount, ErrorCount: s.addNodesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -938,6 +972,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.addReferencesCount, ErrorCount: s.addReferencesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -960,6 +995,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.deleteNodesCount, ErrorCount: s.deleteNodesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -982,6 +1018,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.deleteReferencesCount, ErrorCount: s.deleteReferencesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -1004,6 +1041,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.browseCount, ErrorCount: s.browseErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -1026,6 +1064,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.browseNextCount, ErrorCount: s.browseNextErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -1048,6 +1087,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.translateBrowsePathsToNodeIdsCount, ErrorCount: s.translateBrowsePathsToNodeIdsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -1070,6 +1110,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.queryFirstCount, ErrorCount: s.queryFirstErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -1092,6 +1133,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.queryNextCount, ErrorCount: s.queryNextErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -1114,6 +1156,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.registerNodesCount, ErrorCount: s.registerNodesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -1136,6 +1179,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.unregisterNodesCount, ErrorCount: s.unregisterNodesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
@@ -1161,6 +1205,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	sessionSecurityDiagnosticsVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1213,6 +1258,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1255,6 +1301,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1297,6 +1344,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1339,6 +1387,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1381,6 +1430,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1423,6 +1473,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1465,6 +1516,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1507,6 +1559,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1549,6 +1602,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		session, ok := ctx.Value(SessionKey).(*Session)
@@ -1593,6 +1647,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		ua.AccessLevelsCurrentRead,
 		125,
 		false,
+		srv.historian,
 	)
 	subscriptionDiagnosticsArrayVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue([]ua.ExtensionObject{}, 0, time.Now(), 0, time.Now(), 0)

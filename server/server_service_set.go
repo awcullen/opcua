@@ -2174,7 +2174,7 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	}
 
 	// check if historian installed
-	h := srv.Historian()
+	h := srv.historian
 	if h == nil {
 		ch.Write(
 			&ua.ServiceFault{
@@ -5326,7 +5326,11 @@ func (srv *Server) writeValue(ctx context.Context, writeValue ua.WriteValue) ua.
 			}
 
 			if f := n1.writeValueHandler; f != nil {
-				return f(ctx, writeValue)
+				result, status := f(ctx, writeValue)
+				if status == ua.Good {
+					n1.SetValue(result)
+				}
+				return status
 			} else {
 				result, status := writeRange(n1.Value(), writeValue.Value, writeValue.IndexRange)
 				if status == ua.Good {

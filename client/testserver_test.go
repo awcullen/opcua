@@ -5,6 +5,7 @@ package client_test
 import (
 	"context"
 	"crypto/rand"
+	_ "embed"
 	"fmt"
 	"os"
 	"time"
@@ -18,6 +19,8 @@ var (
 	host, _         = os.Hostname()
 	port            = 46010
 	SoftwareVersion = "0.3.0"
+	//go:embed testnodeset_test.xml
+	testnodeset []byte
 )
 
 func NewTestServer() (*server.Server, error) {
@@ -83,7 +86,7 @@ func NewTestServer() (*server.Server, error) {
 
 	// load nodeset
 	nm := srv.NamespaceManager()
-	if err := nm.LoadNodeSetFromBuffer([]byte(testnodeset)); err != nil {
+	if err := nm.LoadNodeSetFromBuffer(testnodeset); err != nil {
 		return nil, err
 	}
 
