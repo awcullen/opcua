@@ -1,8 +1,3 @@
-// Copyright 2021 Converter Systems LLC. All rights reserved.
-
-package server
-
-const nodeset104 = `
 <?xml version="1.0" encoding="utf-8" ?>
 <UANodeSet xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" LastModified="2019-01-31T00:00:00Z" xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd">
   <Models>
@@ -55510,4 +55505,3 @@ ZT0idG5zOkV4Y2VwdGlvbkRldmlhdGlvbkZvcm1hdCIgLz4NCg0KPC94czpzY2hlbWE+</ByteString
     </References>
   </UAObject>
 </UANodeSet>
-`

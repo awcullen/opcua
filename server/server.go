@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
+	_ "embed"
 	"log"
 	"net"
 	"net/url"
@@ -37,6 +38,11 @@ const (
 	defaultMaxWorkerThreads int = 4
 	// the length of nonce in bytes.
 	nonceLength int = 32
+)
+
+var (
+	//go:embed nodeset_1_04.xml
+	nodeset104 []byte
 )
 
 // Server implements an OpcUa server for clients.
@@ -444,7 +450,7 @@ func (srv *Server) handleCloseSecureChannel(ch *serverSecureChannel, requestid u
 
 func (srv *Server) initializeNamespace() error {
 	nm := srv.NamespaceManager()
-	if err := nm.LoadNodeSetFromBuffer([]byte(nodeset104)); err != nil {
+	if err := nm.LoadNodeSetFromBuffer(nodeset104); err != nil {
 		return err
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerAuditing); ok {
