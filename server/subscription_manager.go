@@ -905,7 +905,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 	})
 	nodes = append(nodes, n)
 
-	err := nm.AddNodes(nodes)
+	err := nm.AddNodes(nodes...)
 	if err != nil {
 		log.Printf("Error adding session diagnostics objects.\n")
 	}

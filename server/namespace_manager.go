@@ -384,7 +384,7 @@ func (m *NamespaceManager) addNodes(nodes []Node) error {
 
 // AddNodes adds the nodes to the namespace.
 // This method adds the inverse refs as well.
-func (m *NamespaceManager) AddNodes(nodes []Node) error {
+func (m *NamespaceManager) AddNodes(nodes ...Node) error {
 	m.Lock()
 	defer m.Unlock()
 	return m.addNodes(nodes)
@@ -672,7 +672,7 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 			)
 		}
 	}
-	err = m.AddNodes(nodes)
+	err = m.AddNodes(nodes...)
 	if err != nil {
 		log.Printf("Error adding nodes. %s\n", err)
 		return err

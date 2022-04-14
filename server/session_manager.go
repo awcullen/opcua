@@ -1654,7 +1654,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 	})
 	nodes = append(nodes, subscriptionDiagnosticsArrayVariable)
 
-	err := nm.AddNodes(nodes)
+	err := nm.AddNodes(nodes...)
 	if err != nil {
 		log.Printf("Error adding session diagnostics objects.\n")
 	}
