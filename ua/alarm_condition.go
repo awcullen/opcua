@@ -56,7 +56,7 @@ func (e *AlarmCondition) GetAttribute(clause SimpleAttributeOperand) Variant {
 	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[1]):
 		return Variant(e.EventType)
 	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[2]):
-		return Variant(e.SourceName)
+		return Variant(e.SourceNode)
 	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[3]):
 		return Variant(e.SourceName)
 	case EqualSimpleAttributeOperand(clause, AlarmConditionSelectClauses[4]):

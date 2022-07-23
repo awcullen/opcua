@@ -54,7 +54,7 @@ func (e *AcknowledgeableCondition) GetAttribute(clause SimpleAttributeOperand) V
 	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[1]):
 		return Variant(e.EventType)
 	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[2]):
-		return Variant(e.SourceName)
+		return Variant(e.SourceNode)
 	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[3]):
 		return Variant(e.SourceName)
 	case EqualSimpleAttributeOperand(clause, AcknowledgeableConditionSelectClauses[4]):
