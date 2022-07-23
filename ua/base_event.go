@@ -46,7 +46,7 @@ func (e *BaseEvent) GetAttribute(clause SimpleAttributeOperand) Variant {
 	case EqualSimpleAttributeOperand(clause, BaseEventSelectClauses[1]):
 		return Variant(e.EventType)
 	case EqualSimpleAttributeOperand(clause, BaseEventSelectClauses[2]):
-		return Variant(e.SourceName)
+		return Variant(e.SourceNode)
 	case EqualSimpleAttributeOperand(clause, BaseEventSelectClauses[3]):
 		return Variant(e.SourceName)
 	case EqualSimpleAttributeOperand(clause, BaseEventSelectClauses[4]):
