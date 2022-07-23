@@ -51,12 +51,13 @@ func TestDeserializeCondition(t *testing.T) {
 	t.Logf("%+v", e)
 }
 
-// requires UnifiedAutomation UaCPPServer
+// requires runnning 'testserver',
+// which can be started by opening a terminal in cmd\testserver and running go run main.go
 func TestSubscribeAlarm(t *testing.T) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancelFunc()
 
-	// open a connection to the C++ SDK OPC UA Demo Server, available for free from Unified Automation GmbH.
+	// open a connection to testserver 
 	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://127.0.0.1:46010",
