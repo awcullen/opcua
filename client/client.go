@@ -87,7 +87,11 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 	if selectedEndpoint == nil {
 		return nil, ua.BadUnexpectedError
 	}
-	cli.endpointURL = selectedEndpoint.EndpointURL
+	// HACK: the UA server (usually) doesn't know what it's talking about
+	// so the URL it thinks is real is actually not reachable from the client
+	// scenarios include Docker and NAT, port forwarding etc.
+	// As a work-around, don't use the self-reported endpoint URL from the server
+	cli.endpointURL = endpointURL
 	cli.securityPolicyURI = selectedEndpoint.SecurityPolicyURI
 	cli.securityMode = selectedEndpoint.SecurityMode
 	cli.serverCertificate = []byte(selectedEndpoint.ServerCertificate)
