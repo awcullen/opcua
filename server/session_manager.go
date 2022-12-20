@@ -57,8 +57,10 @@ func (m *SessionManager) Add(s *Session) error {
 	m.sessionsByToken[s.authenticationToken] = s
 	if m.server.serverDiagnostics {
 		m.addDiagnosticsNode(s)
+		m.server.Lock()
 		m.server.serverDiagnosticsSummary.CumulatedSessionCount++
 		m.server.serverDiagnosticsSummary.CurrentSessionCount = uint32(len(m.sessionsByToken))
+		m.server.Unlock()
 	}
 	return nil
 }
@@ -70,7 +72,9 @@ func (m *SessionManager) Delete(s *Session) {
 	delete(m.sessionsByToken, s.authenticationToken)
 	if m.server.serverDiagnostics {
 		m.removeDiagnosticsNode(s)
+		m.server.Lock()
 		m.server.serverDiagnosticsSummary.CurrentSessionCount = uint32(len(m.sessionsByToken))
+		m.server.Unlock()
 	}
 	s.delete()
 }
@@ -89,6 +93,7 @@ func (m *SessionManager) checkForExpiredSessions() {
 		if s.IsExpired() {
 			delete(m.sessionsByToken, k)
 			if m.server.serverDiagnostics {
+				m.removeDiagnosticsNode(s)
 				m.server.Lock()
 				m.server.serverDiagnosticsSummary.SessionTimeoutCount++
 				m.server.serverDiagnosticsSummary.CurrentSessionCount = uint32(len(m.sessionsByToken))
