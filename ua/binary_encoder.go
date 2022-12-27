@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+	"fmt"
 
 	"github.com/djherbis/buffer"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -156,7 +156,7 @@ func getEncoder(typ reflect.Type) (encoderFunc, error) {
 	case reflect.String:
 		return getStringEncoder()
 	}
-	return nil, errors.Errorf("unsupported type: %s\n", typ)
+	return nil, fmt.Errorf("unsupported type: %s\n", typ)
 }
 
 func getStructEncoder(typ reflect.Type) (encoderFunc, error) {
