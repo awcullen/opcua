@@ -406,7 +406,7 @@ func (srv *Server) serve(l net.Listener) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				if delay == 0 {
 					delay = 5 * time.Millisecond
 				} else {
@@ -829,8 +829,8 @@ func (srv *Server) initializeNamespace() error {
 			svrHandles := []uint32{}
 			cliHandles := []uint32{}
 			for _, item := range sub.Items() {
-				svrHandles = append(svrHandles, item.id)
-				cliHandles = append(cliHandles, item.clientHandle)
+				svrHandles = append(svrHandles, item.ID())
+				cliHandles = append(cliHandles, item.ClientHandle())
 			}
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{svrHandles, cliHandles}}
 		})
@@ -865,8 +865,8 @@ func (srv *Server) initializeNamespace() error {
 			svrHandles := []uint32{}
 			cliHandles := []uint32{}
 			for _, item := range sub.Items() {
-				svrHandles = append(svrHandles, item.id)
-				cliHandles = append(cliHandles, item.clientHandle)
+				svrHandles = append(svrHandles, item.ID())
+				cliHandles = append(cliHandles, item.ClientHandle())
 			}
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{svrHandles, cliHandles}}
 		})

@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/pem"
-	"io/ioutil"
+	"os"
 
 	"github.com/awcullen/opcua/ua"
 )
@@ -18,7 +18,7 @@ func validateClientCertificate(certificate *x509.Certificate, trustedCertsFile s
 		return false, ua.BadCertificateInvalid
 	}
 	var intermediates, roots *x509.CertPool
-	if buf, err := ioutil.ReadFile(trustedCertsFile); err == nil {
+	if buf, err := os.ReadFile(trustedCertsFile); err == nil {
 		for len(buf) > 0 {
 			var block *pem.Block
 			block, buf = pem.Decode(buf)
