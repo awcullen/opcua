@@ -54,6 +54,56 @@ func ExampleClient_Read() {
 		fmt.Println("Error decoding ServerStatus.")
 	}
 
+
+	// Output:
+	// Server status:
+	//   ProductName: testserver
+	//   ManufacturerName: awcullen
+	//   State: Running
+}
+
+// This example demonstrates reading the 'CustomStruct' variable.
+func ExampleClient_Read_customstruct() {
+
+	ctx := context.Background()
+
+	// open a connection to testserver running locally. Testserver is started if not already running.
+	ch, err := client.Dial(
+		ctx,
+		"opc.tcp://localhost:46010",
+		client.WithInsecureSkipVerify(), // skips verification of server certificate
+	)
+	if err != nil {
+		fmt.Printf("Error opening client connection. %s\n", err.Error())
+		return
+	}
+
+	// prepare read request
+	req := &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
+			{
+				NodeID:      ua.ParseNodeID("ns=2;i=14"),
+				AttributeID: ua.AttributeIDValue,
+			},
+		},
+	}
+
+	// send request to server. receive response or error
+	res, err := ch.Read(ctx, req)
+	if err != nil {
+		fmt.Printf("Error reading CustomStruct. %s\n", err.Error())
+		ch.Abort(ctx)
+		return
+	}
+
+	// print results
+	if custom, ok := res.Results[0].Value.(CustomStruct); ok {
+		fmt.Printf("CustomStruct:\n")
+		fmt.Printf("  W1: %d\n", custom.W1)
+		fmt.Printf("  W2: %d\n", custom.W2)
+	} else {
+		fmt.Println("Error decoding CustomStruct.")
+	}
 	// close connection
 	err = ch.Close(ctx)
 	if err != nil {
@@ -62,8 +112,7 @@ func ExampleClient_Read() {
 	}
 
 	// Output:
-	// Server status:
-	//   ProductName: testserver
-	//   ManufacturerName: awcullen
-	//   State: Running
+	// CustomStruct:
+	//   W1: 1
+	//   W2: 2
 }

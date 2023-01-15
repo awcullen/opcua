@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/awcullen/opcua/server"
@@ -22,6 +23,15 @@ var (
 	//go:embed testnodeset_test.xml
 	testnodeset []byte
 )
+
+type CustomStruct struct {
+	W1 uint16
+	W2 uint16
+}
+
+func init() {
+	ua.RegisterBinaryEncodingID(reflect.TypeOf(CustomStruct{}), ua.ParseExpandedNodeID("nsu=http://github.com/awcullen/opcua/testserver/;i=12"))
+}
 
 func NewTestServer() (*server.Server, error) {
 
@@ -159,6 +169,52 @@ func NewTestServer() (*server.Server, error) {
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
 		})
 	}
+
+	// add 'CustomStruct' data type
+	typCustomStruct := server.NewDataTypeNode(
+		ua.NodeIDNumeric{NamespaceIndex: 2, ID: 13},
+		ua.QualifiedName{NamespaceIndex: 2, Name: "CustomStruct"},
+		ua.LocalizedText{Text: "CustomStruct"},
+		ua.LocalizedText{Text: "A CustomStruct data type for testing."},
+		nil,
+		[]ua.Reference{ // add type as subtype of 'Structure'
+			{
+				ReferenceTypeID: ua.ReferenceTypeIDHasSubtype,
+				IsInverse:       true,
+				TargetID:        ua.ExpandedNodeID{NodeID: ua.DataTypeIDStructure},
+			},
+		},
+		false)
+
+	// add 'CustomStruct' property
+	propCustomStruct := server.NewVariableNode(
+		ua.NodeIDNumeric{NamespaceIndex: 2, ID: 14},
+		ua.QualifiedName{NamespaceIndex: 2, Name: "CustomStruct"},
+		ua.LocalizedText{Text: "CustomStruct"},
+		ua.LocalizedText{Text: "A CustomStruct variable for testing."},
+		nil,
+		[]ua.Reference{ // add property to 'Demo.Static.Scalar' object
+			{
+				ReferenceTypeID: ua.ReferenceTypeIDHasProperty,
+				IsInverse:       true,
+				TargetID:        ua.ExpandedNodeID{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar")},
+			},
+		},
+		ua.DataValue{Value: CustomStruct{W1: 1, W2: 2}},
+		typCustomStruct.NodeID(),
+		ua.ValueRankScalar,
+		[]uint32{},
+		ua.AccessLevelsCurrentRead|ua.AccessLevelsHistoryRead,
+		250.0,
+		false,
+		nil,
+	)
+
+	// add new nodes to namespace
+	nm.AddNodes(
+		typCustomStruct,
+		propCustomStruct,
+	)
 
 	go func() {
 		source, _ := nm.FindObject(ua.ParseNodeID("ns=2;s=Area1"))

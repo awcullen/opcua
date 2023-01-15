@@ -170,22 +170,22 @@ func ToExpandedNodeID(n NodeID, namespaceURIs []string) ExpandedNodeID {
 	switch n2 := n.(type) {
 	case NodeIDNumeric:
 		if n2.NamespaceIndex > 0 && n2.NamespaceIndex < uint16(len(namespaceURIs)) {
-			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], n}
+			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], NodeIDNumeric{ID: n2.ID}}
 		}
 		return ExpandedNodeID{NodeID: n}
 	case NodeIDString:
 		if n2.NamespaceIndex > 0 && n2.NamespaceIndex < uint16(len(namespaceURIs)) {
-			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], n}
+			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], NodeIDString{ID: n2.ID}}
 		}
 		return ExpandedNodeID{NodeID: n}
 	case NodeIDGUID:
 		if n2.NamespaceIndex > 0 && n2.NamespaceIndex < uint16(len(namespaceURIs)) {
-			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], n}
+			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], NodeIDGUID{ID: n2.ID}}
 		}
 		return ExpandedNodeID{NodeID: n}
 	case NodeIDOpaque:
 		if n2.NamespaceIndex > 0 && n2.NamespaceIndex < uint16(len(namespaceURIs)) {
-			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], n}
+			return ExpandedNodeID{0, namespaceURIs[n2.NamespaceIndex], NodeIDOpaque{ID: n2.ID}}
 		}
 		return ExpandedNodeID{NodeID: n}
 	default:
