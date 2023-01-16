@@ -609,6 +609,7 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 				nil,
 				toRefs(n.References, aliases, nsMap),
 				n.IsAbstract,
+				nil,
 			)
 		case "UAReferenceType":
 			nodes[i] = NewReferenceTypeNode(

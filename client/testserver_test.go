@@ -184,27 +184,38 @@ func NewTestServer() (*server.Server, error) {
 				TargetID:        ua.ExpandedNodeID{NodeID: ua.DataTypeIDStructure},
 			},
 		},
-		false)
+		false,
+		// this definition allows browsers such as UAExpert to decode the CustomStruct
+		ua.StructureDefinition{
+			DefaultEncodingID: ua.NodeIDNumeric{NamespaceIndex: 2, ID: 12},
+			BaseDataType:      ua.DataTypeIDStructure,
+			StructureType:     ua.StructureTypeStructure,
+			Fields: []ua.StructureField{
+				{Name: "W1", DataType: ua.DataTypeIDUInt16, ValueRank: ua.ValueRankScalar},
+				{Name: "W2", DataType: ua.DataTypeIDUInt16, ValueRank: ua.ValueRankScalar},
+			},
+		},
+	)
 
-	// add 'CustomStruct' property
-	propCustomStruct := server.NewVariableNode(
+	// add 'CustomStruct' variable
+	varCustomStruct := server.NewVariableNode(
 		ua.NodeIDNumeric{NamespaceIndex: 2, ID: 14},
 		ua.QualifiedName{NamespaceIndex: 2, Name: "CustomStruct"},
 		ua.LocalizedText{Text: "CustomStruct"},
 		ua.LocalizedText{Text: "A CustomStruct variable for testing."},
 		nil,
-		[]ua.Reference{ // add property to 'Demo.Static.Scalar' object
+		[]ua.Reference{ // add variable to 'Demo.Static.Scalar' folder
 			{
-				ReferenceTypeID: ua.ReferenceTypeIDHasProperty,
+				ReferenceTypeID: ua.ReferenceTypeIDOrganizes,
 				IsInverse:       true,
 				TargetID:        ua.ExpandedNodeID{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar")},
 			},
 		},
-		ua.DataValue{Value: CustomStruct{W1: 1, W2: 2}},
+		ua.NewDataValue(CustomStruct{W1: 1, W2: 2}, 0, time.Now().UTC(), 0, time.Now().UTC(), 0),
 		typCustomStruct.NodeID(),
 		ua.ValueRankScalar,
 		[]uint32{},
-		ua.AccessLevelsCurrentRead|ua.AccessLevelsHistoryRead,
+		ua.AccessLevelsCurrentRead|ua.AccessLevelsCurrentWrite,
 		250.0,
 		false,
 		nil,
@@ -213,7 +224,7 @@ func NewTestServer() (*server.Server, error) {
 	// add new nodes to namespace
 	nm.AddNodes(
 		typCustomStruct,
-		propCustomStruct,
+		varCustomStruct,
 	)
 
 	go func() {
