@@ -25,11 +25,14 @@ func NewChannelManager(server *Server) *ChannelManager {
 			case <-ticker.C:
 				m.checkForClosedChannels()
 			case <-m.server.closed:
-				m.RLock()
-				for _, ch := range m.channelsByID {
-					ch.Close()
-				}
-				m.RUnlock()
+				func() {
+					m.RLock()
+					defer m.RUnlock()
+					for _, ch := range m.channelsByID {
+						ch.Close()
+					}
+				}()
+
 				return
 			}
 		}
@@ -40,44 +43,43 @@ func NewChannelManager(server *Server) *ChannelManager {
 // Get a secure channel from the server.
 func (m *ChannelManager) Get(id uint32) (*serverSecureChannel, bool) {
 	m.RLock()
+	defer m.RUnlock()
 	if ch, ok := m.channelsByID[id]; ok {
-		m.RUnlock()
 		return ch, ok
 	}
-	m.RUnlock()
 	return nil, false
 }
 
 // Add a secure channel to the server.
 func (m *ChannelManager) Add(ch *serverSecureChannel) error {
 	m.Lock()
+	defer m.Unlock()
 	m.channelsByID[ch.channelID] = ch
-	m.Unlock()
 	return nil
 }
 
 // Delete the secure channel from the server.
 func (m *ChannelManager) Delete(ch *serverSecureChannel) {
 	m.Lock()
+	defer m.Unlock()
 	delete(m.channelsByID, ch.channelID)
-	m.Unlock()
 }
 
 // Len returns the number of secure channel.
 func (m *ChannelManager) Len() int {
 	m.RLock()
+	defer m.RUnlock()
 	res := len(m.channelsByID)
-	m.RUnlock()
 	return res
 }
 
 func (m *ChannelManager) checkForClosedChannels() {
 	m.Lock()
+	defer m.Unlock()
 	for k, ch := range m.channelsByID {
 		if ch.closed {
 			delete(m.channelsByID, k)
 			// log.Printf("Deleted expired channel '%d'.\n", ch.channelID)
 		}
 	}
-	m.Unlock()
 }

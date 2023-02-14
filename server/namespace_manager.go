@@ -7,8 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -452,10 +452,10 @@ func (m *NamespaceManager) DeleteNode(node Node, deleteChildren bool) error {
 // GetSubTypes traverses the tree to get all target nodes with HasSubtype reference type.
 func (m *NamespaceManager) GetSubTypes(node Node) []Node {
 	children := []Node{}
-	queue := deque.Deque{}
+	queue := deque.Deque[Node]{}
 	queue.PushBack(node)
 	for queue.Len() > 0 {
-		node := queue.PopFront().(Node)
+		node := queue.PopFront()
 		for _, r := range node.References() {
 			if !r.IsInverse && r.ReferenceTypeID == ua.ReferenceTypeIDHasSubtype {
 				queue.PushBack(node)
@@ -473,10 +473,10 @@ func (m *NamespaceManager) GetChildren(node Node, uris []string, withRefTypes []
 		Node    Node
 		Visited bool
 	}
-	queue := deque.Deque{}
+	queue := deque.Deque[queuedItem]{}
 	queue.PushBack(queuedItem{node, false})
 	for queue.Len() > 0 {
-		item := queue.PopFront().(queuedItem)
+		item := queue.PopFront()
 		if item.Visited {
 			continue
 		}
@@ -537,7 +537,7 @@ func Contains(nodes []ua.NodeID, node ua.NodeID) bool {
 
 // LoadNodeSetFromFile loads the UANodeSet XML from a file with the given path into the namespace.
 func (m *NamespaceManager) LoadNodeSetFromFile(path string) error {
-	buf, err := ioutil.ReadFile(path)
+	buf, err := os.ReadFile(path)
 	if err != nil {
 		log.Printf("Error reading nodeset. %s\n", err)
 		return err
@@ -609,6 +609,7 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 				nil,
 				toRefs(n.References, aliases, nsMap),
 				n.IsAbstract,
+				nil,
 			)
 		case "UAReferenceType":
 			nodes[i] = NewReferenceTypeNode(

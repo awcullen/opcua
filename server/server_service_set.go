@@ -3477,12 +3477,12 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 					continue
 				}
 			}
-			mi := NewMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters, req.TimestampsToReturn, minSupportedSampleRate)
+			mi := NewDataChangeMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters, req.TimestampsToReturn, minSupportedSampleRate)
 			sub.AppendItem(mi)
 			results[i] = ua.MonitoredItemCreateResult{
-				MonitoredItemID:         mi.id,
-				RevisedSamplingInterval: mi.samplingInterval,
-				RevisedQueueSize:        mi.queueSize,
+				MonitoredItemID:         mi.ID(),
+				RevisedSamplingInterval: mi.SamplingInterval(),
+				RevisedQueueSize:        mi.QueueSize(),
 			}
 			continue
 		case ua.AttributeIDEventNotifier:
@@ -3506,12 +3506,12 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadFilterNotAllowed}
 				continue
 			}
-			mi := NewMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters, req.TimestampsToReturn, 0.0)
+			mi := NewEventMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters)
 			sub.AppendItem(mi)
 			results[i] = ua.MonitoredItemCreateResult{
-				MonitoredItemID:         mi.id,
-				RevisedSamplingInterval: mi.samplingInterval,
-				RevisedQueueSize:        mi.queueSize,
+				MonitoredItemID:         mi.ID(),
+				RevisedSamplingInterval: mi.SamplingInterval(),
+				RevisedQueueSize:        mi.QueueSize(),
 			}
 			continue
 		default:
@@ -3524,12 +3524,12 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 				results[i] = ua.MonitoredItemCreateResult{StatusCode: ua.BadFilterNotAllowed}
 				continue
 			}
-			mi := NewMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters, req.TimestampsToReturn, minSupportedSampleRate)
+			mi := NewDataChangeMonitoredItem(ctx, sub, n, item.ItemToMonitor, item.MonitoringMode, item.RequestedParameters, req.TimestampsToReturn, minSupportedSampleRate)
 			sub.AppendItem(mi)
 			results[i] = ua.MonitoredItemCreateResult{
-				MonitoredItemID:         mi.id,
-				RevisedSamplingInterval: mi.samplingInterval,
-				RevisedQueueSize:        mi.queueSize,
+				MonitoredItemID:         mi.ID(),
+				RevisedSamplingInterval: mi.SamplingInterval(),
+				RevisedQueueSize:        mi.QueueSize(),
 			}
 			continue
 		}
@@ -3682,7 +3682,7 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 
 	for i, modifyReq := range req.ItemsToModify {
 		if item, ok := sub.FindItem(modifyReq.MonitoredItemID); ok {
-			attr := item.itemToMonitor.AttributeID
+			attr := item.ItemToMonitor().AttributeID
 			switch {
 			case attr == ua.AttributeIDValue:
 				if modifyReq.RequestedParameters.Filter == nil {
@@ -3694,7 +3694,7 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 					continue
 				}
 				if dcf.DeadbandType != uint32(ua.DeadbandTypeNone) {
-					destType := srv.NamespaceManager().FindVariantType(item.node.(*VariableNode).DataType())
+					destType := srv.NamespaceManager().FindVariantType(item.Node().(*VariableNode).DataType())
 					switch destType {
 					case ua.VariantTypeByte, ua.VariantTypeSByte:
 					case ua.VariantTypeInt16, ua.VariantTypeInt32, ua.VariantTypeInt64:
@@ -4001,7 +4001,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			removeResults[i] = ua.BadMonitoredItemIDInvalid
 			continue
 		}
-		if trigger.removeTriggeredItem(triggered) {
+		if trigger.RemoveTriggeredItem(triggered) {
 			removeResults[i] = ua.Good
 		} else {
 			removeResults[i] = ua.BadMonitoredItemIDInvalid
@@ -4015,7 +4015,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			addResults[i] = ua.BadMonitoredItemIDInvalid
 			continue
 		}
-		if trigger.addTriggeredItem(triggered) {
+		if trigger.AddTriggeredItem(triggered) {
 			addResults[i] = ua.Good
 		} else {
 			addResults[i] = ua.BadMonitoredItemIDInvalid

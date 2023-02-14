@@ -27,7 +27,7 @@ type DataTypeNode struct {
 var _ Node = (*DataTypeNode)(nil)
 
 // NewDataTypeNode creates a new DataTypeNode.
-func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool) *DataTypeNode {
+func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool, structureOrEnumDefinition interface{} ) *DataTypeNode {
 	return &DataTypeNode{
 		nodeID:             nodeID,
 		nodeClass:          ua.NodeClassDataType,
@@ -38,11 +38,11 @@ func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName 
 		accessRestrictions: 0,
 		references:         references,
 		isAbstract:         isAbstract,
-		dataTypeDefinition: nil,
+		dataTypeDefinition: structureOrEnumDefinition,
 	}
 }
 
-//NodeID returns the NodeID attribute of this node.
+// NodeID returns the NodeID attribute of this node.
 func (n *DataTypeNode) NodeID() ua.NodeID {
 	return n.nodeID
 }

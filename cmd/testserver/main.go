@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"reflect"
 	"syscall"
 	"time"
 
@@ -35,6 +36,15 @@ var (
 	//go:embed nodeset.xml
 	nodeset []byte
 )
+
+type CustomStruct struct {
+	W1 uint16
+	W2 uint16
+}
+
+func init() {
+	ua.RegisterBinaryEncodingID(reflect.TypeOf(CustomStruct{}), ua.ParseExpandedNodeID("nsu=http://github.com/awcullen/opcua/testserver/;i=12"))
+}
 
 func main() {
 
@@ -183,6 +193,63 @@ func main() {
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
 		})
 	}
+
+	// add 'CustomStruct' data type
+	typCustomStruct := server.NewDataTypeNode(
+		ua.NodeIDNumeric{NamespaceIndex: 2, ID: 13},
+		ua.QualifiedName{NamespaceIndex: 2, Name: "CustomStruct"},
+		ua.LocalizedText{Text: "CustomStruct"},
+		ua.LocalizedText{Text: "A CustomStruct data type for testing."},
+		nil,
+		[]ua.Reference{ // add type as subtype of 'Structure'
+			{
+				ReferenceTypeID: ua.ReferenceTypeIDHasSubtype,
+				IsInverse:       true,
+				TargetID:        ua.ExpandedNodeID{NodeID: ua.DataTypeIDStructure},
+			},
+		},
+		false,
+		// this definition allows browsers such as UAExpert to decode the CustomStruct
+		ua.StructureDefinition{
+			DefaultEncodingID: ua.NodeIDNumeric{NamespaceIndex: 2, ID: 12},
+			BaseDataType:      ua.DataTypeIDStructure,
+			StructureType:     ua.StructureTypeStructure,
+			Fields: []ua.StructureField{
+				{Name: "W1", DataType: ua.DataTypeIDUInt16, ValueRank: ua.ValueRankScalar},
+				{Name: "W2", DataType: ua.DataTypeIDUInt16, ValueRank: ua.ValueRankScalar},
+			},
+		},
+	)
+
+	// add 'CustomStruct' variable
+	varCustomStruct := server.NewVariableNode(
+		ua.NodeIDNumeric{NamespaceIndex: 2, ID: 14},
+		ua.QualifiedName{NamespaceIndex: 2, Name: "CustomStruct"},
+		ua.LocalizedText{Text: "CustomStruct"},
+		ua.LocalizedText{Text: "A CustomStruct variable for testing."},
+		nil,
+		[]ua.Reference{ // add variable to 'Demo.Static.Scalar' folder
+			{
+				ReferenceTypeID: ua.ReferenceTypeIDOrganizes,
+				IsInverse:       true,
+				TargetID:        ua.ExpandedNodeID{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar")},
+			},
+		},
+		ua.NewDataValue(CustomStruct{W1: 1, W2: 2}, 0, time.Now().UTC(), 0, time.Now().UTC(), 0),
+		typCustomStruct.NodeID(),
+		ua.ValueRankScalar,
+		[]uint32{},
+		ua.AccessLevelsCurrentRead|ua.AccessLevelsCurrentWrite,
+		250.0,
+		false,
+		nil,
+	)
+
+	// add new nodes to namespace
+	nm.AddNodes(
+		typCustomStruct,
+		varCustomStruct,
+	)
 
 	go func() {
 		source, _ := nm.FindObject(ua.ParseNodeID("ns=2;s=Area1"))

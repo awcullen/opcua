@@ -37,7 +37,7 @@ type Subscription struct {
 	priority                     byte
 	seqNum                       uint32
 	cancelPublishing             chan struct{}
-	items                        map[uint32]*MonitoredItem
+	items                        map[uint32]MonitoredItem
 	keepAliveCounter             uint32
 	lifetimeCounter              uint32
 	moreNotifications            bool
@@ -73,7 +73,7 @@ func NewSubscription(manager *SubscriptionManager, session *Session, publishingI
 		priority:            priority,
 		seqNum:              1,
 		keepAliveCounter:    math.MaxUint32,
-		items:               make(map[uint32]*MonitoredItem),
+		items:               make(map[uint32]MonitoredItem),
 		retransmissionQueue: list.New(),
 		diagnosticsNodeId:   ua.NewNodeIDGUID(1, uuid.New()),
 		sessionId:           session.sessionId,
@@ -117,9 +117,9 @@ func (s *Subscription) deleteImpl() {
 	s.manager = nil
 }
 
-func (s *Subscription) Items() []*MonitoredItem {
+func (s *Subscription) Items() []MonitoredItem {
 	s.RLock()
-	ret := []*MonitoredItem{}
+	ret := []MonitoredItem{}
 	for _, v := range s.items {
 		ret = append(ret, v)
 	}
@@ -127,20 +127,20 @@ func (s *Subscription) Items() []*MonitoredItem {
 	return ret
 }
 
-func (s *Subscription) FindItem(id uint32) (*MonitoredItem, bool) {
+func (s *Subscription) FindItem(id uint32) (MonitoredItem, bool) {
 	s.RLock()
 	item, ok := s.items[id]
 	s.RUnlock()
 	return item, ok
 }
 
-func (s *Subscription) AppendItem(item *MonitoredItem) bool {
+func (s *Subscription) AppendItem(item MonitoredItem) bool {
 	s.Lock()
 	ret := false
-	if _, ok := s.items[item.id]; !ok {
-		s.items[item.id] = item
+	if _, ok := s.items[item.ID()]; !ok {
+		s.items[item.ID()] = item
 		s.monitoredItemCount++
-		if item.monitoringMode == ua.MonitoringModeDisabled {
+		if item.MonitoringMode() == ua.MonitoringModeDisabled {
 			s.disabledMonitoredItemCount++
 		}
 		ret = true
@@ -156,7 +156,7 @@ func (s *Subscription) DeleteItem(ctx context.Context, id uint32) bool {
 		delete(s.items, id)
 		item.Delete()
 		s.monitoredItemCount--
-		if item.monitoringMode == ua.MonitoringModeDisabled {
+		if item.MonitoringMode() == ua.MonitoringModeDisabled {
 			s.disabledMonitoredItemCount--
 		}
 		ret = true
@@ -330,28 +330,29 @@ func (s *Subscription) publish(_ time.Time) {
 			mins := make([]ua.MonitoredItemNotification, 0, 4)
 			efls := make([]ua.EventFieldList, 0, 4)
 			for _, item := range s.items {
-				if item.monitoringMode != ua.MonitoringModeReporting && !item.triggered {
+				if item.MonitoringMode() != ua.MonitoringModeReporting && !item.Triggered() {
 					continue
 				}
 				// if item.triggered {
 				// log.Printf("TriggeredItem %d published.", item.id)
 				// }
-				if item.itemToMonitor.AttributeID == ua.AttributeIDEventNotifier {
-					encs, more1 := item.notifications(maxN)
+				switch mi := item.(type) {
+				case *EventMonitoredItem:
+					encs, more1 := mi.notifications(maxN)
 					for _, enc := range encs {
 						if efs, ok := enc.([]ua.Variant); ok {
-							efls = append(efls, ua.EventFieldList{ClientHandle: item.clientHandle, EventFields: efs})
+							efls = append(efls, ua.EventFieldList{ClientHandle: item.ClientHandle(), EventFields: efs})
 							s.eventNotificationsCount++
 							s.notificationsCount++
 						}
 					}
 					more = more || more1
 					maxN = maxN - len(encs)
-				} else {
-					encs, more1 := item.notifications(maxN)
+				case *DataChangeMonitoredItem:
+					encs, more1 := mi.notifications(maxN)
 					for _, enc := range encs {
 						if dv, ok := enc.(ua.DataValue); ok {
-							mins = append(mins, ua.MonitoredItemNotification{ClientHandle: item.clientHandle, Value: dv})
+							mins = append(mins, ua.MonitoredItemNotification{ClientHandle: item.ClientHandle(), Value: dv})
 							s.dataChangeNotificationsCount++
 							s.notificationsCount++
 						}
@@ -527,28 +528,29 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 		mins := make([]ua.MonitoredItemNotification, 0, 4)
 		efls := make([]ua.EventFieldList, 0, 4)
 		for _, item := range s.items {
-			if item.monitoringMode != ua.MonitoringModeReporting && !item.triggered {
+			if item.MonitoringMode() != ua.MonitoringModeReporting && !item.Triggered() {
 				continue
 			}
 			// if item.triggered {
 			// 	// log.Printf("TriggeredItem %d published late.", item.id)
 			// }
-			if item.itemToMonitor.AttributeID == ua.AttributeIDEventNotifier {
-				encs, more1 := item.notifications(maxN)
+			switch mi := item.(type) {
+			case *EventMonitoredItem:
+				encs, more1 := mi.notifications(maxN)
 				for _, enc := range encs {
 					if efs, ok := enc.([]ua.Variant); ok {
-						efls = append(efls, ua.EventFieldList{ClientHandle: item.clientHandle, EventFields: efs})
+						efls = append(efls, ua.EventFieldList{ClientHandle: item.ClientHandle(), EventFields: efs})
 						s.eventNotificationsCount++
 						s.notificationsCount++
 					}
 				}
 				more = more || more1
 				maxN = maxN - len(encs)
-			} else {
-				encs, more1 := item.notifications(maxN)
+			case *DataChangeMonitoredItem:
+				encs, more1 := mi.notifications(maxN)
 				for _, enc := range encs {
 					if dv, ok := enc.(ua.DataValue); ok {
-						mins = append(mins, ua.MonitoredItemNotification{ClientHandle: item.clientHandle, Value: dv})
+						mins = append(mins, ua.MonitoredItemNotification{ClientHandle: item.ClientHandle(), Value: dv})
 						s.dataChangeNotificationsCount++
 						s.notificationsCount++
 					}

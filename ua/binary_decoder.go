@@ -4,6 +4,7 @@ package ua
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"reflect"
@@ -12,7 +13,6 @@ import (
 	"unsafe"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -130,7 +130,7 @@ func getDecoder(typ reflect.Type) (decoderFunc, error) {
 	case reflect.String:
 		return getStringDecoder()
 	}
-	return nil, errors.Errorf("unsupported type: %s\n", typ)
+	return nil, fmt.Errorf("unsupported type: %s\n", typ)
 }
 
 func getStructDecoder(typ reflect.Type) (decoderFunc, error) {
