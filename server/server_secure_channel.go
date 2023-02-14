@@ -49,7 +49,6 @@ type serverSecureChannel struct {
 	localNonce                  []byte
 	remoteNonce                 []byte
 	channelID                   uint32
-	tokenIDLock                 sync.RWMutex
 	tokenID                     uint32
 	tokenLock                   sync.RWMutex
 	securityPolicyURI           string
@@ -364,25 +363,30 @@ func (ch *serverSecureChannel) onOpen() error {
 	}, 32)
 
 	// read first request, which must be an OpenSecureChannelRequest
+	log.Println("Waiting for OpenSecureChannelRequest")
 	req, rid, err := ch.readRequest()
 	if err != nil {
 		log.Printf("Error receiving OpenSecureChannelRequest. %s\n", err)
 		return err
 	}
+	log.Println("Processing OpenSecureChannelRequest")
 	oscr, ok := req.(*ua.OpenSecureChannelRequest)
 	if !ok {
 		return ua.BadDecodingError
 	}
-	ch.tokenLock.Lock()
-	ch.tokenID = ch.getNextTokenID()
-	ch.securityMode = oscr.SecurityMode
-	if ch.securityMode != ua.MessageSecurityModeNone {
-		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
-	} else {
-		ch.localNonce = []byte{}
-	}
+	func(ch *serverSecureChannel) {
+		ch.tokenLock.Lock()
+		defer ch.tokenLock.Unlock()
+		ch.tokenID = ch.getNextTokenID()
+		ch.securityMode = oscr.SecurityMode
+		if ch.securityMode != ua.MessageSecurityModeNone {
+			ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
+		} else {
+			ch.localNonce = []byte{}
+		}
+	}(ch)
 	ch.remoteNonce = []byte(oscr.ClientNonce)
-	ch.tokenLock.Unlock()
+	log.Println("Identifying server endpoint")
 	for _, ep := range ch.srv.Endpoints() {
 		if ep.TransportProfileURI == ua.TransportProfileURIUaTcpTransport && ep.SecurityPolicyURI == ch.securityPolicyURI && ep.SecurityMode == ch.securityMode {
 			ch.localEndpoint = ep
@@ -441,6 +445,7 @@ func (ch *serverSecureChannel) onOpen() error {
 		},
 		ServerNonce: ua.ByteString(ch.localNonce),
 	}
+	log.Println("Sending OpenSecureChannelResponse")
 	ch.Write(res, rid)
 
 	// log.Printf("Issued security token. %d , lifetime: %d\n", res.SecurityToken.TokenID, res.SecurityToken.RevisedLifetime)
@@ -1177,53 +1182,9 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 			}
 
 			// detect new token
-			ch.tokenLock.RLock()
-			if ch.receivingTokenID != tokenID {
-				ch.receivingTokenID = tokenID
-
-				if ch.securityMode != ua.MessageSecurityModeNone {
-					// (re)create security keys for verifying, decrypting
-					remoteSecurityKey := calculatePSHA(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
-					jj := copy(ch.remoteSigningKey, remoteSecurityKey)
-					jj += copy(ch.remoteEncryptingKey, remoteSecurityKey[jj:])
-					copy(ch.remoteInitializationVector, remoteSecurityKey[jj:])
-
-					// update verifier and decrypter with new symmetric keys
-					ch.symVerifyHMAC = ch.securityPolicy.SymHMACFactory(ch.remoteSigningKey)
-					if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
-						if cipher, err := aes.NewCipher(ch.remoteEncryptingKey); err == nil {
-							ch.symDecryptingBlockCipher = cipher
-						} else {
-							ch.tokenLock.RUnlock()
-							return nil, 0, ua.BadDecodingError
-						}
-					}
-				}
-
-				ch.sendingTokenID = tokenID
-				if ch.securityMode != ua.MessageSecurityModeNone {
-
-					// (re)create security keys for signing, encrypting
-					localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
-					jj := copy(ch.localSigningKey, localSecurityKey)
-					jj += copy(ch.localEncryptingKey, localSecurityKey[jj:])
-					copy(ch.localInitializationVector, localSecurityKey[jj:])
-
-					// update signer and encrypter with new symmetric keys
-					ch.symSignHMAC = ch.securityPolicy.SymHMACFactory(ch.localSigningKey)
-					if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
-						if cipher, err := aes.NewCipher(ch.localEncryptingKey); err == nil {
-							ch.symEncryptingBlockCipher = cipher
-						} else {
-							ch.tokenLock.RUnlock()
-							return nil, 0, ua.BadDecodingError
-						}
-					}
-				}
-
-				// log.Printf("Installed security token. %d\n", ch.sendingTokenId)
+			if err := ch.setupNewToken(tokenID); err != nil {
+				return nil, 0, err
 			}
-			ch.tokenLock.RUnlock()
 
 			plainHeaderSize = 16
 			// decrypt
@@ -1550,6 +1511,56 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 	return req, id, nil
 }
 
+func (ch *serverSecureChannel) setupNewToken(tokenID uint32) error {
+	ch.tokenLock.RLock()
+	defer ch.tokenLock.RUnlock()
+
+	if ch.receivingTokenID == tokenID {
+		ch.receivingTokenID = tokenID
+
+		if ch.securityMode != ua.MessageSecurityModeNone {
+			// (re)create security keys for verifying, decrypting
+			remoteSecurityKey := calculatePSHA(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
+			jj := copy(ch.remoteSigningKey, remoteSecurityKey)
+			jj += copy(ch.remoteEncryptingKey, remoteSecurityKey[jj:])
+			copy(ch.remoteInitializationVector, remoteSecurityKey[jj:])
+
+			// update verifier and decrypter with new symmetric keys
+			ch.symVerifyHMAC = ch.securityPolicy.SymHMACFactory(ch.remoteSigningKey)
+			if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
+				if cipher, err := aes.NewCipher(ch.remoteEncryptingKey); err == nil {
+					ch.symDecryptingBlockCipher = cipher
+				} else {
+					return ua.BadDecodingError
+				}
+			}
+		}
+
+		ch.sendingTokenID = tokenID
+		if ch.securityMode != ua.MessageSecurityModeNone {
+
+			// (re)create security keys for signing, encrypting
+			localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
+			jj := copy(ch.localSigningKey, localSecurityKey)
+			jj += copy(ch.localEncryptingKey, localSecurityKey[jj:])
+			copy(ch.localInitializationVector, localSecurityKey[jj:])
+
+			// update signer and encrypter with new symmetric keys
+			ch.symSignHMAC = ch.securityPolicy.SymHMACFactory(ch.localSigningKey)
+			if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
+				if cipher, err := aes.NewCipher(ch.localEncryptingKey); err == nil {
+					ch.symEncryptingBlockCipher = cipher
+				} else {
+					return ua.BadDecodingError
+				}
+			}
+		}
+
+		// log.Printf("Installed security token. %d\n", ch.sendingTokenId)
+	}
+	return nil
+}
+
 // requestWorker starts a task to receive service requests from transport channel.
 func (ch *serverSecureChannel) requestWorker() {
 	ch.wg.Add(1)
@@ -1650,6 +1661,7 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 	}
 	// handle renew token
 	ch.tokenLock.Lock()
+	defer ch.tokenLock.Unlock()
 	ch.tokenID = ch.getNextTokenID()
 	if ch.securityMode != ua.MessageSecurityModeNone {
 		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
@@ -1657,7 +1669,6 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 		ch.localNonce = []byte{}
 	}
 	ch.remoteNonce = []byte(req.ClientNonce)
-	ch.tokenLock.Unlock()
 	res := &ua.OpenSecureChannelResponse{
 		ResponseHeader: ua.ResponseHeader{
 			Timestamp:     time.Now(),
@@ -1690,11 +1701,13 @@ func (ch *serverSecureChannel) getNextSequenceNumber() uint32 {
 }
 
 // getNextTokenID gets next TokenID in sequence, skipping zero.
+// Note: this doesn't need another lock as it's always invoked from
+// places where `tokenLock` is being held
 func (ch *serverSecureChannel) getNextTokenID() uint32 {
 	atomic.CompareAndSwapUint32(&ch.tokenID, math.MaxUint32, 0)
-	ch.tokenIDLock.Lock()
-	defer ch.tokenIDLock.Unlock()
 	if ch.tokenID == math.MaxUint32 {
+		// FIXME: an attacker could interrupt existing sessions by forcing a wrap-around until
+		// reaching the token id of another existing session
 		ch.tokenID = 0
 	}
 	ch.tokenID++
@@ -1713,6 +1726,7 @@ func getNextServerChannelID() uint32 {
 	channelIDLock.Lock()
 	defer channelIDLock.Unlock()
 	if channelID == math.MaxUint32 {
+		// NOTE: an attacker could force re-using the id of an existing channel by spamming requests
 		channelID = 0
 	}
 	channelID++
