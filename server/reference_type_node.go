@@ -97,16 +97,15 @@ func (n *ReferenceTypeNode) UserRolePermissions(ctx context.Context) []ua.RolePe
 // References returns the References of this node.
 func (n *ReferenceTypeNode) References() []ua.Reference {
 	n.RLock()
-	res := n.references
-	n.RUnlock()
-	return res
+	defer n.RUnlock()
+	return n.references
 }
 
 // SetReferences sets the References of the Variable.
 func (n *ReferenceTypeNode) SetReferences(value []ua.Reference) {
 	n.Lock()
+	defer n.Unlock()
 	n.references = value
-	n.Unlock()
 }
 
 // IsAbstract returns the IsAbstract attribute of this node.

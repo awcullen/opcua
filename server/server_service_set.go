@@ -39,7 +39,7 @@ func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *u
 			srvs = append(srvs, s)
 		}
 	}
-	ch.Write(
+	err := ch.Write(
 		&ua.FindServersResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -49,6 +49,9 @@ func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *u
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -67,7 +70,7 @@ func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *
 			eps = append(eps, ep)
 		}
 	}
-	ch.Write(
+	err := ch.Write(
 		&ua.GetEndpointsResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -77,6 +80,9 @@ func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -102,7 +108,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		}
 	}
 	if !valid {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -112,6 +118,10 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
+
 		return nil
 	}
 	// check nonce
@@ -132,7 +142,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			}
 		}
 		if !valid {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -142,10 +152,13 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		if len(req.ClientNonce) < int(nonceLength) {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -155,6 +168,9 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 	default:
@@ -227,7 +243,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	)
 	err := srv.SessionManager().Add(session)
 	if err != nil {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -237,11 +253,14 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	// log.Printf("Created session '%s'.\n", req.SessionName)
 
-	ch.Write(
+	err = ch.Write(
 		&ua.CreateSessionResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -259,6 +278,9 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -273,7 +295,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	m := srv.sessionManager
 	session, ok := m.Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -283,6 +305,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -311,7 +336,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		err = rsa.VerifyPSS(ch.RemotePublicKey(), crypto.SHA256, hashed, []byte(req.ClientSignature.Signature), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 	}
 	if err != nil {
-		ch.Write(
+		err = ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -321,6 +346,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -336,7 +364,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			}
 		}
 		if tokenPolicy == nil {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -346,6 +374,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		// TODO: validate IssuedIdentity
@@ -360,7 +391,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			}
 		}
 		if tokenPolicy == nil {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -370,6 +401,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		secPolicyURI := tokenPolicy.SecurityPolicyURI
@@ -378,7 +412,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		}
 		userCert, err := x509.ParseCertificate([]byte(userIdentityToken.CertificateData))
 		if err != nil {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -388,11 +422,14 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		userKey, ok := userCert.PublicKey.(*rsa.PublicKey)
 		if !ok {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -402,6 +439,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 
@@ -428,7 +468,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			err = rsa.VerifyPSS(userKey, crypto.SHA256, hashed, []byte(req.UserTokenSignature.Signature), &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 		}
 		if err != nil {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -438,6 +478,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		userIdentity = ua.X509Identity{Certificate: userIdentityToken.CertificateData}
@@ -451,7 +494,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			}
 		}
 		if tokenPolicy == nil {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -461,10 +504,13 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		if userIdentityToken.UserName == "" {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -474,6 +520,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		cipherBytes := []byte(userIdentityToken.Password)
@@ -485,7 +534,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		switch secPolicyURI {
 		case ua.SecurityPolicyURIBasic128Rsa15:
 			if userIdentityToken.EncryptionAlgorithm != ua.RsaV15KeyWrap {
-				ch.Write(
+				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
@@ -495,6 +544,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 					},
 					requestid,
 				)
+				if err != nil {
+					return err
+				}
 				return nil
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
@@ -515,7 +567,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				binary.Read(plainBuf, binary.LittleEndian, &plainLength)
 			}
 			if plainLength < 32 || plainLength > 96 {
-				ch.Write(
+				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
@@ -525,6 +577,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 					},
 					requestid,
 				)
+				if err != nil {
+					return err
+				}
 				return nil
 			}
 			passwordBytes := make([]byte, plainLength-32)
@@ -535,7 +590,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 
 		case ua.SecurityPolicyURIBasic256, ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep:
 			if userIdentityToken.EncryptionAlgorithm != ua.RsaOaepKeyWrap {
-				ch.Write(
+				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
@@ -545,6 +600,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 					},
 					requestid,
 				)
+				if err != nil {
+					return err
+				}
 				return nil
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
@@ -565,7 +623,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				binary.Read(plainBuf, binary.LittleEndian, &plainLength)
 			}
 			if plainLength < 32 || plainLength > 96 {
-				ch.Write(
+				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
@@ -575,6 +633,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 					},
 					requestid,
 				)
+				if err != nil {
+					return err
+				}
 				return nil
 			}
 			passwordBytes := make([]byte, plainLength-32)
@@ -585,7 +646,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 
 		case ua.SecurityPolicyURIAes256Sha256RsaPss:
 			if userIdentityToken.EncryptionAlgorithm != ua.RsaOaepSha256KeyWrap {
-				ch.Write(
+				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
@@ -595,6 +656,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 					},
 					requestid,
 				)
+				if err != nil {
+					return err
+				}
 				return nil
 			}
 			plainBuf := buffer.NewPartitionAt(bufferPool)
@@ -615,7 +679,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				binary.Read(plainBuf, binary.LittleEndian, &plainLength)
 			}
 			if plainLength < 32 || plainLength > 96 {
-				ch.Write(
+				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
@@ -625,6 +689,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 					},
 					requestid,
 				)
+				if err != nil {
+					return err
+				}
 				return nil
 			}
 			passwordBytes := make([]byte, plainLength-32)
@@ -647,7 +714,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			}
 		}
 		if tokenPolicy == nil {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -657,6 +724,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		userIdentity = ua.AnonymousIdentity{}
@@ -698,7 +768,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 
 	}
 	if err != nil {
-		ch.Write(
+		err = ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -708,13 +778,16 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
 	// get roles
 	userRoles, err := srv.rolesProvider.GetRoles(userIdentity, ch.remoteApplicationURI, ch.localEndpoint.EndpointURL)
 	if err != nil {
-		ch.Write(
+		err = ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -724,6 +797,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -733,7 +809,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	session.SetSecureChannelId(ch.ChannelID())
 	session.localeIds = req.LocaleIDs
 
-	ch.Write(
+	err = ch.Write(
 		&ua.ActivateSessionResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -745,6 +821,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -758,7 +837,7 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 	// get session
 	session, ok := srv.sessionManager.Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -768,13 +847,16 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	// check channelId
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -784,10 +866,13 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -797,6 +882,9 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -814,7 +902,7 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 
 	// log.Printf("Deleted session '%s'.\n", session.SessionName())
 
-	ch.Write(
+	err := ch.Write(
 		&ua.CloseSessionResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -823,6 +911,9 @@ func (srv *Server) handleCloseSession(ch *serverSecureChannel, requestid uint32,
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -836,7 +927,7 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 	// get session
 	session, ok := srv.sessionManager.Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -846,13 +937,16 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	// check channelId
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -862,10 +956,13 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -875,10 +972,13 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.CancelResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -887,6 +987,9 @@ func (srv *Server) handleCancel(ch *serverSecureChannel, requestid uint32, req *
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -904,7 +1007,7 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -914,6 +1017,9 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.browseCount++
@@ -922,7 +1028,7 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -932,12 +1038,15 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.browseErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -947,6 +1056,9 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.browseErrorCount++
 		session.errorCount++
 		return nil
@@ -956,7 +1068,7 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 		m := srv.NamespaceManager()
 		n, ok := m.FindNode(req.View.ViewID)
 		if !ok {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -966,12 +1078,15 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			session.browseErrorCount++
 			session.errorCount++
 			return nil
 		}
 		if n.NodeClass() != ua.NodeClassView {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -981,6 +1096,9 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			session.browseErrorCount++
 			session.errorCount++
 			return nil
@@ -989,7 +1107,7 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 
 	l := len(req.NodesToBrowse)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -999,13 +1117,16 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.browseErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerBrowse) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1015,6 +1136,9 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.browseErrorCount++
 		session.errorCount++
 		return nil
@@ -1156,20 +1280,21 @@ func (srv *Server) handleBrowse(ch *serverSecureChannel, requestid uint32, req *
 		})
 	}
 
-	go func() {
-		// wait until all tasks are done
-		wg.Wait()
-		ch.Write(
-			&ua.BrowseResponse{
-				ResponseHeader: ua.ResponseHeader{
-					Timestamp:     time.Now(),
-					RequestHandle: req.RequestHandle,
-				},
-				Results: results,
+	// wait until all tasks are done
+	wg.Wait()
+	err := ch.Write(
+		&ua.BrowseResponse{
+			ResponseHeader: ua.ResponseHeader{
+				Timestamp:     time.Now(),
+				RequestHandle: req.RequestHandle,
 			},
-			requestid,
-		)
-	}()
+			Results: results,
+		},
+		requestid,
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1182,7 +1307,7 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1192,6 +1317,9 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.browseNextCount++
@@ -1200,7 +1328,7 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1210,12 +1338,15 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.browseNextErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1225,6 +1356,9 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.browseNextErrorCount++
 		session.errorCount++
 		return nil
@@ -1232,7 +1366,7 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 
 	l := len(req.ContinuationPoints)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1242,13 +1376,16 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.browseNextErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerBrowse) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1258,6 +1395,9 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.browseNextErrorCount++
 		session.errorCount++
 		return nil
@@ -1318,20 +1458,21 @@ func (srv *Server) handleBrowseNext(ch *serverSecureChannel, requestid uint32, r
 		})
 	}
 
-	go func() {
-		// wait until all tasks are done
-		wg.Wait()
-		ch.Write(
-			&ua.BrowseNextResponse{
-				ResponseHeader: ua.ResponseHeader{
-					Timestamp:     time.Now(),
-					RequestHandle: req.RequestHeader.RequestHandle,
-				},
-				Results: results,
+	// wait until all tasks are done
+	wg.Wait()
+	err := ch.Write(
+		&ua.BrowseNextResponse{
+			ResponseHeader: ua.ResponseHeader{
+				Timestamp:     time.Now(),
+				RequestHandle: req.RequestHeader.RequestHandle,
 			},
-			requestid,
-		)
-	}()
+			Results: results,
+		},
+		requestid,
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1344,7 +1485,7 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1354,6 +1495,9 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.translateBrowsePathsToNodeIdsCount++
@@ -1362,7 +1506,7 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1372,12 +1516,15 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.translateBrowsePathsToNodeIdsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1387,6 +1534,9 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.translateBrowsePathsToNodeIdsErrorCount++
 		session.errorCount++
 		return nil
@@ -1394,7 +1544,7 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 
 	l := len(req.BrowsePaths)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1404,13 +1554,16 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.translateBrowsePathsToNodeIdsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerTranslateBrowsePathsToNodeIds) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1420,6 +1573,9 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.translateBrowsePathsToNodeIdsErrorCount++
 		session.errorCount++
 		return nil
@@ -1478,20 +1634,21 @@ func (srv *Server) handleTranslateBrowsePathsToNodeIds(ch *serverSecureChannel, 
 		})
 	}
 
-	go func() {
-		// wait until all tasks are done
-		wg.Wait()
-		ch.Write(
-			&ua.TranslateBrowsePathsToNodeIDsResponse{
-				ResponseHeader: ua.ResponseHeader{
-					Timestamp:     time.Now(),
-					RequestHandle: req.RequestHeader.RequestHandle,
-				},
-				Results: results,
+	// wait until all tasks are done
+	wg.Wait()
+	err := ch.Write(
+		&ua.TranslateBrowsePathsToNodeIDsResponse{
+			ResponseHeader: ua.ResponseHeader{
+				Timestamp:     time.Now(),
+				RequestHandle: req.RequestHeader.RequestHandle,
 			},
-			requestid,
-		)
-	}()
+			Results: results,
+		},
+		requestid,
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1504,7 +1661,7 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1514,6 +1671,9 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.registerNodesCount++
@@ -1522,7 +1682,7 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1532,12 +1692,15 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.registerNodesErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1547,6 +1710,9 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.registerNodesErrorCount++
 		session.errorCount++
 		return nil
@@ -1554,7 +1720,7 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 
 	l := len(req.NodesToRegister)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1564,13 +1730,16 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.registerNodesErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerRegisterNodes) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1580,6 +1749,9 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.registerNodesErrorCount++
 		session.errorCount++
 		return nil
@@ -1590,7 +1762,7 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 		results[ii] = req.NodesToRegister[ii]
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.RegisterNodesResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -1600,6 +1772,9 @@ func (srv *Server) handleRegisterNodes(ch *serverSecureChannel, requestid uint32
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1612,7 +1787,7 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1622,6 +1797,9 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.unregisterNodesCount++
@@ -1630,7 +1808,7 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1640,12 +1818,15 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.unregisterNodesErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1655,6 +1836,9 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.unregisterNodesErrorCount++
 		session.errorCount++
 		return nil
@@ -1662,7 +1846,7 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 
 	l := len(req.NodesToUnregister)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1672,13 +1856,16 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.unregisterNodesErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerRegisterNodes) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1688,12 +1875,15 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.unregisterNodesErrorCount++
 		session.errorCount++
 		return nil
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.UnregisterNodesResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -1702,6 +1892,9 @@ func (srv *Server) handleUnregisterNodes(ch *serverSecureChannel, requestid uint
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1790,7 +1983,7 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1800,6 +1993,9 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.readCount++
@@ -1808,7 +2004,7 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1818,12 +2014,15 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.readErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1833,6 +2032,9 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.readErrorCount++
 		session.errorCount++
 		return nil
@@ -1842,7 +2044,7 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 
 	// check MaxAge
 	if req.MaxAge < 0.0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1852,13 +2054,16 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.readErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check TimestampsToReturn
 	if req.TimestampsToReturn < ua.TimestampsToReturnSource || req.TimestampsToReturn > ua.TimestampsToReturnNeither {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1868,6 +2073,9 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.readErrorCount++
 		session.errorCount++
 		return nil
@@ -1875,7 +2083,7 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 	// check nothing to do
 	l := len(req.NodesToRead)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1885,13 +2093,16 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.readErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerRead) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1901,6 +2112,9 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.readErrorCount++
 		session.errorCount++
 		return nil
@@ -1919,20 +2133,22 @@ func (srv *Server) handleRead(ch *serverSecureChannel, requestid uint32, req *ua
 			wg.Done()
 		})
 	}
-	go func() {
-		// wait until all tasks are done
-		wg.Wait()
-		ch.Write(
-			&ua.ReadResponse{
-				ResponseHeader: ua.ResponseHeader{
-					Timestamp:     time.Now(),
-					RequestHandle: req.RequestHandle,
-				},
-				Results: selectTimestamps(results, req.TimestampsToReturn),
+
+	// wait until all tasks are done
+	wg.Wait()
+	err := ch.Write(
+		&ua.ReadResponse{
+			ResponseHeader: ua.ResponseHeader{
+				Timestamp:     time.Now(),
+				RequestHandle: req.RequestHandle,
 			},
-			requestid,
-		)
-	}()
+			Results: selectTimestamps(results, req.TimestampsToReturn),
+		},
+		requestid,
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1946,7 +2162,7 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1956,6 +2172,9 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.writeCount++
@@ -1964,7 +2183,7 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1974,12 +2193,15 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.writeErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -1989,6 +2211,9 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.writeErrorCount++
 		session.errorCount++
 		return nil
@@ -1999,7 +2224,7 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 	// check nothing to do
 	l := len(req.NodesToWrite)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2009,13 +2234,16 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.writeErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerWrite) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2025,6 +2253,9 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.writeErrorCount++
 		session.errorCount++
 		return nil
@@ -2045,21 +2276,22 @@ func (srv *Server) handleWrite(ch *serverSecureChannel, requestid uint32, req *u
 			wg.Done()
 		})
 	}
-	go func() {
-		// wait until all tasks are done
-		wg.Wait()
-		ch.Write(
-			&ua.WriteResponse{
-				ResponseHeader: ua.ResponseHeader{
-					Timestamp:     time.Now().UTC(),
-					RequestHandle: req.RequestHeader.RequestHandle,
-				},
-				Results: results,
-			},
-			requestid,
-		)
 
-	}()
+	// wait until all tasks are done
+	wg.Wait()
+	err := ch.Write(
+		&ua.WriteResponse{
+			ResponseHeader: ua.ResponseHeader{
+				Timestamp:     time.Now().UTC(),
+				RequestHandle: req.RequestHeader.RequestHandle,
+			},
+			Results: results,
+		},
+		requestid,
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -2073,7 +2305,7 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2083,6 +2315,9 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	// session.readCount++
@@ -2091,7 +2326,7 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2101,12 +2336,15 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		// session.readErrorCount++
 		// session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2116,6 +2354,9 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		// session.readErrorCount++
 		// session.errorCount++
 		return nil
@@ -2125,7 +2366,7 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 
 	// check TimestampsToReturn
 	if req.TimestampsToReturn < ua.TimestampsToReturnSource || req.TimestampsToReturn > ua.TimestampsToReturnBoth {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2135,6 +2376,9 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		// session.readErrorCount++
 		// session.errorCount++
 		return nil
@@ -2142,7 +2386,7 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	// check nothing to do
 	l := len(req.NodesToRead)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2152,13 +2396,16 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		// session.readErrorCount++
 		// session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerHistoryReadData) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2168,6 +2415,9 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		// session.readErrorCount++
 		// session.errorCount++
 		return nil
@@ -2176,7 +2426,7 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 	// check if historian installed
 	h := srv.historian
 	if h == nil {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2186,13 +2436,16 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
 	switch details := req.HistoryReadDetails.(type) {
 	case ua.ReadEventDetails:
 		results, status := h.ReadEvent(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
-		ch.Write(
+		err := ch.Write(
 			&ua.HistoryReadResponse{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2203,11 +2456,14 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 
 	case ua.ReadRawModifiedDetails:
 		results, status := h.ReadRawModified(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
-		ch.Write(
+		err := ch.Write(
 			&ua.HistoryReadResponse{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2218,11 +2474,14 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 
 	case ua.ReadProcessedDetails:
 		results, status := h.ReadProcessed(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
-		ch.Write(
+		err := ch.Write(
 			&ua.HistoryReadResponse{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2233,11 +2492,14 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 
 	case ua.ReadAtTimeDetails:
 		results, status := h.ReadAtTime(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
-		ch.Write(
+		err := ch.Write(
 			&ua.HistoryReadResponse{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -2248,10 +2510,13 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.ServiceFault{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -2261,6 +2526,9 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -3132,7 +3400,7 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3142,6 +3410,9 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.callCount++
@@ -3150,7 +3421,7 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3160,12 +3431,15 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.callErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3175,6 +3449,9 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.callErrorCount++
 		session.errorCount++
 		return nil
@@ -3184,7 +3461,7 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 
 	l := len(req.MethodsToCall)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3194,13 +3471,16 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.callErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxNodesPerMethodCall) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3210,6 +3490,9 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.callErrorCount++
 		session.errorCount++
 		return nil
@@ -3277,20 +3560,22 @@ func (srv *Server) handleCall(ch *serverSecureChannel, requestid uint32, req *ua
 			wg.Done()
 		})
 	}
-	go func() {
-		// wait until all tasks are done
-		wg.Wait()
-		ch.Write(
-			&ua.CallResponse{
-				ResponseHeader: ua.ResponseHeader{
-					Timestamp:     time.Now(),
-					RequestHandle: req.RequestHeader.RequestHandle,
-				},
-				Results: results,
+
+	// wait until all tasks are done
+	wg.Wait()
+	err := ch.Write(
+		&ua.CallResponse{
+			ResponseHeader: ua.ResponseHeader{
+				Timestamp:     time.Now(),
+				RequestHandle: req.RequestHeader.RequestHandle,
 			},
-			requestid,
-		)
-	}()
+			Results: results,
+		},
+		requestid,
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -3304,7 +3589,7 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3314,6 +3599,9 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.createMonitoredItemsCount++
@@ -3322,7 +3610,7 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3332,12 +3620,15 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3347,6 +3638,9 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -3357,7 +3651,7 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	// get subscription
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3367,6 +3661,9 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -3376,7 +3673,7 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 	sub.Unlock()
 
 	if req.TimestampsToReturn < ua.TimestampsToReturnSource || req.TimestampsToReturn > ua.TimestampsToReturnNeither {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3386,6 +3683,9 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -3393,7 +3693,7 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 
 	l := len(req.ItemsToCreate)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3403,13 +3703,16 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3419,6 +3722,9 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -3535,7 +3841,7 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 		}
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.CreateMonitoredItemsResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -3545,6 +3851,9 @@ func (srv *Server) handleCreateMonitoredItems(ch *serverSecureChannel, requestid
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -3558,7 +3867,7 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3568,6 +3877,9 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.modifyMonitoredItemsCount++
@@ -3576,7 +3888,7 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3586,12 +3898,15 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifyMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3601,6 +3916,9 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifyMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -3611,7 +3929,7 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	// get subscription
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3621,6 +3939,9 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifyMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -3630,7 +3951,7 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 	sub.Unlock()
 
 	if req.TimestampsToReturn < ua.TimestampsToReturnSource || req.TimestampsToReturn > ua.TimestampsToReturnNeither {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3640,6 +3961,9 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifyMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -3647,7 +3971,7 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 
 	l := len(req.ItemsToModify)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3657,13 +3981,16 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifyMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3673,6 +4000,9 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifyMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -3731,7 +4061,7 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 		}
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.ModifyMonitoredItemsResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -3741,6 +4071,9 @@ func (srv *Server) handleModifyMonitoredItems(ch *serverSecureChannel, requestid
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -3754,7 +4087,7 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3764,6 +4097,9 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.setMonitoringModeCount++
@@ -3772,7 +4108,7 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3782,12 +4118,15 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setMonitoringModeErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3797,6 +4136,9 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setMonitoringModeErrorCount++
 		session.errorCount++
 		return nil
@@ -3807,7 +4149,7 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 	// get subscription
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3817,6 +4159,9 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setMonitoringModeErrorCount++
 		session.errorCount++
 		return nil
@@ -3827,7 +4172,7 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 
 	l := len(req.MonitoredItemIDs)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3837,13 +4182,16 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setMonitoringModeErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3853,6 +4201,9 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setMonitoringModeErrorCount++
 		session.errorCount++
 		return nil
@@ -3869,7 +4220,7 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 		}
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.SetMonitoringModeResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -3879,6 +4230,9 @@ func (srv *Server) handleSetMonitoringMode(ch *serverSecureChannel, requestid ui
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -3892,7 +4246,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3902,6 +4256,9 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.setTriggeringCount++
@@ -3910,7 +4267,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3920,12 +4277,15 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setTriggeringErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3935,6 +4295,9 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setTriggeringErrorCount++
 		session.errorCount++
 		return nil
@@ -3943,7 +4306,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 	// get subscription
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3953,6 +4316,9 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setTriggeringErrorCount++
 		session.errorCount++
 		return nil
@@ -3962,7 +4328,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 	sub.Unlock()
 
 	if len(req.LinksToRemove) == 0 && len(req.LinksToAdd) == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3972,6 +4338,9 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setTriggeringErrorCount++
 		session.errorCount++
 		return nil
@@ -3979,7 +4348,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 
 	trigger, ok := sub.FindItem(req.TriggeringItemID)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -3989,6 +4358,9 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setTriggeringErrorCount++
 		session.errorCount++
 		return nil
@@ -4022,7 +4394,7 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 		}
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.SetTriggeringResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -4033,6 +4405,9 @@ func (srv *Server) handleSetTriggering(ch *serverSecureChannel, requestid uint32
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -4046,7 +4421,7 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4056,6 +4431,9 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.deleteMonitoredItemsCount++
@@ -4064,7 +4442,7 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4074,12 +4452,15 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.deleteMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4089,6 +4470,9 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.deleteMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -4099,7 +4483,7 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 	// get subscription
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4109,6 +4493,9 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.deleteMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -4119,7 +4506,7 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 
 	l := len(req.MonitoredItemIDs)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4129,13 +4516,16 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.deleteMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	// check too many operations
 	if l > int(srv.serverCapabilities.OperationLimits.MaxMonitoredItemsPerCall) {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4145,6 +4535,9 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.deleteMonitoredItemsErrorCount++
 		session.errorCount++
 		return nil
@@ -4159,7 +4552,7 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 		}
 	}
 
-	ch.Write(
+	err := ch.Write(
 		&ua.DeleteMonitoredItemsResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -4169,6 +4562,9 @@ func (srv *Server) handleDeleteMonitoredItems(ch *serverSecureChannel, requestid
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -4248,7 +4644,7 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4258,6 +4654,9 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.createSubscriptionCount++
@@ -4266,7 +4665,7 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4276,12 +4675,15 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createSubscriptionErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4291,6 +4693,9 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createSubscriptionErrorCount++
 		session.errorCount++
 		return nil
@@ -4299,7 +4704,7 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 	sm := srv.SubscriptionManager()
 	s := NewSubscription(sm, session, req.RequestedPublishingInterval, req.RequestedLifetimeCount, req.RequestedMaxKeepAliveCount, req.MaxNotificationsPerPublish, req.PublishingEnabled, req.Priority)
 	if err := sm.Add(s); err != nil {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4309,6 +4714,9 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.createSubscriptionErrorCount++
 		session.errorCount++
 		return nil
@@ -4316,7 +4724,7 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 	s.startPublishing()
 	// log.Printf("Created subscription '%d'.\n", s.id)
 
-	ch.Write(
+	err := ch.Write(
 		&ua.CreateSubscriptionResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -4329,6 +4737,9 @@ func (srv *Server) handleCreateSubscription(ch *serverSecureChannel, requestid u
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -4342,7 +4753,7 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4352,6 +4763,9 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.modifySubscriptionCount++
@@ -4360,7 +4774,7 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4370,12 +4784,15 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifySubscriptionErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4385,6 +4802,9 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifySubscriptionErrorCount++
 		session.errorCount++
 		return nil
@@ -4393,7 +4813,7 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 	// get subscription
 	sub, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4403,6 +4823,9 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.modifySubscriptionErrorCount++
 		session.errorCount++
 		return nil
@@ -4410,7 +4833,7 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 
 	sub.Modify(req.RequestedPublishingInterval, req.RequestedLifetimeCount, req.RequestedMaxKeepAliveCount, req.MaxNotificationsPerPublish, req.Priority)
 
-	ch.Write(
+	err := ch.Write(
 		&ua.ModifySubscriptionResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -4422,6 +4845,9 @@ func (srv *Server) handleModifySubscription(ch *serverSecureChannel, requestid u
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -4435,7 +4861,7 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4445,6 +4871,9 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.setPublishingModeCount++
@@ -4453,7 +4882,7 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4463,12 +4892,15 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setPublishingModeErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4478,6 +4910,9 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.setPublishingModeErrorCount++
 		session.errorCount++
 		return nil
@@ -4494,7 +4929,7 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 			results[i] = ua.BadSubscriptionIDInvalid
 		}
 	}
-	ch.Write(
+	err := ch.Write(
 		&ua.SetPublishingModeResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -4504,6 +4939,9 @@ func (srv *Server) handleSetPublishingMode(ch *serverSecureChannel, requestid ui
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -4519,7 +4957,7 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4529,6 +4967,9 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.deleteSubscriptionsCount++
@@ -4537,7 +4978,7 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4547,12 +4988,15 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.deleteSubscriptionsErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4562,12 +5006,15 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
 	l := len(req.SubscriptionIDs)
 	if l == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4577,6 +5024,9 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.deleteSubscriptionsErrorCount++
 		session.errorCount++
 		return nil
@@ -4594,7 +5044,7 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 			results[i] = ua.BadSubscriptionIDInvalid
 		}
 	}
-	ch.Write(
+	err := ch.Write(
 		&ua.DeleteSubscriptionsResponse{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -4604,11 +5054,18 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	// if no more subscriptions, then drain publishRequests
 	if len(sm.GetBySession(session)) == 0 {
-		ch, requestid, req, _, ok := session.removePublishRequest()
+		ch, requestid, req, _, ok, err := session.removePublishRequest()
+		if err != nil {
+			return err
+		}
+
 		for ok {
-			ch.Write(
+			err := ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -4618,9 +5075,15 @@ func (srv *Server) handleDeleteSubscriptions(ch *serverSecureChannel, requestid 
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			session.publishErrorCount++
 			session.errorCount++
-			ch, requestid, req, _, ok = session.removePublishRequest()
+			ch, requestid, req, _, ok, err = session.removePublishRequest()
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -4636,7 +5099,7 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4646,6 +5109,9 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.publishCount++
@@ -4654,7 +5120,7 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4664,12 +5130,15 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.publishErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4679,6 +5148,9 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.publishErrorCount++
 		session.errorCount++
 		return nil
@@ -4715,7 +5187,7 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 		// 		avail = append(avail, nm.SequenceNumber)
 		// 	}
 		// }
-		ch.Write(
+		err := ch.Write(
 			&ua.PublishResponse{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4730,12 +5202,15 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	default:
 	}
 
 	if sm.Len() == 0 {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4745,6 +5220,9 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.publishErrorCount++
 		session.errorCount++
 		return nil
@@ -4756,12 +5234,19 @@ func (srv *Server) handlePublish(ch *serverSecureChannel, requestid uint32, req 
 	})
 
 	for _, sub := range subs {
-		if sub.handleLatePublishRequest(ch, requestid, req, results) {
+		ok, err := sub.handleLatePublishRequest(ch, requestid, req, results)
+		if err != nil {
+			return err
+		}
+		if ok {
 			return nil
 		}
 	}
 
-	session.addPublishRequest(ch, requestid, req, results)
+	err := session.addPublishRequest(ch, requestid, req, results)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -4775,7 +5260,7 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 	// get session
 	session, ok := srv.SessionManager().Get(req.AuthenticationToken)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4785,6 +5270,9 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	session.republishCount++
@@ -4793,7 +5281,7 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 	id := session.SecureChannelId()
 	if id == 0 {
 		srv.SessionManager().Delete(session)
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4803,12 +5291,15 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.republishErrorCount++
 		session.errorCount++
 		return nil
 	}
 	if id != ch.ChannelID() {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4818,6 +5309,9 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.republishErrorCount++
 		session.errorCount++
 		return nil
@@ -4825,7 +5319,7 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 
 	s, ok := srv.SubscriptionManager().Get(req.SubscriptionID)
 	if !ok {
-		ch.Write(
+		err := ch.Write(
 			&ua.ServiceFault{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -4835,6 +5329,9 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 			},
 			requestid,
 		)
+		if err != nil {
+			return err
+		}
 		session.republishErrorCount++
 		session.errorCount++
 		return nil
@@ -4850,7 +5347,7 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 	for e := q.Front(); e != nil; e = e.Next() {
 		if nm, ok := e.Value.(ua.NotificationMessage); ok {
 			if req.RetransmitSequenceNumber == nm.SequenceNumber {
-				ch.Write(
+				err := ch.Write(
 					&ua.RepublishResponse{
 						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
@@ -4860,6 +5357,9 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 					},
 					requestid,
 				)
+				if err != nil {
+					return err
+				}
 				s.republishMessageCount++
 				q.Remove(e)
 				e.Value = nil
@@ -4867,7 +5367,7 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 			}
 		}
 	}
-	ch.Write(
+	err := ch.Write(
 		&ua.ServiceFault{
 			ResponseHeader: ua.ResponseHeader{
 				Timestamp:     time.Now(),
@@ -4877,6 +5377,9 @@ func (srv *Server) handleRepublish(ch *serverSecureChannel, requestid uint32, re
 		},
 		requestid,
 	)
+	if err != nil {
+		return err
+	}
 	session.republishErrorCount++
 	session.errorCount++
 	return nil

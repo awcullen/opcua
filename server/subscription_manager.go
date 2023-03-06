@@ -29,11 +29,7 @@ func NewSubscriptionManager(server *Server) *SubscriptionManager {
 			case <-ticker.C:
 				m.checkForExpiredSubscriptions()
 			case <-m.server.closing:
-				m.RLock()
-				for _, v := range m.subscriptionsByID {
-					v.stopPublishing()
-				}
-				m.RUnlock()
+				m.stopPublishingAllSubscriptions()
 				return
 			}
 		}
@@ -121,6 +117,14 @@ func (m *SubscriptionManager) checkForExpiredSubscriptions() {
 	}
 }
 
+func (m *SubscriptionManager) stopPublishingAllSubscriptions() {
+	m.RLock()
+	defer m.RUnlock()
+	for _, v := range m.subscriptionsByID {
+		v.stopPublishing()
+	}
+}
+
 func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 	srv := m.server
 	nm := srv.NamespaceManager()
@@ -155,38 +159,38 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		s.RLock()
 		defer s.RUnlock()
 		dv := ua.NewDataValue(ua.SubscriptionDiagnosticsDataType{
-				SessionID:                  s.sessionId,
-				SubscriptionID:             s.id,
-				Priority:                   s.priority,
-				PublishingInterval:         s.publishingInterval,
-				MaxKeepAliveCount:          s.maxKeepAliveCount,
-				MaxLifetimeCount:           s.lifetimeCount,
-				MaxNotificationsPerPublish: s.maxNotificationsPerPublish,
-				PublishingEnabled:          s.publishingEnabled,
-				ModifyCount:                s.modifyCount,
-				// EnableCount:                  uint32(0),
-				// DisableCount:                 uint32(0),
-				RepublishRequestCount:        s.republishRequestCount,
-				RepublishMessageRequestCount: s.republishMessageRequestCount,
-				RepublishMessageCount:        s.republishMessageCount,
-				// TransferRequestCount:         uint32(0),
-				// TransferredToAltClientCount:  uint32(0),
-				// TransferredToSameClientCount: uint32(0),
-				PublishRequestCount:          s.publishRequestCount,
-				DataChangeNotificationsCount: s.dataChangeNotificationsCount,
-				EventNotificationsCount:      s.eventNotificationsCount,
-				NotificationsCount:           s.notificationsCount,
-				LatePublishRequestCount:      s.latePublishRequestCount,
-				CurrentKeepAliveCount:        s.keepAliveCounter,
-				CurrentLifetimeCount:         s.lifetimeCounter,
-				UnacknowledgedMessageCount:   s.unacknowledgedMessageCount,
-				// DiscardedMessageCount:        uint32(0),
-				MonitoredItemCount:           s.monitoredItemCount,
-				DisabledMonitoredItemCount:   s.disabledMonitoredItemCount,
-				MonitoringQueueOverflowCount: s.monitoringQueueOverflowCount,
-				NextSequenceNumber:           s.seqNum,
-				// EventQueueOverFlowCount:      uint32(0),
-			}, 0, time.Now(), 0, time.Now(), 0)
+			SessionID:                  s.sessionId,
+			SubscriptionID:             s.id,
+			Priority:                   s.priority,
+			PublishingInterval:         s.publishingInterval,
+			MaxKeepAliveCount:          s.maxKeepAliveCount,
+			MaxLifetimeCount:           s.lifetimeCount,
+			MaxNotificationsPerPublish: s.maxNotificationsPerPublish,
+			PublishingEnabled:          s.publishingEnabled,
+			ModifyCount:                s.modifyCount,
+			// EnableCount:                  uint32(0),
+			// DisableCount:                 uint32(0),
+			RepublishRequestCount:        s.republishRequestCount,
+			RepublishMessageRequestCount: s.republishMessageRequestCount,
+			RepublishMessageCount:        s.republishMessageCount,
+			// TransferRequestCount:         uint32(0),
+			// TransferredToAltClientCount:  uint32(0),
+			// TransferredToSameClientCount: uint32(0),
+			PublishRequestCount:          s.publishRequestCount,
+			DataChangeNotificationsCount: s.dataChangeNotificationsCount,
+			EventNotificationsCount:      s.eventNotificationsCount,
+			NotificationsCount:           s.notificationsCount,
+			LatePublishRequestCount:      s.latePublishRequestCount,
+			CurrentKeepAliveCount:        s.keepAliveCounter,
+			CurrentLifetimeCount:         s.lifetimeCounter,
+			UnacknowledgedMessageCount:   s.unacknowledgedMessageCount,
+			// DiscardedMessageCount:        uint32(0),
+			MonitoredItemCount:           s.monitoredItemCount,
+			DisabledMonitoredItemCount:   s.disabledMonitoredItemCount,
+			MonitoringQueueOverflowCount: s.monitoringQueueOverflowCount,
+			NextSequenceNumber:           s.seqNum,
+			// EventQueueOverFlowCount:      uint32(0),
+		}, 0, time.Now(), 0, time.Now(), 0)
 		return dv
 	})
 	nodes = append(nodes, subscriptionDiagnosticsVariable)

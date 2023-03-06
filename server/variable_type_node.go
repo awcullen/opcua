@@ -99,16 +99,15 @@ func (n *VariableTypeNode) UserRolePermissions(ctx context.Context) []ua.RolePer
 // References returns the References of this node.
 func (n *VariableTypeNode) References() []ua.Reference {
 	n.RLock()
-	res := n.references
-	n.RUnlock()
-	return res
+	defer n.RUnlock()
+	return n.references
 }
 
 // SetReferences sets the References of the Variable.
 func (n *VariableTypeNode) SetReferences(value []ua.Reference) {
 	n.Lock()
+	defer n.Unlock()
 	n.references = value
-	n.Unlock()
 }
 
 // Value returns the value of the Variable.

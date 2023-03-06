@@ -143,13 +143,13 @@ func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authent
 
 func (s *Session) IsExpired() bool {
 	s.RLock()
-	ret := time.Now().After(s.LastAccess().Add(s.timeout))
-	s.RUnlock()
-	return ret
+	defer s.RUnlock()
+	return time.Now().After(s.LastAccess().Add(s.timeout))
 }
 
 func (s *Session) delete() {
 	s.Lock()
+	defer s.Unlock()
 	s.server = nil
 	//s.sessionId = nil  // need to keep to look up diagnostics node
 	s.authenticationToken = nil
@@ -166,53 +166,47 @@ func (s *Session) delete() {
 	}
 	s.historyCPs = nil
 	s.clientUserIdHistory = nil
-	s.Unlock()
 }
 
 func (s *Session) Server() *Server {
 	s.RLock()
-	res := s.server
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.server
 }
 
 func (s *Session) SessionId() ua.NodeID {
 	s.RLock()
-	res := s.sessionId
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.sessionId
 }
 
 func (s *Session) SessionName() string {
 	s.RLock()
-	res := s.sessionName
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.sessionName
 }
 
 func (s *Session) AuthenticationToken() ua.NodeID {
 	s.RLock()
-	res := s.authenticationToken
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.authenticationToken
 }
 
 func (s *Session) Timeout() time.Duration {
 	s.RLock()
-	res := s.timeout
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.timeout
 }
 
 func (s *Session) UserIdentity() interface{} {
 	s.RLock()
-	res := s.userIdentity
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.userIdentity
 }
 
 func (s *Session) SetUserIdentity(value interface{}) {
 	s.Lock()
+	defer s.Unlock()
 	s.userIdentity = value
 	// update diagnostics
 	switch ui := s.userIdentity.(type) {
@@ -230,69 +224,64 @@ func (s *Session) SetUserIdentity(value interface{}) {
 		s.authenticationMechanism = "Anonymous"
 	}
 	s.clientUserIdHistory = append(s.clientUserIdHistory, s.clientUserIdOfSession)
-	s.Unlock()
 }
 
 func (s *Session) UserRoles() []ua.NodeID {
 	s.RLock()
-	res := s.userRoles
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.userRoles
 }
 
 func (s *Session) SetUserRoles(value []ua.NodeID) {
 	s.Lock()
+	defer s.Unlock()
 	s.userRoles = value
-	s.Unlock()
 }
 
 func (s *Session) SessionNonce() ua.ByteString {
 	s.RLock()
-	res := s.sessionNonce
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.sessionNonce
 }
 
 func (s *Session) SetSessionNonce(value ua.ByteString) {
 	s.Lock()
+	defer s.Unlock()
 	s.sessionNonce = value
-	s.Unlock()
 }
 
 func (s *Session) LastAccess() time.Time {
 	s.RLock()
-	res := s.lastAccess
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.lastAccess
 }
 
 func (s *Session) SetLastAccess(value time.Time) {
 	s.Lock()
+	defer s.Unlock()
 	s.lastAccess = value
-	s.Unlock()
 }
 
 func (s *Session) SecureChannelId() uint32 {
 	s.RLock()
-	res := s.channelId
-	s.RUnlock()
-	return res
+	defer s.RUnlock()
+	return s.channelId
 }
 
 func (s *Session) SetSecureChannelId(value uint32) {
 	s.Lock()
+	defer s.Unlock()
 	s.channelId = value
-	s.Unlock()
 }
 
-func (s *Session) addPublishRequest(ch *serverSecureChannel, requestid uint32, req *ua.PublishRequest, results []ua.StatusCode) {
+func (s *Session) addPublishRequest(ch *serverSecureChannel, requestid uint32, req *ua.PublishRequest, results []ua.StatusCode) error {
 	for {
 		select {
 		case s.publishRequests <- &publishOp{ch, requestid, req, results}:
-			return
+			return nil
 		default:
 			op := <-s.publishRequests
-			op.ch.Write(
+			err := op.ch.Write(
 				&ua.ServiceFault{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -302,11 +291,14 @@ func (s *Session) addPublishRequest(ch *serverSecureChannel, requestid uint32, r
 				},
 				op.requestId,
 			)
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
 
-func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *ua.PublishRequest, []ua.StatusCode, bool) {
+func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *ua.PublishRequest, []ua.StatusCode, bool, error) {
 	for {
 		select {
 		case op := <-s.publishRequests:
@@ -316,7 +308,7 @@ func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *ua.Publ
 			results := op.results
 			// check if expired
 			if time.Now().After(req.RequestHeader.Timestamp.Add(time.Duration(req.RequestHeader.TimeoutHint) * time.Millisecond)) {
-				ch.Write(
+				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
 							Timestamp:     time.Now(),
@@ -326,11 +318,14 @@ func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *ua.Publ
 					},
 					rid,
 				)
+				if err != nil {
+					return nil, 0, nil, nil, false, err
+				}
 				continue
 			}
-			return ch, rid, req, results, true
+			return ch, rid, req, results, true, nil
 		default:
-			return nil, 0, nil, nil, false
+			return nil, 0, nil, nil, false, nil
 		}
 	}
 }
@@ -356,12 +351,12 @@ func (s *Session) removeBrowseContinuationPoint(cp []byte) ([]ua.ReferenceDescri
 		return nil, 0, false
 	}
 	s.Lock()
+	defer s.Unlock()
 	id := binary.LittleEndian.Uint32(cp)
 	x, ok := s.browseCPs[id]
 	if ok {
 		delete(s.browseCPs, id)
 	}
-	s.Unlock()
 	if ok {
 		return x.data, x.max, ok
 	}

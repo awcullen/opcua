@@ -101,7 +101,12 @@ func TestOpenClientlWithoutSecurity(t *testing.T) {
 	t.Logf("Success opening client: %s", ch.EndpointURL())
 	t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
 	t.Logf("  SecurityMode: %s", ch.SecurityMode())
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 }
 
 // TestOpenClientWithSecurity tests opening a connection with a server using the best security the server offers.
@@ -129,9 +134,13 @@ func TestOpenClientWithSecurity(t *testing.T) {
 		t.Logf("Success opening client: %s", ch.EndpointURL())
 		t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
 		t.Logf("  SecurityMode: %s", ch.SecurityMode())
-		ch.Close(ctx)
+		err = ch.Close(ctx)
+		if err != nil {
+			t.Error(errors.Wrap(err, "Error closing client"))
+			ch.Abort(ctx)
+			return
+		}
 	}
-
 }
 
 // TestReadServerStatus tests reading the server status variable.
@@ -159,7 +168,12 @@ func TestReadServerStatus(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 	if res.Results[0].StatusCode.IsBad() {
 		t.Error(errors.Wrap(res.Results[0].StatusCode, "Error reading ServerStatus"))
 		return
@@ -236,7 +250,12 @@ func TestReadBuiltinTypes(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 	t.Logf("Results:")
 	for i, result := range res.Results {
 		if result.StatusCode.IsGood() {
@@ -283,7 +302,12 @@ func TestReadAttributes(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 	t.Logf("Results:")
 	for i, result := range res.Results {
 		if result.StatusCode.IsGood() {
@@ -330,7 +354,12 @@ func TestWrite(t *testing.T) {
 		return
 	}
 	t.Logf("%s: %s", req.NodesToWrite[0].NodeID, res.Results[0])
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 }
 
 // TestReadIndexRange tests reading the first three elements of a server array variable.
@@ -361,7 +390,12 @@ func TestReadIndexRange(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 	t.Logf("Results:")
 	for i, result := range res.Results {
 		t.Logf("%s: %v, %s", req.NodesToRead[i].NodeID, result.Value, result.StatusCode)
@@ -421,7 +455,12 @@ func TestWriteIndexRange(t *testing.T) {
 		return
 	}
 	t.Logf("%s: %v", req2.NodesToRead[0].NodeID, res2.Results[0].Value)
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 }
 
 // TestBrowse tests browsing the top-level objects folder.
@@ -459,7 +498,12 @@ func TestBrowse(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 	t.Logf("Browse results of NodeID '%s':", req.NodesToBrowse[0].NodeID)
 	for _, r := range res.Results[0].References {
 		t.Logf(" + %s, browseName: %s, nodeClass: %s, nodeId: %s", r.DisplayName.Text, r.BrowseName, r.NodeClass, r.NodeID)
@@ -546,7 +590,12 @@ func TestSubscribe(t *testing.T) {
 		}
 	}
 	// success after receiving 3 data changes.
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 }
 
 // TestCallMethod tests calling a method of the server and passing Aurguments.
@@ -583,7 +632,12 @@ func TestCallMethod(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 	t.Logf("  %6d", req.MethodsToCall[0].InputArguments[0])
 	t.Logf("+ %6d", req.MethodsToCall[0].InputArguments[1])
 	t.Logf("--------")
@@ -625,7 +679,12 @@ func TestTranslate(t *testing.T) {
 		ch.Abort(ctx)
 		return
 	}
-	ch.Close(ctx)
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error closing client"))
+		ch.Abort(ctx)
+		return
+	}
 	t.Logf("Results:")
 	for i, r := range res.Results {
 		if r.StatusCode.IsGood() {

@@ -6,9 +6,12 @@ import (
 	"crypto/tls"
 	_ "embed"
 	"log"
+	"math"
+	mathrand "math/rand"
 	"net"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/awcullen/opcua/ua"
@@ -94,6 +97,7 @@ type Server struct {
 	issuedIdentityAuthenticator        IssuedIdentityAuthenticator
 	rolesProvider                      RolesProvider
 	rolePermissions                    []ua.RolePermissionType
+	lastChannelID                      uint32
 }
 
 // New initializes a new instance of the Server.
@@ -130,6 +134,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		serverDiagnosticsSummary:           &ua.ServerDiagnosticsSummaryDataType{},
 		rolesProvider:                      NewRulesBasedRolesProvider(DefaultIdentityMappingRules),
 		rolePermissions:                    DefaultRolePermissions,
+		lastChannelID:                      mathrand.Uint32(),
 	}
 
 	// apply each option to the default
@@ -370,82 +375,143 @@ func (srv *Server) Close() error {
 	return nil
 }
 
-// Abort the server.
-func (srv *Server) Abort() error {
-	srv.stateSemaphore <- struct{}{}
-	if srv.state != ua.ServerStateRunning {
-		<-srv.stateSemaphore
-		return ua.BadInternalError
-	}
-
-	srv.setState(ua.ServerStateFailed)
-
-	// close subscriptions
-	close(srv.closing)
-
-	// close listeners
-	for _, l := range srv.listeners {
-		err := l.Close()
-		if err != nil {
-			log.Printf("Error closing secure channel listener: %s\n", err.Error())
-		}
-	}
-
-	// stop workers but don't wait.
-	srv.workerpool.Stop()
-
-	// close channels
-	close(srv.closed)
-
-	<-srv.stateSemaphore
-	return nil
-}
-
 func (srv *Server) serve(l net.Listener) error {
 	var delay time.Duration
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				if delay == 0 {
-					delay = 5 * time.Millisecond
-				} else {
-					delay *= 2
-				}
-				if max := 1 * time.Second; delay > max {
-					delay = max
-				}
-				time.Sleep(delay)
-				continue
-			}
 			select {
 			case <-srv.closing:
 				return ua.BadServerHalted
 			default:
+				if ne, ok := err.(net.Error); ok && ne.Timeout() {
+					if delay == 0 {
+						delay = 5 * time.Millisecond
+					} else {
+						delay *= 2
+					}
+					if max := 1 * time.Second; delay > max {
+						delay = max
+					}
+					time.Sleep(delay)
+					continue
+				}
 				return ua.BadTCPInternalError
 			}
 		}
 		delay = 0
-		ch := newServerSecureChannel(srv, conn, srv.receiveBufferSize, srv.sendBufferSize, srv.maxMessageSize, srv.maxChunkCount, srv.trace)
-		go func(ch *serverSecureChannel) {
+		go func(conn net.Conn) {
+			defer conn.Close()
+			ch := newServerSecureChannel(srv, conn, srv.receiveBufferSize, srv.sendBufferSize, srv.maxMessageSize, srv.maxChunkCount, srv.trace)
 			err := ch.Open()
 			if err != nil {
-				if reason, ok := err.(ua.StatusCode); ok {
-					ch.Abort(reason, reason.Error())
-					return
-				}
-				ch.Abort(ua.BadSecureChannelClosed, err.Error())
+				log.Printf("Error opening secure channel. %s\n", err)
 				return
 			}
 			srv.channelManager.Add(ch)
-		}(ch)
+			defer srv.channelManager.Delete(ch)
+			err = srv.requestWorker(ch)
+			if err != nil {
+				log.Printf("Error handling service request. %s\n", err)
+				return
+			}
+		}(conn)
 	}
 }
 
-func (srv *Server) handleCloseSecureChannel(ch *serverSecureChannel, requestid uint32, req *ua.CloseSecureChannelRequest) error {
-	srv.ChannelManager().Delete(ch)
-	ch.Close()
-	return nil
+// requestWorker receives service requests from channel and processes them.
+func (srv *Server) requestWorker(ch *serverSecureChannel) error {
+	for {
+		req, id, err := ch.readRequest()
+		if err != nil {
+			return err
+		}
+		err = srv.handleRequest(ch, req, id)
+		if err == ua.BadConnectionClosed {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// handleRequest directs the request to the correct handler depending on the type of request.
+func (srv *Server) handleRequest(ch *serverSecureChannel, req ua.ServiceRequest, requestid uint32) error {
+	switch req := req.(type) {
+	case *ua.PublishRequest:
+		return srv.handlePublish(ch, requestid, req)
+	case *ua.RepublishRequest:
+		return srv.handleRepublish(ch, requestid, req)
+	case *ua.ReadRequest:
+		return srv.handleRead(ch, requestid, req)
+	case *ua.WriteRequest:
+		return srv.handleWrite(ch, requestid, req)
+	case *ua.CallRequest:
+		return srv.handleCall(ch, requestid, req)
+	case *ua.BrowseRequest:
+		return srv.handleBrowse(ch, requestid, req)
+	case *ua.BrowseNextRequest:
+		return srv.handleBrowseNext(ch, requestid, req)
+	case *ua.TranslateBrowsePathsToNodeIDsRequest:
+		return srv.handleTranslateBrowsePathsToNodeIds(ch, requestid, req)
+	case *ua.CreateSubscriptionRequest:
+		return srv.handleCreateSubscription(ch, requestid, req)
+	case *ua.ModifySubscriptionRequest:
+		return srv.handleModifySubscription(ch, requestid, req)
+	case *ua.SetPublishingModeRequest:
+		return srv.handleSetPublishingMode(ch, requestid, req)
+	case *ua.DeleteSubscriptionsRequest:
+		return srv.handleDeleteSubscriptions(ch, requestid, req)
+	case *ua.CreateMonitoredItemsRequest:
+		return srv.handleCreateMonitoredItems(ch, requestid, req)
+	case *ua.ModifyMonitoredItemsRequest:
+		return srv.handleModifyMonitoredItems(ch, requestid, req)
+	case *ua.SetMonitoringModeRequest:
+		return srv.handleSetMonitoringMode(ch, requestid, req)
+	case *ua.DeleteMonitoredItemsRequest:
+		return srv.handleDeleteMonitoredItems(ch, requestid, req)
+	case *ua.HistoryReadRequest:
+		return srv.handleHistoryRead(ch, requestid, req)
+	case *ua.CreateSessionRequest:
+		return srv.handleCreateSession(ch, requestid, req)
+	case *ua.ActivateSessionRequest:
+		return srv.handleActivateSession(ch, requestid, req)
+	case *ua.CloseSessionRequest:
+		return srv.handleCloseSession(ch, requestid, req)
+	case *ua.OpenSecureChannelRequest:
+		return ch.handleOpenSecureChannel(requestid, req)
+	case *ua.CloseSecureChannelRequest:
+		return ua.BadConnectionClosed
+	case *ua.FindServersRequest:
+		return srv.findServers(ch, requestid, req)
+	case *ua.GetEndpointsRequest:
+		return srv.getEndpoints(ch, requestid, req)
+	case *ua.RegisterNodesRequest:
+		return srv.handleRegisterNodes(ch, requestid, req)
+	case *ua.UnregisterNodesRequest:
+		return srv.handleUnregisterNodes(ch, requestid, req)
+	case *ua.SetTriggeringRequest:
+		return srv.handleSetTriggering(ch, requestid, req)
+	case *ua.CancelRequest:
+		return srv.handleCancel(ch, requestid, req)
+
+	default:
+		err := ch.Write(
+			&ua.ServiceFault{
+				ResponseHeader: ua.ResponseHeader{
+					Timestamp:     time.Now(),
+					RequestHandle: req.Header().RequestHandle,
+					ServiceResult: ua.BadServiceUnsupported,
+				},
+			},
+			requestid,
+		)
+		if err != nil {
+			return err
+		}
+		return ua.BadConnectionClosed
+	}
 }
 
 func (srv *Server) initializeNamespace() error {
@@ -965,4 +1031,19 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		})
 	}
 	return eds
+}
+
+// getNextSecureChannelID gets next id in sequence, skipping zero.
+func (srv *Server) getNextSecureChannelID() uint32 {
+	for {
+		old := atomic.LoadUint32(&srv.lastChannelID)
+		new := old
+		if new == math.MaxUint32 {
+			new = 0
+		}
+		new++
+		if atomic.CompareAndSwapUint32(&srv.lastChannelID, old, new) {
+			return new
+		}
+	}
 }

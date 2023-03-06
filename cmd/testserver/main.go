@@ -10,18 +10,21 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	_ "embed"
+	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
 	"log"
 	"math/big"
 	"net"
-	_ "net/http/pprof"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
 	"reflect"
 	"syscall"
 	"time"
+
+	_ "net/http/pprof"
 
 	"github.com/awcullen/opcua/server"
 	"github.com/awcullen/opcua/ua"
@@ -47,6 +50,10 @@ func init() {
 }
 
 func main() {
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	// create directory with certificate and key, if not found.
 	if err := ensurePKI(); err != nil {
@@ -112,7 +119,7 @@ func main() {
 		server.WithSecurityPolicyNone(true),
 		server.WithInsecureSkipVerify(),
 		server.WithServerDiagnostics(true),
-		// server.WithTrace(),
+		server.WithTrace(),
 	)
 	if err != nil {
 		os.Exit(1)
@@ -366,7 +373,7 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 
 	template := x509.Certificate{
 		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{CommonName: appName},
+		Subject:               pkix.Name{CommonName: appName, ExtraNames: []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier([]int{0,9,2342,19200300,100,1,25}), Value:host}}},
 		SubjectKeyId:          subjectKeyId,
 		AuthorityKeyId:        subjectKeyId,
 		NotBefore:             time.Now(),

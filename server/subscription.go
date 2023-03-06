@@ -88,15 +88,14 @@ func NewSubscription(manager *SubscriptionManager, session *Session, publishingI
 
 func (s *Subscription) IsExpired() bool {
 	s.RLock()
-	ret := s.lifetimeCounter >= s.lifetimeCount
-	s.RUnlock()
-	return ret
+	defer s.RUnlock()
+	return s.lifetimeCounter >= s.lifetimeCount
 }
 
 func (s *Subscription) Delete() {
 	s.Lock()
+	defer s.Unlock()
 	s.deleteImpl()
-	s.Unlock()
 }
 
 func (s *Subscription) deleteImpl() {
@@ -119,23 +118,24 @@ func (s *Subscription) deleteImpl() {
 
 func (s *Subscription) Items() []MonitoredItem {
 	s.RLock()
+	defer s.RUnlock()
 	ret := []MonitoredItem{}
 	for _, v := range s.items {
 		ret = append(ret, v)
 	}
-	s.RUnlock()
 	return ret
 }
 
 func (s *Subscription) FindItem(id uint32) (MonitoredItem, bool) {
 	s.RLock()
+	defer s.RUnlock()
 	item, ok := s.items[id]
-	s.RUnlock()
 	return item, ok
 }
 
 func (s *Subscription) AppendItem(item MonitoredItem) bool {
 	s.Lock()
+	defer s.Unlock()
 	ret := false
 	if _, ok := s.items[item.ID()]; !ok {
 		s.items[item.ID()] = item
@@ -145,12 +145,12 @@ func (s *Subscription) AppendItem(item MonitoredItem) bool {
 		}
 		ret = true
 	}
-	s.Unlock()
 	return ret
 }
 
 func (s *Subscription) DeleteItem(ctx context.Context, id uint32) bool {
 	s.Lock()
+	defer s.Unlock()
 	ret := false
 	if item, ok := s.items[id]; ok {
 		delete(s.items, id)
@@ -161,19 +161,19 @@ func (s *Subscription) DeleteItem(ctx context.Context, id uint32) bool {
 		}
 		ret = true
 	}
-	s.Unlock()
 	return ret
 }
 
 func (s *Subscription) SetPublishingMode(publishingEnabled bool) {
 	s.Lock()
+	defer s.Unlock()
 	s.publishingEnabled = publishingEnabled
 	s.lifetimeCounter = 0
-	s.Unlock()
 }
 
 func (s *Subscription) Modify(publishingInterval float64, lifetimeCount uint32, maxKeepAliveCount uint32, maxNotificationsPerPublish uint32, priority byte) {
 	s.Lock()
+	defer s.Unlock()
 	s.stopPublishing()
 	s.setPublishingInterval(publishingInterval)
 	s.setMaxKeepAliveCount(maxKeepAliveCount)
@@ -183,7 +183,6 @@ func (s *Subscription) Modify(publishingInterval float64, lifetimeCount uint32, 
 	s.lifetimeCounter = 0
 	s.modifyCount++
 	s.startPublishing()
-	s.Unlock()
 }
 
 func (s *Subscription) setPublishingInterval(publishingInterval float64) {
@@ -286,7 +285,7 @@ func (s *Subscription) startPublishing() {
 	// log.Printf("startPublishing %d \n", s.id)
 	s.cancelPublishing = make(chan struct{})
 
-	go func(done chan struct{}, interval time.Duration, f func(time.Time)) {
+	go func(done chan struct{}, interval time.Duration, f func(time.Time) error) {
 		ticker := time.NewTicker(interval)
 		for {
 			select {
@@ -305,9 +304,10 @@ func (s *Subscription) stopPublishing() {
 	close(s.cancelPublishing)
 }
 
-func (s *Subscription) publish(_ time.Time) {
+func (s *Subscription) publish(_ time.Time) error {
 	// log.Printf("onPublish %d \n", s.id)
 	s.Lock()
+	defer s.Unlock()
 	notificationsAvailable := false
 	tn := time.Now()
 	for _, item := range s.items {
@@ -321,10 +321,13 @@ func (s *Subscription) publish(_ time.Time) {
 		sess := s.session
 		if sess == nil {
 			log.Printf("Subscription '%d' session in nil.\n", s.id)
-			s.Unlock()
-			return
+			return nil
 		}
-		if ch, requestid, req, results, ok := sess.removePublishRequest(); ok {
+		ch, requestid, req, results, ok, err := sess.removePublishRequest()
+		if err != nil {
+			return err
+		}
+		if ok {
 			more := false
 			maxN := int(s.maxNotificationsPerPublish)
 			mins := make([]ua.MonitoredItemNotification, 0, 4)
@@ -385,7 +388,7 @@ func (s *Subscription) publish(_ time.Time) {
 					avail = append(avail, nm.SequenceNumber)
 				}
 			}
-			ch.Write(
+			err := ch.Write(
 				&ua.PublishResponse{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -400,6 +403,9 @@ func (s *Subscription) publish(_ time.Time) {
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			s.unacknowledgedMessageCount = uint32(len(avail))
 			s.publishRequestCount++
 			if s.seqNum != math.MaxUint32 {
@@ -411,8 +417,7 @@ func (s *Subscription) publish(_ time.Time) {
 			s.lifetimeCounter = 0
 			s.isLate = false
 			s.moreNotifications = more
-			s.Unlock()
-			return
+			return nil
 		}
 		// only get here if no publishRequests are queued.
 		s.isLate = true
@@ -433,17 +438,19 @@ func (s *Subscription) publish(_ time.Time) {
 			s.manager.Delete(s)
 			s.deleteImpl()
 		}
-		s.Unlock()
-		return
+		return nil
 
 	case s.keepAliveCounter >= s.maxKeepAliveCount:
 		sess := s.session
 		if sess == nil {
 			log.Printf("Subscription '%d' session in nil.\n", s.id)
-			s.Unlock()
-			return
+			return nil
 		}
-		if ch, requestid, req, results, ok := sess.removePublishRequest(); ok {
+		ch, requestid, req, results, ok, err := sess.removePublishRequest()
+		if err != nil {
+			return err
+		}
+		if ok {
 			avail := make([]uint32, 0, 4)
 			q := s.retransmissionQueue
 			for e := q.Front(); e != nil; e = e.Next() {
@@ -451,7 +458,7 @@ func (s *Subscription) publish(_ time.Time) {
 					avail = append(avail, nm.SequenceNumber)
 				}
 			}
-			ch.Write(
+			err := ch.Write(
 				&ua.PublishResponse{
 					ResponseHeader: ua.ResponseHeader{
 						Timestamp:     time.Now(),
@@ -470,13 +477,15 @@ func (s *Subscription) publish(_ time.Time) {
 				},
 				requestid,
 			)
+			if err != nil {
+				return err
+			}
 			s.unacknowledgedMessageCount = uint32(len(avail))
 			s.publishRequestCount++
 			s.keepAliveCounter = 0
 			s.lifetimeCounter = 0
 			s.isLate = false
-			s.Unlock()
-			return
+			return nil
 		}
 		// only get here if no publishRequests are queued.
 		s.isLate = true
@@ -497,21 +506,19 @@ func (s *Subscription) publish(_ time.Time) {
 			s.manager.Delete(s)
 			s.deleteImpl()
 		}
-		s.Unlock()
-		return
+		return nil
 
 	default:
 		s.keepAliveCounter++
-		s.Unlock()
-		return
+		return nil
 	}
 }
 
-func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, requestid uint32, req *ua.PublishRequest, results []ua.StatusCode) bool {
+func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, requestid uint32, req *ua.PublishRequest, results []ua.StatusCode) (bool, error) {
 	s.Lock()
+	defer s.Unlock()
 	if !s.isLate {
-		s.Unlock()
-		return false
+		return false, nil
 	}
 	tn := time.Now()
 	notificationsAvailable := false
@@ -582,7 +589,7 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 				avail = append(avail, nm.SequenceNumber)
 			}
 		}
-		ch.Write(
+		err := ch.Write(
 			&ua.PublishResponse{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -597,6 +604,9 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 			},
 			requestid,
 		)
+		if err != nil {
+			return true, err
+		}
 		s.publishRequestCount++
 		s.latePublishRequestCount++
 		s.unacknowledgedMessageCount = uint32(len(avail))
@@ -611,8 +621,7 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 		if !more {
 			s.isLate = false
 		}
-		s.Unlock()
-		return true
+		return true, nil
 	case s.keepAliveCounter >= s.maxKeepAliveCount:
 		avail := make([]uint32, 0, 4)
 		q := s.retransmissionQueue
@@ -622,7 +631,7 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 			}
 		}
 		results := make([]ua.StatusCode, len(req.SubscriptionAcknowledgements))
-		ch.Write(
+		err := ch.Write(
 			&ua.PublishResponse{
 				ResponseHeader: ua.ResponseHeader{
 					Timestamp:     time.Now(),
@@ -641,22 +650,23 @@ func (s *Subscription) handleLatePublishRequest(ch *serverSecureChannel, request
 			},
 			requestid,
 		)
+		if err != nil {
+			return true, err
+		}
 		s.publishRequestCount++
 		s.latePublishRequestCount++
 		s.unacknowledgedMessageCount = uint32(len(avail))
 		s.keepAliveCounter = 0
 		s.lifetimeCounter = 0
 		s.isLate = false
-		s.Unlock()
-		return true
+		return true, nil
 	}
-	s.Unlock()
-	return false
+	return false, nil
 }
 
 func (s *Subscription) resendData() {
 	// log.Printf("resendData %d \n", s.id)
 	s.Lock()
+	defer s.Unlock()
 	s.resend = true
-	s.Unlock()
 }

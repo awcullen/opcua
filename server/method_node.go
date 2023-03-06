@@ -99,16 +99,15 @@ func (n *MethodNode) UserRolePermissions(ctx context.Context) []ua.RolePermissio
 // References returns the References of this node.
 func (n *MethodNode) References() []ua.Reference {
 	n.RLock()
-	res := n.references
-	n.RUnlock()
-	return res
+	defer n.RUnlock()
+	return n.references
 }
 
 // SetReferences sets the References of the Variable.
 func (n *MethodNode) SetReferences(value []ua.Reference) {
 	n.Lock()
+	defer n.Unlock()
 	n.references = value
-	n.Unlock()
 }
 
 // Executable returns the Executable attribute of this node.
@@ -143,8 +142,8 @@ func (n *MethodNode) UserExecutable(ctx context.Context) bool {
 // SetCallMethodHandler sets the CallMethod of the Variable.
 func (n *MethodNode) SetCallMethodHandler(value func(context.Context, ua.CallMethodRequest) ua.CallMethodResult) {
 	n.Lock()
+	defer n.Unlock()
 	n.callMethodHandler = value
-	n.Unlock()
 }
 
 // IsAttributeIDValid returns true if attributeId is supported for the node.

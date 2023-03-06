@@ -54,6 +54,12 @@ func ExampleClient_Read() {
 		fmt.Println("Error decoding ServerStatus.")
 	}
 
+	// close connection
+	err = ch.Close(ctx)
+	if err != nil {
+		ch.Abort(ctx)
+		return
+	}
 
 	// Output:
 	// Server status:

@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/awcullen/opcua/ua"
@@ -91,17 +92,14 @@ type clientSecureChannel struct {
 	securityMode               ua.MessageSecurityMode
 	namespaceURIs              []string
 	serverURIs                 []string
-	cancellation               chan struct{}
-	errCode                    ua.StatusCode
+	closed                     chan struct{}
+	statusCode                 ua.StatusCode
 	sendingSemaphore           sync.Mutex
 	receivingSemaphore         sync.Mutex
 	pendingResponseCh          chan *ua.ServiceOperation
 	pendingResponses           map[uint32]*ua.ServiceOperation
-	reconnecting               bool
 	closing                    bool
-	requestHandleLock          sync.Mutex
 	requestHandle              uint32
-	sequenceNumberLock         sync.Mutex
 	sequenceNumber             uint32
 	sendingTokenID             uint32
 	receivingTokenID           uint32
@@ -244,18 +242,17 @@ func (ch *clientSecureChannel) Request(ctx context.Context, req ua.ServiceReques
 	}
 	select {
 	case res := <-operation.ResponseCh():
+		cancel()
 		if sr := res.Header().ServiceResult; sr != ua.Good {
-			cancel()
 			return nil, sr
 		}
-		cancel()
 		return res, nil
 	case <-ctx.Done():
 		cancel()
 		return nil, ua.BadRequestTimeout
-	case <-ch.cancellation:
+	case <-ch.closed:
 		cancel()
-		return nil, ch.errCode
+		return nil, ua.BadSessionClosed
 	}
 }
 
@@ -413,7 +410,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 
 	ch.pendingResponseCh = make(chan *ua.ServiceOperation, 32)
 	ch.pendingResponses = make(map[uint32]*ua.ServiceOperation)
-	ch.cancellation = make(chan struct{})
+	ch.closed = make(chan struct{})
 	ch.channelID = 0
 	ch.tokenID = 0
 	ch.sendingTokenID = 0
@@ -452,13 +449,12 @@ func (ch *clientSecureChannel) Close(ctx context.Context) error {
 	ch.Lock()
 	defer ch.Unlock()
 	ch.closing = true
-	var request = &ua.CloseSecureChannelRequest{}
-	_, err := ch.Request(ctx, request)
+	_, err := ch.Request(ctx, &ua.CloseSecureChannelRequest{})
 	if err != nil {
 		return err
 	}
 	if ch.conn != nil {
-		return ch.conn.Close()
+		ch.conn.Close()
 	}
 	return nil
 }
@@ -467,8 +463,9 @@ func (ch *clientSecureChannel) Close(ctx context.Context) error {
 func (ch *clientSecureChannel) Abort(ctx context.Context) error {
 	ch.Lock()
 	defer ch.Unlock()
+	ch.closing = true
 	if ch.conn != nil {
-		return ch.conn.Close()
+		ch.conn.Close()
 	}
 	return nil
 }
@@ -498,7 +495,7 @@ func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *ua.ServiceOp
 			return err
 		}
 	case *ua.CloseSecureChannelRequest:
-		err := ch.sendServiceRequest(ctx, req)
+		err := ch.sendCloseSecureChannelRequest(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -707,6 +704,173 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 			if err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// sendCloseSecureChannelRequest sends the close secure channel request on transport channel.
+func (ch *clientSecureChannel) sendCloseSecureChannelRequest(ctx context.Context, request ua.ServiceRequest) error {
+	var bodyStream = buffer.NewPartitionAt(bufferPool)
+	defer bodyStream.Reset()
+
+	var sendBuffer = *(bytesPool.Get().(*[]byte))
+	defer bytesPool.Put(&sendBuffer)
+
+	var bodyEncoder = ua.NewBinaryEncoder(bodyStream, ch)
+
+	switch req := request.(type) {
+	case *ua.CloseSecureChannelRequest:
+		if err := bodyEncoder.WriteNodeID(ua.ObjectIDCloseSecureChannelRequestEncodingDefaultBinary); err != nil {
+			return ua.BadEncodingError
+		}
+		if err := bodyEncoder.Encode(req); err != nil {
+			return ua.BadEncodingError
+		}
+	default:
+		return ua.BadEncodingError
+	}
+
+	if i := int64(ch.maxMessageSize); i > 0 && bodyStream.Len() > i {
+		return ua.BadEncodingLimitsExceeded
+	}
+
+	var chunkCount int
+	var bodyCount = int(bodyStream.Len())
+	var signatureSize = ch.securityPolicy.SymSignatureSize()
+	var encryptionBlockSize = ch.securityPolicy.SymEncryptionBlockSize()
+
+	for bodyCount > 0 {
+		chunkCount++
+		if i := int(ch.maxChunkCount); i > 0 && chunkCount > i {
+			return ua.BadEncodingLimitsExceeded
+		}
+
+		// plan
+		var plainHeaderSize int
+		var paddingHeaderSize int
+		var maxBodySize int
+		var bodySize int
+		var paddingSize int
+		var chunkSize int
+		switch ch.securityMode {
+		case ua.MessageSecurityModeSignAndEncrypt:
+			plainHeaderSize = 16
+			if encryptionBlockSize > 256 {
+				paddingHeaderSize = 2
+			} else {
+				paddingHeaderSize = 1
+			}
+			maxBodySize = (((int(ch.sendBufferSize) - plainHeaderSize) / encryptionBlockSize) * encryptionBlockSize) - sequenceHeaderSize - paddingHeaderSize - signatureSize
+			if bodyCount < maxBodySize {
+				bodySize = bodyCount
+				paddingSize = (encryptionBlockSize - ((sequenceHeaderSize + bodySize + paddingHeaderSize + signatureSize) % encryptionBlockSize)) % encryptionBlockSize
+			} else {
+				bodySize = maxBodySize
+				paddingSize = 0
+			}
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize
+
+		default:
+			plainHeaderSize = 16
+			paddingHeaderSize = 0
+			paddingSize = 0
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
+			if bodyCount < maxBodySize {
+				bodySize = bodyCount
+			} else {
+				bodySize = maxBodySize
+			}
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
+		}
+
+		var stream = ua.NewWriter(sendBuffer)
+		var encoder = ua.NewBinaryEncoder(stream, ch)
+
+		// header
+		if bodyCount > bodySize {
+			return ua.BadEncodingError
+		} else {
+			encoder.WriteUInt32(ua.MessageTypeCloseFinal)
+		}
+		encoder.WriteUInt32(uint32(chunkSize))
+		encoder.WriteUInt32(ch.channelID)
+
+		// symmetric security header
+		encoder.WriteUInt32(ch.tokenID)
+
+		// detect new TokenId
+		ch.tokenLock.RLock()
+		if ch.tokenID != ch.sendingTokenID {
+			ch.sendingTokenID = ch.tokenID
+
+			switch ch.securityMode {
+			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
+				// (re)create security keys for signing, encrypting
+				localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
+				jj := copy(ch.localSigningKey, localSecurityKey)
+				jj += copy(ch.localEncryptingKey, localSecurityKey[jj:])
+				copy(ch.localInitializationVector, localSecurityKey[jj:])
+
+				// update signer and encrypter with new symmetric keys
+				ch.symSignHMAC = ch.securityPolicy.SymHMACFactory(ch.localSigningKey)
+				if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
+					ch.symEncryptingBlockCipher, _ = aes.NewCipher(ch.localEncryptingKey)
+				}
+			}
+		}
+		ch.tokenLock.RUnlock()
+
+		// sequence header
+		encoder.WriteUInt32(ch.getNextSequenceNumber())
+		encoder.WriteUInt32(request.Header().RequestHandle)
+
+		// body
+		_, err := io.CopyN(stream, bodyStream, int64(bodySize))
+		if err != nil {
+			return err
+		}
+		bodyCount -= bodySize
+
+		// padding
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
+			paddingByte := byte(paddingSize & 0xFF)
+			encoder.WriteByte(paddingByte)
+			for i := 0; i < paddingSize; i++ {
+				encoder.WriteByte(paddingByte)
+			}
+
+			if paddingHeaderSize == 2 {
+				extraPaddingByte := byte((paddingSize >> 8) & 0xFF)
+				encoder.WriteByte(extraPaddingByte)
+			}
+		}
+
+		// sign
+		switch ch.securityMode {
+		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
+			ch.symSignHMAC.Reset()
+			_, err := ch.symSignHMAC.Write(stream.Bytes())
+			if err != nil {
+				return err
+			}
+			signature := ch.symSignHMAC.Sum(nil)
+			stream.Write(signature)
+		}
+
+		// encrypt
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt {
+			span := stream.Bytes()[plainHeaderSize:]
+			if len(span)%ch.symEncryptingBlockCipher.BlockSize() != 0 {
+				return ua.BadEncodingError
+			}
+			cipher.NewCBCEncrypter(ch.symEncryptingBlockCipher, ch.localInitializationVector).CryptBlocks(span, span)
+		}
+
+		// pass buffer to transport
+		_, err = ch.Write(stream.Bytes())
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1154,18 +1318,15 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request u
 // responseWorker starts a task to receive service responses from transport channel.
 func (ch *clientSecureChannel) responseWorker() {
 	for {
-		res, err := ch.readResponse()
-		if err != nil {
-			if ch.reconnecting {
-				time.Sleep(1000 * time.Millisecond)
-				continue
+		res, status := ch.readResponse()
+		if status != ua.Good {
+			if ch.closing {
+				ch.statusCode = ua.Good
+				close(ch.closed)
+				return
 			}
-			if ch.errCode == ua.Good {
-				if ec, ok := err.(ua.StatusCode); ok {
-					ch.errCode = ec
-				}
-			}
-			close(ch.cancellation)
+			ch.statusCode = status
+			close(ch.closed)
 			return
 		}
 		ch.handleResponse(res)
@@ -1173,7 +1334,7 @@ func (ch *clientSecureChannel) responseWorker() {
 }
 
 // readResponse receives next service response from transport channel.
-func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
+func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, ua.StatusCode) {
 	ch.receivingSemaphore.Lock()
 	defer ch.receivingSemaphore.Unlock()
 	var res ua.ServiceResponse
@@ -1315,7 +1476,7 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 			n := m + bodySize
 			_, err = bodyStream.Write(receiveBuffer[m:n])
 			if err != nil {
-				return nil, err
+				return nil, ua.BadTCPInternalError
 			}
 
 			isFinal = messageType == ua.MessageTypeFinal
@@ -1351,7 +1512,7 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 					// decrypt with local private key.
 					plainText, err := ch.securityPolicy.RSADecrypt(ch.localPrivateKey, cipherText)
 					if err != nil {
-						return nil, err
+						return nil, ua.BadDecodingError
 					}
 					jj += copy(receiveBuffer[jj:], plainText)
 				}
@@ -1403,7 +1564,7 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 			m := plainHeaderSize + sequenceHeaderSize
 			n := m + bodySize
 			if _, err := bodyStream.Write(receiveBuffer[m:n]); err != nil {
-				return nil, err
+				return nil, ua.BadTCPInternalError
 			}
 
 			isFinal = messageType == ua.MessageTypeOpenFinal
@@ -1417,7 +1578,6 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 			if err = decoder.ReadString(&unused); err != nil {
 				return nil, ua.BadDecodingError
 			}
-			ch.errCode = ua.StatusCode(statusCode)
 			return nil, ua.StatusCode(statusCode)
 
 		default:
@@ -1536,7 +1696,7 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, error) {
 		log.Printf("%s%s", reflect.TypeOf(res).Elem().Name(), b)
 	}
 
-	return res, nil
+	return res, ua.Good
 }
 
 // handleResponse directs the response to the correct handler.
@@ -1629,24 +1789,32 @@ func calculatePSHA(secret, seed []byte, sizeBytes int, securityPolicyURI string)
 
 // getNextRequestHandle gets next RequestHandle in sequence, skipping zero.
 func (ch *clientSecureChannel) getNextRequestHandle() uint32 {
-	ch.requestHandleLock.Lock()
-	defer ch.requestHandleLock.Unlock()
-	if ch.requestHandle == math.MaxUint32 {
-		ch.requestHandle = 0
+	for {
+		old := atomic.LoadUint32(&ch.requestHandle)
+		new := old
+		if new == math.MaxUint32 {
+			new = 0
+		}
+		new++
+		if atomic.CompareAndSwapUint32(&ch.requestHandle, old, new) {
+			return new
+		}
 	}
-	ch.requestHandle++
-	return ch.requestHandle
 }
 
 // getNextSequenceNumber gets next SequenceNumber in sequence, skipping zero.
 func (ch *clientSecureChannel) getNextSequenceNumber() uint32 {
-	ch.sequenceNumberLock.Lock()
-	defer ch.sequenceNumberLock.Unlock()
-	if ch.sequenceNumber == math.MaxUint32 {
-		ch.sequenceNumber = 0
+	for {
+		old := atomic.LoadUint32(&ch.sequenceNumber)
+		new := old
+		if new == math.MaxUint32 {
+			new = 0
+		}
+		new++
+		if atomic.CompareAndSwapUint32(&ch.sequenceNumber, old, new) {
+			return new
+		}
 	}
-	ch.sequenceNumber++
-	return ch.sequenceNumber
 }
 
 // getNextNonce gets next random nonce of requested length.
@@ -1658,6 +1826,9 @@ func getNextNonce(length int) []byte {
 
 // Write sends a chunk to the remote endpoint.
 func (ch *clientSecureChannel) Write(p []byte) (int, error) {
+	if ch.conn == nil {
+		return 0, ua.BadSecureChannelClosed
+	}
 	return ch.conn.Write(p)
 }
 

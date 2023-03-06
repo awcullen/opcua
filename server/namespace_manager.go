@@ -402,6 +402,7 @@ func (m *NamespaceManager) AddNode(node Node) error {
 // This method removes the inverse refs as well.
 func (m *NamespaceManager) DeleteNodes(nodes []Node, deleteChildren bool) error {
 	m.Lock()
+	defer m.Unlock()
 	children := []Node{}
 	for _, node := range nodes {
 		children = append(children, m.GetChildren(node, m.namespaces, hasChildandSubtypes)...)
@@ -412,7 +413,6 @@ func (m *NamespaceManager) DeleteNodes(nodes []Node, deleteChildren bool) error 
 	for _, node := range nodes {
 		m.deleteNodeandInverseReferences(node, m.namespaces)
 	}
-	m.Unlock()
 	return nil
 }
 

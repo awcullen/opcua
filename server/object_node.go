@@ -97,16 +97,15 @@ func (n *ObjectNode) UserRolePermissions(ctx context.Context) []ua.RolePermissio
 // References returns the References of this node.
 func (n *ObjectNode) References() []ua.Reference {
 	n.RLock()
-	res := n.references
-	n.RUnlock()
-	return res
+	defer n.RUnlock()
+	return n.references
 }
 
 // SetReferences sets the References of the Variable.
 func (n *ObjectNode) SetReferences(value []ua.Reference) {
 	n.Lock()
+	defer n.Unlock()
 	n.references = value
-	n.Unlock()
 }
 
 // EventNotifier returns the EventNotifier attribute of this node.
@@ -129,14 +128,14 @@ type EventListener interface {
 
 func (n *ObjectNode) AddEventListener(listener EventListener) {
 	n.Lock()
+	defer n.Unlock()
 	n.subs[listener] = struct{}{}
-	n.Unlock()
 }
 
 func (n *ObjectNode) RemoveEventListener(listener EventListener) {
 	n.Lock()
+	defer n.Unlock()
 	delete(n.subs, listener)
-	n.Unlock()
 }
 
 // IsAttributeIDValid returns true if attributeId is supported for the node.

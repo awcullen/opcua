@@ -27,7 +27,7 @@ type DataTypeNode struct {
 var _ Node = (*DataTypeNode)(nil)
 
 // NewDataTypeNode creates a new DataTypeNode.
-func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool, structureOrEnumDefinition interface{} ) *DataTypeNode {
+func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool, structureOrEnumDefinition interface{}) *DataTypeNode {
 	return &DataTypeNode{
 		nodeID:             nodeID,
 		nodeClass:          ua.NodeClassDataType,
@@ -97,16 +97,15 @@ func (n *DataTypeNode) UserRolePermissions(ctx context.Context) []ua.RolePermiss
 // References returns the References of this node.
 func (n *DataTypeNode) References() []ua.Reference {
 	n.RLock()
-	res := n.references
-	n.RUnlock()
-	return res
+	defer n.RUnlock()
+	return n.references
 }
 
 // SetReferences sets the References of the Variable.
 func (n *DataTypeNode) SetReferences(value []ua.Reference) {
 	n.Lock()
+	defer n.Unlock()
 	n.references = value
-	n.Unlock()
 }
 
 // IsAbstract returns the IsAbstract attribute of this node.

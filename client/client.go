@@ -710,10 +710,12 @@ func (ch *Client) Close(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return ch.channel.Close(ctx)
+	ch.channel.Close(ctx)
+	return nil
 }
 
 // Abort closes the client abruptly.
 func (ch *Client) Abort(ctx context.Context) error {
-	return ch.channel.Abort(ctx)
+	ch.channel.Abort(ctx)
+	return nil
 }

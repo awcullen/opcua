@@ -93,16 +93,15 @@ func (n *ViewNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionT
 // References returns the References of this node.
 func (n *ViewNode) References() []ua.Reference {
 	n.RLock()
-	res := n.references
-	n.RUnlock()
-	return res
+	defer n.RUnlock()
+	return n.references
 }
 
 // SetReferences sets the References of the Variable.
 func (n *ViewNode) SetReferences(value []ua.Reference) {
 	n.Lock()
+	defer n.Unlock()
 	n.references = value
-	n.Unlock()
 }
 
 // ContainsNoLoops returns the ContainsNoLoops attribute of this node.
