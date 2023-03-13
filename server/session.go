@@ -28,7 +28,7 @@ type Session struct {
 	sessionName         string
 	authenticationToken ua.NodeID
 	timeout             time.Duration
-	userIdentity        interface{}
+	userIdentity        any
 	userRoles           []ua.NodeID
 	sessionNonce        ua.ByteString
 	lastAccess          time.Time
@@ -144,7 +144,7 @@ func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authent
 func (s *Session) IsExpired() bool {
 	s.RLock()
 	defer s.RUnlock()
-	return time.Now().After(s.LastAccess().Add(s.timeout))
+	return time.Now().After(s.lastAccess.Add(s.timeout))
 }
 
 func (s *Session) delete() {
@@ -198,13 +198,13 @@ func (s *Session) Timeout() time.Duration {
 	return s.timeout
 }
 
-func (s *Session) UserIdentity() interface{} {
+func (s *Session) UserIdentity() any {
 	s.RLock()
 	defer s.RUnlock()
 	return s.userIdentity
 }
 
-func (s *Session) SetUserIdentity(value interface{}) {
+func (s *Session) SetUserIdentity(value any) {
 	s.Lock()
 	defer s.Unlock()
 	s.userIdentity = value

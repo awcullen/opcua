@@ -143,13 +143,13 @@ type Client struct {
 	securityMode                       ua.MessageSecurityMode
 	serverCertificate                  []byte
 	userTokenPolicies                  []ua.UserTokenPolicy
-	userIdentity                       interface{}
+	userIdentity                       any
 	sessionID                          ua.NodeID
 	sessionName                        string
 	applicationName                    string
 	sessionTimeout                     float64
 	clientSignature                    ua.SignatureData
-	identityToken                      interface{}
+	identityToken                      any
 	identityTokenSignature             ua.SignatureData
 	timeoutHint                        uint32
 	diagnosticsHint                    uint32
@@ -305,7 +305,7 @@ func (ch *Client) open(ctx context.Context) error {
 	}
 
 	// supported UserIdentityToken types are AnonymousIdentityToken, UserNameIdentityToken, IssuedIdentityToken, X509IdentityToken
-	var identityToken interface{}
+	var identityToken any
 	var identityTokenSignature ua.SignatureData
 	switch ui := ch.userIdentity.(type) {
 

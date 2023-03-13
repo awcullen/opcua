@@ -39,12 +39,11 @@ func NewSessionManager(server *Server) *SessionManager {
 func (m *SessionManager) Get(authenticationToken ua.NodeID) (*Session, bool) {
 	m.RLock()
 	defer m.RUnlock()
-	s, ok := m.sessionsByToken[authenticationToken]
-	if !ok {
-		return nil, false
+	if s, ok := m.sessionsByToken[authenticationToken]; ok {
+		s.SetLastAccess(time.Now())
+		return s, ok
 	}
-	s.SetLastAccess(time.Now())
-	return s, ok
+	return nil, false
 }
 
 // Add a session to the server.

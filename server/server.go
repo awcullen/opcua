@@ -90,8 +90,8 @@ type Server struct {
 	serverDiagnosticsSummary           *ua.ServerDiagnosticsSummaryDataType
 	scheduler                          *Scheduler
 	historian                          HistoryReadWriter
-	allowAnonymousIdentity             bool
 	allowSecurityPolicyNone            bool
+	anonymousIdentityAuthenticator     AnonymousIdentityAuthenticator
 	userNameIdentityAuthenticator      UserNameIdentityAuthenticator
 	x509IdentityAuthenticator          X509IdentityAuthenticator
 	issuedIdentityAuthenticator        IssuedIdentityAuthenticator
@@ -132,7 +132,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		state:                              ua.ServerStateUnknown,
 		startTime:                          time.Now(),
 		serverDiagnosticsSummary:           &ua.ServerDiagnosticsSummaryDataType{},
-		rolesProvider:                      NewRulesBasedRolesProvider(DefaultIdentityMappingRules),
+		rolesProvider:                      DefaultRolesProvider,
 		rolePermissions:                    DefaultRolePermissions,
 		lastChannelID:                      mathrand.Uint32(),
 	}
@@ -975,18 +975,27 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 	eds := []ua.EndpointDescription{}
 	if srv.allowSecurityPolicyNone {
 		toks := []ua.UserTokenPolicy{}
-		if srv.allowAnonymousIdentity {
+		if srv.anonymousIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
 				PolicyID:          ua.UserTokenTypeAnonymous.String(),
 				TokenType:         ua.UserTokenTypeAnonymous,
 				SecurityPolicyURI: ua.SecurityPolicyURINone,
 			})
 		}
-		toks = append(toks, ua.UserTokenPolicy{
-			PolicyID:          ua.UserTokenTypeUserName.String(),
-			TokenType:         ua.UserTokenTypeUserName,
-			SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
-		})
+		if srv.userNameIdentityAuthenticator != nil {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          ua.UserTokenTypeUserName.String(),
+				TokenType:         ua.UserTokenTypeUserName,
+				SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
+			})
+		}
+		if srv.x509IdentityAuthenticator != nil {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          ua.UserTokenTypeCertificate.String(),
+				TokenType:         ua.UserTokenTypeCertificate,
+				SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
+			})
+		}
 		eds = append(eds, ua.EndpointDescription{
 			EndpointURL:         srv.endpointURL,
 			Server:              srv.localDescription,
@@ -1006,19 +1015,27 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 	}
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
-		if srv.allowAnonymousIdentity {
+		if srv.anonymousIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
 				PolicyID:          ua.UserTokenTypeAnonymous.String(),
 				TokenType:         ua.UserTokenTypeAnonymous,
 				SecurityPolicyURI: ua.SecurityPolicyURINone,
 			})
 		}
-		toks = append(toks, ua.UserTokenPolicy{
-			PolicyID:          ua.UserTokenTypeUserName.String(),
-			TokenType:         ua.UserTokenTypeUserName,
-			SecurityPolicyURI: uri,
-		})
-
+		if srv.userNameIdentityAuthenticator != nil {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          ua.UserTokenTypeUserName.String(),
+				TokenType:         ua.UserTokenTypeUserName,
+				SecurityPolicyURI: uri,
+			})
+		}
+		if srv.x509IdentityAuthenticator != nil {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          ua.UserTokenTypeCertificate.String(),
+				TokenType:         ua.UserTokenTypeCertificate,
+				SecurityPolicyURI: uri,
+			})
+		}
 		eds = append(eds, ua.EndpointDescription{
 			EndpointURL:         srv.endpointURL,
 			Server:              srv.localDescription,

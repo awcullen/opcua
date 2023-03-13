@@ -4,6 +4,7 @@ package server_test
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 
@@ -16,6 +17,8 @@ var (
 	host, _         = os.Hostname()
 	port            = 46010
 	SoftwareVersion = "0.3.0"
+	//go:embed testnodeset_test.xml
+	testnodeset []byte
 )
 
 func NewTestServer() (*server.Server, error) {

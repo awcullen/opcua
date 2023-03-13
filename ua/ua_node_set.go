@@ -7,13 +7,13 @@ import (
 
 // UANodeSet supports reading UANodeSet from xml.
 type UANodeSet struct {
-	NamespaceUris []string      `xml:"NamespaceUris>Uri,omitempty"`
-	ServerUris    []string      `xml:"ServerUris>Uri,omitempty"`
-	Aliases       []Alias       `xml:"Aliases>Alias,omitempty"`
-	Models        []interface{} `xml:"Models>Model,omitempty"`
-	Extensions    []interface{} `xml:"Extensions>Extension,omitempty"`
-	Nodes         []UANode      `xml:",any,omitempty"`
-	LastModified  time.Time     `xml:"LastModified,attr"`
+	NamespaceUris []string  `xml:"NamespaceUris>Uri,omitempty"`
+	ServerUris    []string  `xml:"ServerUris>Uri,omitempty"`
+	Aliases       []Alias   `xml:"Aliases>Alias,omitempty"`
+	Models        []any     `xml:"Models>Model,omitempty"`
+	Extensions    []any     `xml:"Extensions>Extension,omitempty"`
+	Nodes         []UANode  `xml:",any,omitempty"`
+	LastModified  time.Time `xml:"LastModified,attr"`
 }
 
 // UANode supports reading UANodeSet from xml.
@@ -22,7 +22,7 @@ type UANode struct {
 	DisplayName   UALocalizedText `xml:"DisplayName"`
 	Description   UALocalizedText `xml:"Description"`
 	References    []*UAReference  `xml:"References>Reference,omitempty"`
-	Extensions    []interface{}   `xml:"Extensions>Extension,omitempty"`
+	Extensions    []any           `xml:"Extensions>Extension,omitempty"`
 	NodeID        string          `xml:"NodeId,attr"`
 	BrowseName    string          `xml:"BrowseName,attr"`
 	WriteMask     uint32          `xml:"WriteMask,attr"`

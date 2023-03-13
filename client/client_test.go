@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -914,10 +915,11 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 	subjectKeyHash := sha1.New()
 	subjectKeyHash.Write(key.PublicKey.N.Bytes())
 	subjectKeyId := subjectKeyHash.Sum(nil)
+	oidDC := asn1.ObjectIdentifier([]int{0, 9, 2342, 19200300, 100, 1, 25})
 
 	template := x509.Certificate{
 		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{CommonName: appName},
+		Subject:               pkix.Name{CommonName: appName, ExtraNames: []pkix.AttributeTypeAndValue{{Type: oidDC, Value: host}}},
 		SubjectKeyId:          subjectKeyId,
 		AuthorityKeyId:        subjectKeyId,
 		NotBefore:             time.Now(),

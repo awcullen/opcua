@@ -24,7 +24,7 @@ func NewChannelManager(server *Server) *ChannelManager {
 		for {
 			select {
 			case <-ticker.C:
-				m.checkForClosedChannels()
+				m.checkForClosedOrExpiredChannels()
 			case <-m.server.closed:
 				m.closeChannels()
 				return
@@ -67,12 +67,19 @@ func (m *ChannelManager) Len() int {
 	return res
 }
 
-func (m *ChannelManager) checkForClosedChannels() {
+func (m *ChannelManager) checkForClosedOrExpiredChannels() {
 	m.Lock()
 	defer m.Unlock()
+	// log.Printf("%d channel(s) open.\n", len(m.channelsByID))
 	for k, ch := range m.channelsByID {
 		if ch.closed {
 			delete(m.channelsByID, k)
+			log.Printf("Deleted closed channel '%d'. %d channel(s) open.\n", ch.channelID, len(m.channelsByID))
+			continue
+		}
+		if ch.IsExpired() {
+			delete(m.channelsByID, k)
+			ch.Close()
 			log.Printf("Deleted expired channel '%d'. %d channel(s) open.\n", ch.channelID, len(m.channelsByID))
 		}
 	}

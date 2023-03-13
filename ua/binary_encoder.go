@@ -4,13 +4,13 @@ package ua
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"reflect"
 	"sync"
 	"time"
 	"unsafe"
-	"fmt"
 
 	"github.com/djherbis/buffer"
 	"github.com/google/uuid"
@@ -18,7 +18,7 @@ import (
 
 var (
 	// bytesPool is a pool of byte slices
-	bytesPool           = sync.Pool{New: func() interface{} { s := make([]byte, 64*1024); return &s }}
+	bytesPool           = sync.Pool{New: func() any { s := make([]byte, 64*1024); return &s }}
 	typeToEncoderMap    sync.Map
 	typeDateTime        = reflect.TypeOf((*time.Time)(nil)).Elem()
 	typeGUID            = reflect.TypeOf((*uuid.UUID)(nil)).Elem()
@@ -59,7 +59,7 @@ func NewBinaryEncoder(w io.Writer, ec EncodingContext) *BinaryEncoder {
 }
 
 // Encode encodes the value using the UA Binary protocol.
-func (enc *BinaryEncoder) Encode(v interface{}) error {
+func (enc *BinaryEncoder) Encode(v any) error {
 	typ := reflect.TypeOf(v)
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()

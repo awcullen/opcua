@@ -450,8 +450,8 @@ func TestEnum(t *testing.T) {
 
 func TestStruct(t *testing.T) {
 	cases := []struct {
-		in    interface{}
-		out   interface{}
+		in    any
+		out   any
 		bytes []byte
 	}{
 		{

@@ -99,7 +99,10 @@ func main() {
 				ProductName:      "testserver",
 				SoftwareVersion:  SoftwareVersion,
 			}),
-		server.WithAnonymousIdentity(true),
+		server.WithAuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
+			log.Printf("Login anonymous identity from %s\n", applicationURI)
+			return nil
+		}),
 		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
 			valid := false
 			for _, user := range userids {
@@ -113,13 +116,21 @@ func main() {
 			if !valid {
 				return ua.BadUserAccessDenied
 			}
-			// log.Printf("Login user: %s from %s\n", userIdentity.UserName, applicationURI)
+			log.Printf("Login %s from %s\n", userIdentity.UserName, applicationURI)
+			return nil
+		}),
+		server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
+			cert, err := x509.ParseCertificate([]byte(userIdentity.Certificate))
+			if err != nil {
+				return ua.BadUserAccessDenied
+			}
+			log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
 			return nil
 		}),
 		server.WithSecurityPolicyNone(true),
 		server.WithInsecureSkipVerify(),
 		server.WithServerDiagnostics(true),
-		server.WithTrace(),
+		// server.WithTrace(),
 	)
 	if err != nil {
 		os.Exit(1)
@@ -370,10 +381,11 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 	subjectKeyHash := sha1.New()
 	subjectKeyHash.Write(key.PublicKey.N.Bytes())
 	subjectKeyId := subjectKeyHash.Sum(nil)
+	oidDC := asn1.ObjectIdentifier([]int{0, 9, 2342, 19200300, 100, 1, 25})
 
 	template := x509.Certificate{
 		SerialNumber:          serialNumber,
-		Subject:               pkix.Name{CommonName: appName, ExtraNames: []pkix.AttributeTypeAndValue{{Type: asn1.ObjectIdentifier([]int{0,9,2342,19200300,100,1,25}), Value:host}}},
+		Subject:               pkix.Name{CommonName: appName, ExtraNames: []pkix.AttributeTypeAndValue{{Type: oidDC, Value: host}}},
 		SubjectKeyId:          subjectKeyId,
 		AuthorityKeyId:        subjectKeyId,
 		NotBefore:             time.Now(),

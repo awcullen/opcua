@@ -1593,7 +1593,7 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, ua.StatusCode
 	if err := bodyDecoder.ReadNodeID(&nodeID); err != nil {
 		return nil, ua.BadDecodingError
 	}
-	var temp interface{}
+	var temp any
 	switch nodeID {
 
 	// frequent

@@ -29,6 +29,10 @@ import (
 const (
 	// sequenceHeaderSize is the size of the sequence header
 	sequenceHeaderSize int = 8
+	// the minimum number of milliseconds that a Token may be used before being renewed by the client. (5 min)
+	minTokenLifetime uint32 = 300 * 1000
+	// the maximum number of milliseconds that a Token may be used before being renewed by the client. (60 min)
+	maxTokenLifetime uint32 = 3600 * 1000
 )
 
 // serverSecureChannel implements a secure channel for binary data over Tcp.
@@ -58,8 +62,9 @@ type serverSecureChannel struct {
 	}
 	lastSequenceNumber         uint32
 	pendingTokenID             uint32
-	sendingTokenID             uint32
-	receivingTokenID           uint32
+	pendingTokenExpiration     time.Time
+	tokenID                    uint32
+	tokenExpiration            time.Time
 	localSigningKey            []byte
 	localEncryptingKey         []byte
 	localInitializationVector  []byte
@@ -185,6 +190,13 @@ func (ch *serverSecureChannel) LocalMaxChunkCount() uint32 {
 	return ch.maxChunkCount
 }
 
+// IsExpired returns true if the life of the current Token is exceeded.
+func (ch *serverSecureChannel) IsExpired() bool {
+	ch.RLock()
+	defer ch.RUnlock()
+	return time.Now().After(ch.tokenExpiration)
+}
+
 // Open the secure channel to the remote endpoint.
 func (ch *serverSecureChannel) Open() error {
 	ch.Lock()
@@ -294,7 +306,6 @@ func (ch *serverSecureChannel) Open() error {
 	}
 
 	ch.securityMode = oscr.SecurityMode
-	ch.pendingTokenID = ch.getNextTokenID()
 	if ch.securityMode != ua.MessageSecurityModeNone {
 		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
 	} else {
@@ -345,6 +356,17 @@ func (ch *serverSecureChannel) Open() error {
 			ch.remoteApplicationURI = cert.URIs[0].String()
 		}
 	}
+
+	ch.pendingTokenID = ch.getNextTokenID()
+	revisedLifetime := oscr.RequestedLifetime
+	if revisedLifetime > maxTokenLifetime {
+		revisedLifetime = maxTokenLifetime
+	}
+	if revisedLifetime < minTokenLifetime {
+		revisedLifetime = minTokenLifetime
+	}
+	ch.pendingTokenExpiration = time.Now().Add(time.Duration(revisedLifetime) * time.Millisecond)
+
 	res := &ua.OpenSecureChannelResponse{
 		ResponseHeader: ua.ResponseHeader{
 			Timestamp:     time.Now(),
@@ -355,7 +377,7 @@ func (ch *serverSecureChannel) Open() error {
 			ChannelID:       ch.channelID,
 			TokenID:         ch.pendingTokenID,
 			CreatedAt:       time.Now(),
-			RevisedLifetime: oscr.RequestedLifetime,
+			RevisedLifetime: revisedLifetime,
 		},
 		ServerNonce: ua.ByteString(ch.localNonce),
 	}
@@ -411,7 +433,7 @@ func (ch *serverSecureChannel) Abort(reason ua.StatusCode, message string) error
 
 // Write the service response.
 func (ch *serverSecureChannel) Write(res ua.ServiceResponse, id uint32) error {
-	if ch.trace {
+	if ch.trace || res.Header().ServiceResult == ua.BadNothingToDo {
 		b, _ := json.MarshalIndent(res, "", " ")
 		log.Printf("%s%s", reflect.TypeOf(res).Elem().Name(), b)
 	}
@@ -960,7 +982,7 @@ func (ch *serverSecureChannel) sendServiceResponse(response ua.ServiceResponse, 
 		encoder.WriteUInt32(ch.channelID)
 
 		// symmetric security header
-		encoder.WriteUInt32(ch.sendingTokenID)
+		encoder.WriteUInt32(ch.tokenID)
 
 		if plainHeaderSize != stream.Len() {
 			return ua.BadEncodingError
@@ -1030,7 +1052,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 	var bodySize int
 	var paddingSize int
 	var channelID uint32
-	var tokenID uint32
+	var newTokenID uint32
 
 	var bodyStream = buffer.NewPartitionAt(bufferPool)
 	defer bodyStream.Reset()
@@ -1079,17 +1101,17 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 			}
 
 			// symmetric security header
-			if err = decoder.ReadUInt32(&tokenID); err != nil {
+			if err = decoder.ReadUInt32(&newTokenID); err != nil {
 				return nil, 0, ua.BadDecodingError
 			}
 
 			// detect new token
-			if ch.receivingTokenID != tokenID {
-				if tokenID != ch.pendingTokenID {
+			if ch.tokenID != newTokenID {
+				if newTokenID != ch.pendingTokenID {
 					return nil, 0, ua.BadSecureChannelTokenUnknown
 				}
-				ch.receivingTokenID = tokenID
-
+				ch.tokenID = ch.pendingTokenID
+				ch.tokenExpiration = ch.pendingTokenExpiration
 				if ch.securityMode != ua.MessageSecurityModeNone {
 					// (re)create security keys for verifying, decrypting
 					ch.remoteSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
@@ -1113,7 +1135,6 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 				}
 
 				ch.sendingSemaphore.Lock()
-				ch.sendingTokenID = tokenID
 				if ch.securityMode != ua.MessageSecurityModeNone {
 
 					// (re)create security keys for signing, encrypting
@@ -1356,7 +1377,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 	if err := bodyDecoder.ReadNodeID(&nodeID); err != nil {
 		return nil, 0, ua.BadDecodingError
 	}
-	var temp interface{}
+	var temp any
 	switch nodeID {
 
 	// frequent
@@ -1464,13 +1485,24 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 	if req.RequestType != ua.SecurityTokenRequestTypeRenew {
 		return ua.BadSecurityChecksFailed
 	}
-	ch.pendingTokenID = ch.getNextTokenID()
+
 	if ch.securityMode != ua.MessageSecurityModeNone {
 		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
 	} else {
 		ch.localNonce = []byte{}
 	}
 	ch.remoteNonce = []byte(req.ClientNonce)
+
+	ch.pendingTokenID = ch.getNextTokenID()
+	revisedLifetime := req.RequestedLifetime
+	if revisedLifetime > maxTokenLifetime {
+		revisedLifetime = maxTokenLifetime
+	}
+	if revisedLifetime < minTokenLifetime {
+		revisedLifetime = minTokenLifetime
+	}
+	ch.pendingTokenExpiration = time.Now().Add(time.Duration(revisedLifetime) * time.Millisecond)
+
 	res := &ua.OpenSecureChannelResponse{
 		ResponseHeader: ua.ResponseHeader{
 			Timestamp:     time.Now(),
@@ -1481,7 +1513,7 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 			ChannelID:       ch.channelID,
 			TokenID:         ch.pendingTokenID,
 			CreatedAt:       time.Now(),
-			RevisedLifetime: req.RequestedLifetime,
+			RevisedLifetime: revisedLifetime,
 		},
 		ServerNonce: ua.ByteString(ch.localNonce),
 	}
@@ -1489,7 +1521,7 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 	if err != nil {
 		return err
 	}
-	// log.Printf("Renewed security token. %d , lifetime: %d\n", res.SecurityToken.TokenID, res.SecurityToken.RevisedLifetime)
+	log.Printf("Renewed security token. %d , lifetime: %d\n", res.SecurityToken.TokenID, res.SecurityToken.RevisedLifetime)
 	return nil
 }
 

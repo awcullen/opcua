@@ -2,6 +2,20 @@ package server
 
 import "github.com/awcullen/opcua/ua"
 
+// UserNameIdentityAuthenticator authenticates AnonymousIdentity.
+type AnonymousIdentityAuthenticator interface {
+	// AuthenticateUserNameIdentity returns nil when user identity is authenticated, or BadUserAccessDenied otherwise.
+	AuthenticateAnonymousIdentity(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error
+}
+
+// AuthenticateUserNameIdentityFunc authenticates AnonymousIdentity.
+type AuthenticateAnonymousIdentityFunc func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error
+
+// AuthenticateUserNameIdentity ...
+func (f AuthenticateAnonymousIdentityFunc) AuthenticateAnonymousIdentity(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
+	return f(userIdentity, applicationURI, endpointURL)
+}
+
 // UserNameIdentityAuthenticator authenticates UserNameIdentity.
 type UserNameIdentityAuthenticator interface {
 	// AuthenticateUserNameIdentity returns nil when user identity is authenticated, or BadUserAccessDenied otherwise.

@@ -174,7 +174,7 @@ func (mi *EventMonitoredItem) setSamplingInterval(samplingInterval float64) {
 	mi.samplingInterval = 0
 }
 
-func (mi *EventMonitoredItem) setFilter(filter interface{}) {
+func (mi *EventMonitoredItem) setFilter(filter any) {
 	if ef, ok := filter.(ua.EventFilter); ok {
 		mi.eventFilter = ef
 	} else {
@@ -223,7 +223,7 @@ var (
 	attributeOperandEventType = ua.SimpleAttributeOperand{TypeDefinitionID: ua.ObjectTypeIDBaseEventType, BrowsePath: ua.ParseBrowsePath("EventType"), AttributeID: ua.AttributeIDValue}
 )
 
-func (mi *EventMonitoredItem) whereClause(evt ua.Event, idx int) interface{} {
+func (mi *EventMonitoredItem) whereClause(evt ua.Event, idx int) any {
 	if idx >= len(mi.eventFilter.WhereClause.Elements) {
 		return true
 	}
@@ -295,10 +295,10 @@ func (mi *EventMonitoredItem) stopMonitoring() {
 	}
 }
 
-func (mi *EventMonitoredItem) notifications(max int) (notifications []interface{}, more bool) {
+func (mi *EventMonitoredItem) notifications(max int) (notifications []any, more bool) {
 	mi.Lock()
 	defer mi.Unlock()
-	notifications = make([]interface{}, 0, 4)
+	notifications = make([]any, 0, 4)
 	for i := 0; i < max; i++ {
 		if mi.queue.Len() > 0 {
 			notifications = append(notifications, mi.queue.PopFront())

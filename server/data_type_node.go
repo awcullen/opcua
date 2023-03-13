@@ -21,13 +21,13 @@ type DataTypeNode struct {
 	accessRestrictions uint16
 	references         []ua.Reference
 	isAbstract         bool
-	dataTypeDefinition interface{}
+	dataTypeDefinition any
 }
 
 var _ Node = (*DataTypeNode)(nil)
 
 // NewDataTypeNode creates a new DataTypeNode.
-func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool, structureOrEnumDefinition interface{}) *DataTypeNode {
+func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool, structureOrEnumDefinition any) *DataTypeNode {
 	return &DataTypeNode{
 		nodeID:             nodeID,
 		nodeClass:          ua.NodeClassDataType,
@@ -114,7 +114,7 @@ func (n *DataTypeNode) IsAbstract() bool {
 }
 
 // DataTypeDefinition returns the DataTypeDefinition attribute of this node.
-func (n *DataTypeNode) DataTypeDefinition() interface{} {
+func (n *DataTypeNode) DataTypeDefinition() any {
 	return n.dataTypeDefinition
 }
 

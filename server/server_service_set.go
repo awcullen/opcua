@@ -353,7 +353,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	}
 
 	// validate identity and store
-	var userIdentity interface{}
+	var userIdentity any
 	switch userIdentityToken := req.UserIdentityToken.(type) {
 	case ua.IssuedIdentityToken:
 		var tokenPolicy *ua.UserTokenPolicy
@@ -736,8 +736,8 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	// authenticate user
 	switch id := userIdentity.(type) {
 	case ua.AnonymousIdentity:
-		if srv.allowAnonymousIdentity {
-			err = nil
+		if auth := srv.anonymousIdentityAuthenticator; auth != nil {
+			err = auth.AuthenticateAnonymousIdentity(id, ch.remoteApplicationURI, ch.localEndpoint.EndpointURL)
 		} else {
 			err = ua.BadUserAccessDenied
 		}

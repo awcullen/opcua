@@ -32,7 +32,7 @@ type MonitoredItem interface {
 	Modify(ctx context.Context, req ua.MonitoredItemModifyRequest) ua.MonitoredItemModifyResult
 	Delete()
 	SetMonitoringMode(ctx context.Context, mode ua.MonitoringMode)
-	notifications(max int) (notifications []interface{}, more bool)
+	notifications(max int) (notifications []any, more bool)
 	notificationsAvailable(tn time.Time, late bool, resend bool) bool
 	AddTriggeredItem(item MonitoredItem) bool
 	RemoveTriggeredItem(item MonitoredItem) bool

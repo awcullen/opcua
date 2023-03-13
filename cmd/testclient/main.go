@@ -28,48 +28,46 @@ func main() {
 	var err error
 	var req *ua.ReadRequest
 
-	for i := 0; i < 1000; i++ {
-		fmt.Println(i)
-		// open a connection to testserver running locally.
-		ch, err = client.Dial(
-			ctx,
-			"opc.tcp://localhost:46010",
-			client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
-			client.WithUserNameIdentity("root", "secret"),
-			client.WithInsecureSkipVerify(), // skips verification of server certificate
-			client.WithTokenLifetime(20000),
-		)
-		if err != nil {
-			fmt.Printf("Error opening client connection. %s\n", err.Error())
-			return
-		}
+	// open a connection to testserver running locally.
+	ch, err = client.Dial(
+		ctx,
+		"opc.tcp://localhost:46010",
+		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithUserNameIdentity("root", "secret"),
+		client.WithInsecureSkipVerify(), // skips verification of server certificate
+		client.WithTokenLifetime(20000),
+	)
+	if err != nil {
+		fmt.Printf("Error opening client connection. %s\n", err.Error())
+		return
+	}
 
-		// prepare read request
-		req = &ua.ReadRequest{
-			NodesToRead: []ua.ReadValueID{
-				{
-					NodeID:      ua.VariableIDServerServerStatus,
-					AttributeID: ua.AttributeIDValue,
-				},
+	// prepare read request
+	req = &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
+			{
+				NodeID:      ua.VariableIDServerServerStatus,
+				AttributeID: ua.AttributeIDValue,
 			},
-		}
+		},
+	}
 
-		for i := 0; i < 1000; i++ {
-			// send request to server. receive response or error
-			_, err = ch.Read(ctx, req)
-			if err != nil {
-				fmt.Printf("Error reading ServerStatus. %s\n", err.Error())
-				ch.Abort(ctx)
-				return
-			}
-		}
-		// close connection
-		err = ch.Close(ctx)
+	for i := 0; i < 1000; i++ {
+		// send request to server. receive response or error
+		_, err = ch.Read(ctx, req)
 		if err != nil {
-			fmt.Printf("Error closing client. %s\n", err.Error())
+			fmt.Printf("Error reading ServerStatus. %s\n", err.Error())
 			ch.Abort(ctx)
 			return
 		}
+	}
+
+	// close connection
+	err = ch.Close(ctx)
+	if err != nil {
+		fmt.Printf("Error closing client. %s\n", err.Error())
+		ch.Abort(ctx)
+		return
 	}
 }
 

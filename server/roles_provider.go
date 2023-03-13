@@ -7,12 +7,20 @@ import (
 	"github.com/awcullen/opcua/ua"
 )
 
-// RolesProvider selects roles where the user identity and connection information matches the membership criteria.
+// RolesProvider looks up the roles for the given user identity and connection information.
 // Roles are identified by a NodeID.  There are a number of well-known roles.
 // Later, users are granted Permissions to perform actions based on the user's role memberships.
 type RolesProvider interface {
-	// GetRoles returns the roles where the user matches the membership criteria.
-	GetRoles(userIdentity interface{}, applicationURI string, endpointURL string) ([]ua.NodeID, error)
+	// GetRoles returns the roles for the given user identity and connection information.
+	GetRoles(userIdentity any, applicationURI string, endpointURL string) ([]ua.NodeID, error)
+}
+
+// GetRolesFunc returns Roles for the given user identity and connection information.
+type GetRolesFunc func(userIdentity any, applicationURI string, endpointURL string) ([]ua.NodeID, error)
+
+// GetRoles ...
+func (f GetRolesFunc) GetRoles(userIdentity any, applicationURI string, endpointURL string) ([]ua.NodeID, error) {
+	return f(userIdentity, applicationURI, endpointURL)
 }
 
 // IdentityMappingRule ...
@@ -105,6 +113,8 @@ var (
 			EndpointsExclude:    true,
 		},
 	}
+	// DefaultRolesProvider is a RulesBasedRolesProvider using the DefaultIdentityMappingRules
+	DefaultRolesProvider = NewRulesBasedRolesProvider(DefaultIdentityMappingRules)
 )
 
 // IsUserPermitted returns true if the user's role permissions contain a given permissionType.
@@ -130,7 +140,7 @@ func NewRulesBasedRolesProvider(rules []IdentityMappingRule) RolesProvider {
 }
 
 // GetRoles ...
-func (p *RulesBasedRolesProvider) GetRoles(userIdentity interface{}, applicationURI string, endpointURL string) ([]ua.NodeID, error) {
+func (p *RulesBasedRolesProvider) GetRoles(userIdentity any, applicationURI string, endpointURL string) ([]ua.NodeID, error) {
 	roles := []ua.NodeID{}
 	for _, rule := range p.identityMappingRules {
 		ok := rule.ApplicationsExclude // true means the following applications should be excluded

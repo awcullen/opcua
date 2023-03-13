@@ -35,14 +35,13 @@ const (
 /*
 Variant stores a single value or slice of the following types:
 
-   bool, int8, uint8, int16, uint16, int32, uint32
-   int64, uint64, float32, float64, string
-   time.Time, uuid.UUID, ByteString, XmlElement
-   NodeId, ExpandedNodeId, StatusCode, QualifiedName
-   LocalizedText, DataValue, Variant
+	bool, int8, uint8, int16, uint16, int32, uint32
+	int64, uint64, float32, float64, string
+	time.Time, uuid.UUID, ByteString, XmlElement
+	NodeId, ExpandedNodeId, StatusCode, QualifiedName
+	LocalizedText, DataValue, Variant
 
 In addition, you may store any type that is registered with the BinaryEncoder.
 These types will be encoded as an ExtensionObject by the BinaryEncoder.
-
 */
-type Variant interface{}
+type Variant any

@@ -237,7 +237,7 @@ func (mi *DataChangeMonitoredItem) setSamplingInterval(samplingInterval float64)
 	mi.ti = time.Duration(mi.samplingInterval) * time.Millisecond
 }
 
-func (mi *DataChangeMonitoredItem) setFilter(filter interface{}) {
+func (mi *DataChangeMonitoredItem) setFilter(filter any) {
 	if dcf, ok := filter.(ua.DataChangeFilter); ok {
 		mi.dataChangeFilter = dcf
 	} else {
@@ -336,10 +336,10 @@ func (mi *DataChangeMonitoredItem) enqueue(item ua.DataValue) {
 
 }
 
-func (mi *DataChangeMonitoredItem) notifications(max int) (notifications []interface{}, more bool) {
+func (mi *DataChangeMonitoredItem) notifications(max int) (notifications []any, more bool) {
 	mi.Lock()
 	defer mi.Unlock()
-	notifications = make([]interface{}, 0, 4)
+	notifications = make([]any, 0, 4)
 	for i := 0; i < max; i++ {
 		if mi.queue.Len() > 0 {
 			notifications = append(notifications, mi.queue.PopFront())

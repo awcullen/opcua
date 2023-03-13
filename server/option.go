@@ -94,7 +94,13 @@ func WithTrace() Option {
 // WithAnonymousIdentity sets whether to allow anonymous identity.
 func WithAnonymousIdentity(value bool) Option {
 	return func(srv *Server) error {
-		srv.allowAnonymousIdentity = value
+		if value {
+			srv.anonymousIdentityAuthenticator = AuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
+				return nil
+			})
+		} else {
+			srv.anonymousIdentityAuthenticator = nil
+		}
 		return nil
 	}
 }
@@ -103,6 +109,24 @@ func WithAnonymousIdentity(value bool) Option {
 func WithSecurityPolicyNone(value bool) Option {
 	return func(srv *Server) error {
 		srv.allowSecurityPolicyNone = value
+		return nil
+	}
+}
+
+// WithAnonymousIdentityAuthenticator sets the authenticator for AnonymousIdentity.
+// Provided authenticator can check applicationURI of the client certificate, if provided.
+func WithAnonymousIdentityAuthenticator(authenticator AnonymousIdentityAuthenticator) Option {
+	return func(srv *Server) error {
+		srv.anonymousIdentityAuthenticator = authenticator
+		return nil
+	}
+}
+
+// WithAuthenticateAnonymousIdentityFunc sets the authenticate func for AnonymousIdentity.
+// Provided function can check applicationURI of the client certificate, if provided.
+func WithAuthenticateAnonymousIdentityFunc(f AuthenticateAnonymousIdentityFunc) Option {
+	return func(srv *Server) error {
+		srv.anonymousIdentityAuthenticator = f
 		return nil
 	}
 }
@@ -143,6 +167,14 @@ func WithAuthenticateX509IdentityFunc(f AuthenticateX509IdentityFunc) Option {
 func WithRolesProvider(provider RolesProvider) Option {
 	return func(srv *Server) error {
 		srv.rolesProvider = provider
+		return nil
+	}
+}
+
+// WithGetRolesFunc sets the GetRolesFunc that returns the roles for the given user identity.
+func WithGetRolesFunc(f GetRolesFunc) Option {
+	return func(srv *Server) error {
+		srv.rolesProvider = f
 		return nil
 	}
 }
