@@ -1521,7 +1521,7 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 	if err != nil {
 		return err
 	}
-	log.Printf("Renewed security token. %d , lifetime: %d\n", res.SecurityToken.TokenID, res.SecurityToken.RevisedLifetime)
+	// log.Printf("Renewed security token. %d , lifetime: %d\n", res.SecurityToken.TokenID, res.SecurityToken.RevisedLifetime)
 	return nil
 }
 

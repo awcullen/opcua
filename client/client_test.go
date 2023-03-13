@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -111,7 +112,7 @@ func TestOpenClientlWithoutSecurity(t *testing.T) {
 	}
 }
 
-// TestOpenClientWithSecurity tests opening a connection with a server using the best security the server offers.
+// TestOpenClientWithSecurity tests opening a connection with a server using each security policy the server offers.
 func TestOpenClientWithSecurity(t *testing.T) {
 	ctx := context.Background()
 	res, err := client.GetEndpoints(context.Background(), &ua.GetEndpointsRequest{EndpointURL: endpointURL})
@@ -143,7 +144,48 @@ func TestOpenClientWithSecurity(t *testing.T) {
 			return
 		}
 	}
+}
 
+// TestOpenClientWithX509Identity tests opening a connection with a server using each security policy the server offers.
+func TestOpenClientWithX509Identity(t *testing.T) {
+	cert, err := tls.LoadX509KeyPair("./pki/client.crt", "./pki/client.key")
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error loading certificate"))
+		return
+	}
+	userCert := cert.Certificate[0]
+	userPrivKey := cert.PrivateKey.(*rsa.PrivateKey)
+
+	ctx := context.Background()
+	res, err := client.GetEndpoints(context.Background(), &ua.GetEndpointsRequest{EndpointURL: endpointURL})
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error calling GetEndpoints"))
+		return
+	}
+	t.Logf("Success calling getEndpoints:")
+	for _, e := range res.Endpoints {
+		ch, err := client.Dial(
+			ctx,
+			endpointURL,
+			client.WithSecurityPolicyURI(e.SecurityPolicyURI),
+			client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+			client.WithInsecureSkipVerify(),
+			client.WithX509Identity(ua.ByteString(userCert), userPrivKey),
+		)
+		if err != nil {
+			t.Error(errors.Wrap(err, "Error opening client"))
+			return
+		}
+		t.Logf("Success opening client: %s", ch.EndpointURL())
+		t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
+		t.Logf("  SecurityMode: %s", ch.SecurityMode())
+		err = ch.Close(ctx)
+		if err != nil {
+			t.Error(errors.Wrap(err, "Error closing client"))
+			ch.Abort(ctx)
+			return
+		}
+	}
 }
 
 // TestReadServerStatus tests reading the server status variable.
