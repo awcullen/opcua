@@ -96,10 +96,10 @@ func TestOpenClientlWithoutSecurity(t *testing.T) {
 		client.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
 	t.Logf("  SecurityMode: %s", ch.SecurityMode())
 	err = ch.Close(ctx)
@@ -129,10 +129,10 @@ func TestOpenClientWithSecurity(t *testing.T) {
 			client.WithUserNameIdentity("root", "secret"),
 		)
 		if err != nil {
-			t.Error(errors.Wrap(err, "Error opening client"))
+			t.Error(errors.Wrap(err, "Error connecting to server"))
 			return
 		}
-		t.Logf("Success opening client: %s", ch.EndpointURL())
+		t.Logf("Success connecting to server: %s", ch.EndpointURL())
 		t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
 		t.Logf("  SecurityMode: %s", ch.SecurityMode())
 		err = ch.Close(ctx)
@@ -155,10 +155,10 @@ func TestReadServerStatus(t *testing.T) {
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	res, err := ch.Read(ctx, &ua.ReadRequest{
 		NodesToRead: []ua.ReadValueID{
 			{NodeID: ua.VariableIDServerServerStatus, AttributeID: ua.AttributeIDValue},
@@ -201,10 +201,10 @@ func TestReadBuiltinTypes(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.ReadRequest{
 		NodesToRead: []ua.ReadValueID{
 			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Boolean"), AttributeID: ua.AttributeIDValue},
@@ -278,10 +278,10 @@ func TestReadAttributes(t *testing.T) {
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.ReadRequest{
 		NodesToRead: []ua.ReadValueID{
 			{NodeID: ua.ObjectIDServer, AttributeID: 1},
@@ -330,10 +330,10 @@ func TestWrite(t *testing.T) {
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.WriteRequest{
 		NodesToWrite: []ua.WriteValue{
 			{
@@ -372,10 +372,10 @@ func TestReadIndexRange(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.ReadRequest{
 		NodesToRead: []ua.ReadValueID{
 			{
@@ -414,10 +414,10 @@ func TestWriteIndexRange(t *testing.T) {
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.WriteRequest{
 		NodesToWrite: []ua.WriteValue{
 			{
@@ -473,10 +473,10 @@ func TestBrowse(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.BrowseRequest{
 		NodesToBrowse: []ua.BrowseDescription{
 			{
@@ -520,10 +520,10 @@ func TestSubscribe(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
 		RequestedMaxKeepAliveCount:  30,
@@ -610,10 +610,10 @@ func TestCallMethod(t *testing.T) {
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 
 	req := &ua.CallRequest{
 		MethodsToCall: []ua.CallMethodRequest{{
@@ -656,10 +656,10 @@ func TestTranslate(t *testing.T) {
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.TranslateBrowsePathsToNodeIDsRequest{
 		BrowsePaths: []ua.BrowsePath{
 			{
@@ -719,10 +719,10 @@ func TestReadHistory(t *testing.T) {
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 
 	t.Logf("Start logging of data...")
 	req := &ua.CallRequest{

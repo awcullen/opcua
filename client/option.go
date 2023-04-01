@@ -29,17 +29,30 @@ func WithUserNameIdentity(userName, password string) Option {
 }
 
 // WithX509Identity sets the user identity to an X509Identity created from a certificate and private key. (default: AnonymousIdentity)
-func WithX509Identity(certificate ua.ByteString, privateKey *rsa.PrivateKey) Option {
+func WithX509Identity(certificate []byte, privateKey *rsa.PrivateKey) Option {
 	return func(c *Client) error {
-		c.userIdentity = ua.X509Identity{Certificate: certificate, Key: privateKey}
+		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(certificate), Key: privateKey}
 		return nil
 	}
 }
 
-// WithIssuedIdentity sets the user identity to an IssuedIdentity created from a token. (default: AnonymousIdentity)
-func WithIssuedIdentity(tokenData ua.ByteString) Option {
+// WithX509IdentityFile sets the user identity to an X509Identity created from the file paths of the certificate and private key. (default: AnonymousIdentity)
+// Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
+func WithX509IdentityFile(certPath, keyPath string) Option {
 	return func(c *Client) error {
-		c.userIdentity = ua.IssuedIdentity{TokenData: tokenData}
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			return err
+		}
+		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(cert.Certificate[0]), Key: cert.PrivateKey.(*rsa.PrivateKey)}
+		return nil
+	}
+}
+
+// WithIssuedIdentity sets the user identity to an IssuedIdentity created from token data. (default: AnonymousIdentity)
+func WithIssuedIdentity(tokenData []byte) Option {
+	return func(c *Client) error {
+		c.userIdentity = ua.IssuedIdentity{TokenData: ua.ByteString(tokenData)}
 		return nil
 	}
 }
@@ -92,10 +105,10 @@ func WithClientCertificateFile(certPath, keyPath string) Option {
 }
 
 // WithTrustedCertificatesFile sets the file path of the trusted server certificates or certificate authorities.
-// The files must contain PEM encoded data.
+// The file must contain PEM encoded data.
 func WithTrustedCertificatesFile(path string) Option {
 	return func(c *Client) error {
-		c.trustedCertsFile = path
+		c.trustedCertsPath = path
 		return nil
 	}
 }

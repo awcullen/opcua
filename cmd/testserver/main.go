@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -128,8 +127,10 @@ func main() {
 			return nil
 		}),
 		server.WithSecurityPolicyNone(true),
-		server.WithInsecureSkipVerify(),
+		//server.WithInsecureSkipVerify(),
+		server.WithTrustedCertificatesFile("./pki/trusted.crt"),
 		server.WithServerDiagnostics(true),
+		server.WithMaxSessionCount(50),
 		// server.WithTrace(),
 	)
 	if err != nil {
@@ -144,14 +145,14 @@ func main() {
 
 	// install MethodNoArgs method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodNoArgs")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			return ua.CallMethodResult{}
 		})
 	}
 
 	// install MethodI method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodI")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
@@ -174,7 +175,7 @@ func main() {
 
 	// install MethodO method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodO")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) > 0 {
 				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
@@ -185,7 +186,7 @@ func main() {
 
 	// install MethodIO method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 2 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
@@ -214,6 +215,7 @@ func main() {
 
 	// add 'CustomStruct' data type
 	typCustomStruct := server.NewDataTypeNode(
+		srv,
 		ua.NodeIDNumeric{NamespaceIndex: 2, ID: 13},
 		ua.QualifiedName{NamespaceIndex: 2, Name: "CustomStruct"},
 		ua.LocalizedText{Text: "CustomStruct"},
@@ -241,6 +243,7 @@ func main() {
 
 	// add 'CustomStruct' variable
 	varCustomStruct := server.NewVariableNode(
+		srv,
 		ua.NodeIDNumeric{NamespaceIndex: 2, ID: 14},
 		ua.QualifiedName{NamespaceIndex: 2, Name: "CustomStruct"},
 		ua.LocalizedText{Text: "CustomStruct"},

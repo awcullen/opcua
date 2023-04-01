@@ -3,7 +3,6 @@
 package server
 
 import (
-	"context"
 	"sync"
 
 	"github.com/awcullen/opcua/ua"
@@ -12,6 +11,7 @@ import (
 // DataTypeNode is a Node class that describes the syntax of a variable's Value.
 type DataTypeNode struct {
 	sync.RWMutex
+	server             *Server
 	nodeID             ua.NodeID
 	nodeClass          ua.NodeClass
 	browseName         ua.QualifiedName
@@ -27,8 +27,9 @@ type DataTypeNode struct {
 var _ Node = (*DataTypeNode)(nil)
 
 // NewDataTypeNode creates a new DataTypeNode.
-func NewDataTypeNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool, structureOrEnumDefinition any) *DataTypeNode {
+func NewDataTypeNode(server *Server, nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, isAbstract bool, structureOrEnumDefinition any) *DataTypeNode {
 	return &DataTypeNode{
+		server:             server,
 		nodeID:             nodeID,
 		nodeClass:          ua.NodeClassDataType,
 		browseName:         browseName,
@@ -73,16 +74,15 @@ func (n *DataTypeNode) RolePermissions() []ua.RolePermissionType {
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *DataTypeNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+func (n *DataTypeNode) UserRolePermissions(userIdentity any) []ua.RolePermissionType {
 	filteredPermissions := []ua.RolePermissionType{}
-	session, ok := ctx.Value(SessionKey).(*Session)
-	if !ok {
+	roles, err := n.server.GetRoles(userIdentity, "", "")
+	if err != nil {
 		return filteredPermissions
 	}
-	roles := session.UserRoles()
 	rolePermissions := n.RolePermissions()
 	if rolePermissions == nil {
-		rolePermissions = session.Server().RolePermissions()
+		rolePermissions = n.server.RolePermissions()
 	}
 	for _, role := range roles {
 		for _, rp := range rolePermissions {

@@ -3,7 +3,6 @@
 package server_test
 
 import (
-	"context"
 	_ "embed"
 	"fmt"
 	"os"
@@ -90,14 +89,14 @@ func NewTestServer() (*server.Server, error) {
 
 	// install MethodNoArgs method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodNoArgs")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			return ua.CallMethodResult{}
 		})
 	}
 
 	// install MethodI method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodI")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
@@ -120,7 +119,7 @@ func NewTestServer() (*server.Server, error) {
 
 	// install MethodO method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodO")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) > 0 {
 				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
@@ -131,7 +130,7 @@ func NewTestServer() (*server.Server, error) {
 
 	// install MethodIO method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 2 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}

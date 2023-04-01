@@ -7,14 +7,6 @@ import "github.com/awcullen/opcua/ua"
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
 
-// WithSessionTimeout sets the number of milliseconds that a session may be unused before being closed by the server. (default: 2 min)
-func WithSessionTimeout(value float64) Option {
-	return func(srv *Server) error {
-		srv.sessionTimeout = value
-		return nil
-	}
-}
-
 // WithMaxSessionCount sets the number of sessions that may be active. (default: no limit)
 func WithMaxSessionCount(value uint32) Option {
 	return func(srv *Server) error {
@@ -43,6 +35,15 @@ func WithServerCapabilities(value *ua.ServerCapabilities) Option {
 func WithBuildInfo(value ua.BuildInfo) Option {
 	return func(srv *Server) error {
 		srv.buildInfo = value
+		return nil
+	}
+}
+
+// WithTrustedCertificatesFile sets the file path of the trusted client certificates or certificate authorities.
+// The file must contain PEM encoded data.
+func WithTrustedCertificatesFile(path string) Option {
+	return func(srv *Server) error {
+		srv.trustedCertsPath = path
 		return nil
 	}
 }

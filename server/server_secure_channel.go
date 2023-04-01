@@ -88,7 +88,6 @@ type serverSecureChannel struct {
 	maxChunkCount     uint32
 	endpointURL       string
 	conn              net.Conn
-	closed            bool
 }
 
 // newServerSecureChannel initializes a new instance of the UaTcpSecureChannel.
@@ -106,6 +105,7 @@ func newServerSecureChannel(srv *Server, conn net.Conn, receiveBufferSize, sendB
 		securityPolicy:    new(ua.SecurityPolicyNone),
 		localCertificate:  srv.localCertificate,
 		localPrivateKey:   srv.localPrivateKey,
+		tokenExpiration:   time.Now().Add(20 * time.Second),
 	}
 	return ch
 }
@@ -201,9 +201,11 @@ func (ch *serverSecureChannel) IsExpired() bool {
 func (ch *serverSecureChannel) Open() error {
 	ch.Lock()
 	defer ch.Unlock()
+
 	// log.Printf("Opening secure channel.\n")
 	buf := *(bytesPool.Get().(*[]byte))
 	defer bytesPool.Put(&buf)
+	ch.conn.SetDeadline(ch.tokenExpiration)
 	_, err := ch.read(buf)
 	if err != nil {
 		return ua.BadDecodingError
@@ -399,8 +401,6 @@ func (ch *serverSecureChannel) Close() error {
 	// log.Printf("Closing secure channel.\n")
 	if ch.conn != nil {
 		ch.conn.Close()
-		ch.closed = true
-		return nil
 	}
 	return nil
 }
@@ -421,19 +421,17 @@ func (ch *serverSecureChannel) Abort(reason ua.StatusCode, message string) error
 		enc.WriteUInt32(uint32(16 + len(message)))
 		enc.WriteUInt32(uint32(reason))
 		enc.WriteString(message)
-		_, err := ch.write(writer.Bytes())
+		ch.conn.SetWriteDeadline(time.Now().Add(3000 * time.Millisecond))
+		ch.write(writer.Bytes())
 		log.Printf("<- Err { reason: 0x%X, message: %s }\n", uint32(reason), message)
 		ch.conn.Close()
-		ch.closed = true
-		return err
 	}
-	ch.closed = true
 	return nil
 }
 
 // Write the service response.
 func (ch *serverSecureChannel) Write(res ua.ServiceResponse, id uint32) error {
-	if ch.trace || res.Header().ServiceResult == ua.BadNothingToDo {
+	if ch.trace {
 		b, _ := json.MarshalIndent(res, "", " ")
 		log.Printf("%s%s", reflect.TypeOf(res).Elem().Name(), b)
 	}
@@ -1112,6 +1110,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 				}
 				ch.tokenID = ch.pendingTokenID
 				ch.tokenExpiration = ch.pendingTokenExpiration
+				ch.conn.SetDeadline(ch.tokenExpiration)
 				if ch.securityMode != ua.MessageSecurityModeNone {
 					// (re)create security keys for verifying, decrypting
 					ch.remoteSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
@@ -1525,6 +1524,10 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 	return nil
 }
 
+func (ch *serverSecureChannel) handleCloseSecureChannel(requestid uint32, req *ua.CloseSecureChannelRequest) error {
+	return ua.Good
+}
+
 // getNextSequenceNumber gets next SequenceNumber in sequence, skipping zero.
 func (ch *serverSecureChannel) getNextSequenceNumber() uint32 {
 	for {
@@ -1631,9 +1634,5 @@ func (ch *serverSecureChannel) write(p []byte) (int, error) {
 	if ch.conn == nil {
 		return 0, ua.BadSecureChannelClosed
 	}
-	n, err := ch.conn.Write(p)
-	if err != nil || n == 0 {
-		ch.closed = true
-	}
-	return n, err
+	return ch.conn.Write(p)
 }

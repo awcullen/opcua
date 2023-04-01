@@ -12,10 +12,16 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
+	"fmt"
+	"os"
 	"sort"
 
 	"github.com/awcullen/opcua/ua"
 	"github.com/djherbis/buffer"
+)
+
+var (
+	host, _ = os.Hostname()
 )
 
 // Dial returns a secure channel to the OPC UA server with the given URL and options.
@@ -23,7 +29,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 
 	cli := &Client{
 		userIdentity:      ua.AnonymousIdentity{},
-		applicationName:   "awcullen/opcua",
+		applicationName:   "application",
 		sessionTimeout:    defaultSessionTimeout,
 		securityPolicyURI: ua.SecurityPolicyURIBestAvailable,
 		timeoutHint:       defaultTimeoutHint,
@@ -92,10 +98,10 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 	cli.securityMode = selectedEndpoint.SecurityMode
 	cli.serverCertificate = []byte(selectedEndpoint.ServerCertificate)
 	cli.userTokenPolicies = selectedEndpoint.UserIdentityTokens
-
 	cli.localDescription = ua.ApplicationDescription{
 		ApplicationName: ua.LocalizedText{Text: cli.applicationName},
 		ApplicationType: ua.ApplicationTypeClient,
+		ApplicationURI:  fmt.Sprintf("urn:%s:%s", host, cli.applicationName),
 	}
 
 	if len(cli.localCertificate) > 0 {
@@ -115,7 +121,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		cli.securityMode,
 		cli.serverCertificate,
 		cli.connectTimeout,
-		cli.trustedCertsFile,
+		cli.trustedCertsPath,
 		cli.suppressHostNameInvalid,
 		cli.suppressCertificateExpired,
 		cli.suppressCertificateChainIncomplete,
@@ -156,7 +162,7 @@ type Client struct {
 	tokenLifetime                      uint32
 	localCertificate                   []byte
 	localPrivateKey                    *rsa.PrivateKey
-	trustedCertsFile                   string
+	trustedCertsPath                   string
 	suppressHostNameInvalid            bool
 	suppressCertificateExpired         bool
 	suppressCertificateChainIncomplete bool

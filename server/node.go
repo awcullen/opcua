@@ -3,8 +3,6 @@
 package server
 
 import (
-	"context"
-
 	"github.com/awcullen/opcua/ua"
 )
 
@@ -16,7 +14,7 @@ type Node interface {
 	DisplayName() ua.LocalizedText
 	Description() ua.LocalizedText
 	RolePermissions() []ua.RolePermissionType
-	UserRolePermissions(context.Context) []ua.RolePermissionType
+	UserRolePermissions(userIdentity any) []ua.RolePermissionType
 	References() []ua.Reference
 	SetReferences([]ua.Reference)
 	IsAttributeIDValid(uint32) bool

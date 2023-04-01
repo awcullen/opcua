@@ -12,13 +12,13 @@ import (
 )
 
 // validateClientCertificate validates the certificate of the client.
-func validateClientCertificate(certificate *x509.Certificate, trustedCertsFile string,
+func validateClientCertificate(certificate *x509.Certificate, trustedCertsPath string,
 	suppressCertificateTimeInvalid, suppressCertificateChainIncomplete bool) (bool, error) {
 	if certificate == nil {
 		return false, ua.BadCertificateInvalid
 	}
 	var intermediates, roots *x509.CertPool
-	if buf, err := os.ReadFile(trustedCertsFile); err == nil {
+	if buf, err := os.ReadFile(trustedCertsPath); err == nil {
 		for len(buf) > 0 {
 			var block *pem.Block
 			block, buf = pem.Decode(buf)

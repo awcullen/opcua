@@ -13,3 +13,4 @@ pki/
 pkiusers/
 *.exe
 .vscode/
+dir2pem/

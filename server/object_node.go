@@ -3,7 +3,6 @@
 package server
 
 import (
-	"context"
 	"sync"
 
 	"github.com/awcullen/opcua/ua"
@@ -12,6 +11,7 @@ import (
 // ObjectNode ...
 type ObjectNode struct {
 	sync.RWMutex
+	server             *Server
 	nodeID             ua.NodeID
 	nodeClass          ua.NodeClass
 	browseName         ua.QualifiedName
@@ -27,8 +27,9 @@ type ObjectNode struct {
 var _ Node = (*ObjectNode)(nil)
 
 // NewObjectNode ...
-func NewObjectNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, eventNotifier byte) *ObjectNode {
+func NewObjectNode(server *Server, nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, eventNotifier byte) *ObjectNode {
 	return &ObjectNode{
+		server:             server,
 		nodeID:             nodeID,
 		nodeClass:          ua.NodeClassObject,
 		browseName:         browseName,
@@ -73,16 +74,15 @@ func (n *ObjectNode) RolePermissions() []ua.RolePermissionType {
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *ObjectNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+func (n *ObjectNode) UserRolePermissions(userIdentity any) []ua.RolePermissionType {
 	filteredPermissions := []ua.RolePermissionType{}
-	session, ok := ctx.Value(SessionKey).(*Session)
-	if !ok {
+	roles, err := n.server.GetRoles(userIdentity, "", "")
+	if err != nil {
 		return filteredPermissions
 	}
-	roles := session.UserRoles()
 	rolePermissions := n.RolePermissions()
 	if rolePermissions == nil {
-		rolePermissions = session.Server().RolePermissions()
+		rolePermissions = n.server.RolePermissions()
 	}
 	for _, role := range roles {
 		for _, rp := range rolePermissions {

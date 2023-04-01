@@ -21,31 +21,34 @@ type stateChangeOp struct {
 	message        ua.NotificationMessage
 }
 
+type browseCP struct {
+	data []ua.ReferenceDescription
+	max  int
+}
+
 type Session struct {
 	sync.RWMutex
-	server              *Server
-	sessionId           ua.NodeID
-	sessionName         string
-	authenticationToken ua.NodeID
-	timeout             time.Duration
-	userIdentity        any
-	userRoles           []ua.NodeID
-	sessionNonce        ua.ByteString
-	lastAccess          time.Time
-	publishRequests     chan *publishOp
-	stateChanges        chan *stateChangeOp
-	channelId           uint32
-	browseCPs           map[uint32]struct {
-		data []ua.ReferenceDescription
-		max  int
-	}
+	sessionId                               ua.NodeID
+	sessionName                             string
+	authenticationToken                     ua.NodeID
+	timeout                                 float64
+	userIdentity                            any
+	sessionNonce                            ua.ByteString
+	lastAccess                              time.Time
+	publishRequests                         chan *publishOp
+	stateChanges                            chan *stateChangeOp
+	channelId                               uint32
+	securityMode                            ua.MessageSecurityMode
+	securityPolicyURI                       string
+	clientCertificate                       ua.ByteString
+	browseCPs                               map[uint32]browseCP
 	lastBrowseCP                            uint32
 	maxBrowseContinuationPoints             int
 	historyCPs                              map[uint32]time.Time
 	maxHistoryContinuationPoints            int
 	clientDescription                       ua.ApplicationDescription
 	serverUri                               string
-	endpointUrl                             string
+	endpointURL                             string
 	maxResponseMessageSize                  uint32
 	localeIds                               []string
 	timeCreated                             time.Time
@@ -113,27 +116,25 @@ type Session struct {
 	clientUserIdHistory                     []string
 }
 
-func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authenticationToken ua.NodeID, sessionNonce ua.ByteString, timeout time.Duration, clientDescription ua.ApplicationDescription, serverUri string, endpointUrl string, maxResponseMessageSize uint32) *Session {
+func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authenticationToken ua.NodeID, sessionNonce ua.ByteString, timeout float64, clientDescription ua.ApplicationDescription, serverUri string, endpointUrl string, clientCertificate ua.ByteString, maxResponseMessageSize uint32) *Session {
 	return &Session{
-		server:              server,
-		sessionId:           sessionId,
-		sessionName:         sessionName,
-		authenticationToken: authenticationToken,
-		timeout:             timeout,
-		sessionNonce:        sessionNonce,
-		lastAccess:          time.Now(),
-		publishRequests:     make(chan *publishOp, 64),
-		stateChanges:        make(chan *stateChangeOp, 64),
-		browseCPs: make(map[uint32]struct {
-			data []ua.ReferenceDescription
-			max  int
-		}, 16),
+		sessionId:                    sessionId,
+		sessionName:                  sessionName,
+		authenticationToken:          authenticationToken,
+		timeout:                      timeout,
+		sessionNonce:                 sessionNonce,
+		securityMode:                 ua.MessageSecurityModeNone,
+		securityPolicyURI:            ua.SecurityPolicyURINone,
+		lastAccess:                   time.Now(),
+		publishRequests:              make(chan *publishOp, 64),
+		stateChanges:                 make(chan *stateChangeOp, 64),
+		browseCPs:                    make(map[uint32]browseCP, 16),
 		maxBrowseContinuationPoints:  int(server.ServerCapabilities().MaxBrowseContinuationPoints),
 		historyCPs:                   make(map[uint32]time.Time, 16),
 		maxHistoryContinuationPoints: int(server.ServerCapabilities().MaxHistoryContinuationPoints),
 		clientDescription:            clientDescription,
 		serverUri:                    serverUri,
-		endpointUrl:                  endpointUrl,
+		endpointURL:                  endpointUrl,
 		localeIds:                    []string{"en-US"},
 		maxResponseMessageSize:       maxResponseMessageSize,
 		timeCreated:                  time.Now(),
@@ -144,18 +145,20 @@ func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authent
 func (s *Session) IsExpired() bool {
 	s.RLock()
 	defer s.RUnlock()
-	return time.Now().After(s.lastAccess.Add(s.timeout))
+	return time.Since(s.lastAccess).Milliseconds() > int64(s.timeout)
 }
 
 func (s *Session) delete() {
 	s.Lock()
 	defer s.Unlock()
-	s.server = nil
 	//s.sessionId = nil  // need to keep to look up diagnostics node
 	s.authenticationToken = nil
 	s.userIdentity = nil
-	s.userRoles = nil
+	s.channelId = 0
+	s.securityMode = ua.MessageSecurityModeNone
+	s.securityPolicyURI = ua.SecurityPolicyURINone
 	s.sessionNonce = ua.ByteString("")
+	s.clientCertificate = ua.ByteString("")
 	s.publishRequests = nil
 	for k := range s.browseCPs {
 		delete(s.browseCPs, k)
@@ -166,12 +169,6 @@ func (s *Session) delete() {
 	}
 	s.historyCPs = nil
 	s.clientUserIdHistory = nil
-}
-
-func (s *Session) Server() *Server {
-	s.RLock()
-	defer s.RUnlock()
-	return s.server
 }
 
 func (s *Session) SessionId() ua.NodeID {
@@ -192,7 +189,7 @@ func (s *Session) AuthenticationToken() ua.NodeID {
 	return s.authenticationToken
 }
 
-func (s *Session) Timeout() time.Duration {
+func (s *Session) Timeout() float64 {
 	s.RLock()
 	defer s.RUnlock()
 	return s.timeout
@@ -224,18 +221,6 @@ func (s *Session) SetUserIdentity(value any) {
 		s.authenticationMechanism = "Anonymous"
 	}
 	s.clientUserIdHistory = append(s.clientUserIdHistory, s.clientUserIdOfSession)
-}
-
-func (s *Session) UserRoles() []ua.NodeID {
-	s.RLock()
-	defer s.RUnlock()
-	return s.userRoles
-}
-
-func (s *Session) SetUserRoles(value []ua.NodeID) {
-	s.Lock()
-	defer s.Unlock()
-	s.userRoles = value
 }
 
 func (s *Session) SessionNonce() ua.ByteString {
@@ -272,6 +257,36 @@ func (s *Session) SetSecureChannelId(value uint32) {
 	s.Lock()
 	defer s.Unlock()
 	s.channelId = value
+}
+
+func (s *Session) SecurityMode() ua.MessageSecurityMode {
+	s.RLock()
+	defer s.RUnlock()
+	return s.securityMode
+}
+
+func (s *Session) SetSecurityMode(value ua.MessageSecurityMode) {
+	s.Lock()
+	defer s.Unlock()
+	s.securityMode = value
+}
+
+func (s *Session) SecurityPolicyURI() string {
+	s.RLock()
+	defer s.RUnlock()
+	return s.securityPolicyURI
+}
+
+func (s *Session) SetSecurityPolicyURI(value string) {
+	s.Lock()
+	defer s.Unlock()
+	s.securityPolicyURI = value
+}
+
+func (s *Session) ClientCertificate() ua.ByteString {
+	s.RLock()
+	defer s.RUnlock()
+	return s.clientCertificate
 }
 
 func (s *Session) addPublishRequest(ch *serverSecureChannel, requestid uint32, req *ua.PublishRequest, results []ua.StatusCode) error {
@@ -337,10 +352,7 @@ func (s *Session) addBrowseContinuationPoint(data []ua.ReferenceDescription, max
 		return nil, ua.BadNoContinuationPoints
 	}
 	id := atomic.AddUint32(&s.lastBrowseCP, 1)
-	s.browseCPs[id] = struct {
-		data []ua.ReferenceDescription
-		max  int
-	}{data, max}
+	s.browseCPs[id] = browseCP{data, max}
 	cp := make([]byte, 4)
 	binary.LittleEndian.PutUint32(cp, id)
 	return cp, nil

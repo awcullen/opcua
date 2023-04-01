@@ -3,7 +3,6 @@
 package server
 
 import (
-	"context"
 	"sync/atomic"
 	"time"
 
@@ -33,7 +32,7 @@ type EventMonitoredItem struct {
 }
 
 // NewEventMonitoredItem constructs a new EventMonitoredItem.
-func NewEventMonitoredItem(ctx context.Context, sub *Subscription, node Node, itemToMonitor ua.ReadValueID, monitoringMode ua.MonitoringMode, parameters ua.MonitoringParameters) *EventMonitoredItem {
+func NewEventMonitoredItem(sub *Subscription, node Node, itemToMonitor ua.ReadValueID, monitoringMode ua.MonitoringMode, parameters ua.MonitoringParameters) *EventMonitoredItem {
 	mi := &EventMonitoredItem{
 		sub:            sub,
 		srv:            sub.manager.server,
@@ -50,7 +49,7 @@ func NewEventMonitoredItem(ctx context.Context, sub *Subscription, node Node, it
 	mi.setFilter(parameters.Filter)
 
 	mi.Lock()
-	mi.startMonitoring(ctx)
+	mi.startMonitoring()
 	mi.Unlock()
 	return mi
 }
@@ -113,7 +112,7 @@ func (mi *EventMonitoredItem) SetTriggered(val bool) {
 }
 
 // Modify modifies the MonitoredItem.
-func (mi *EventMonitoredItem) Modify(ctx context.Context, req ua.MonitoredItemModifyRequest) ua.MonitoredItemModifyResult {
+func (mi *EventMonitoredItem) Modify(req ua.MonitoredItemModifyRequest) ua.MonitoredItemModifyResult {
 	mi.Lock()
 	defer mi.Unlock()
 	mi.stopMonitoring()
@@ -122,7 +121,7 @@ func (mi *EventMonitoredItem) Modify(ctx context.Context, req ua.MonitoredItemMo
 	mi.setQueueSize(req.RequestedParameters.QueueSize)
 	mi.setSamplingInterval(req.RequestedParameters.SamplingInterval)
 	mi.setFilter(req.RequestedParameters.Filter)
-	mi.startMonitoring(ctx)
+	mi.startMonitoring()
 	return ua.MonitoredItemModifyResult{RevisedSamplingInterval: mi.samplingInterval, RevisedQueueSize: mi.queueSize}
 }
 
@@ -138,7 +137,7 @@ func (mi *EventMonitoredItem) Delete() {
 }
 
 // SetMonitoringMode sets the MonitoringMode of the MonitoredItem.
-func (mi *EventMonitoredItem) SetMonitoringMode(ctx context.Context, mode ua.MonitoringMode) {
+func (mi *EventMonitoredItem) SetMonitoringMode(mode ua.MonitoringMode) {
 	mi.Lock()
 	defer mi.Unlock()
 	if mi.monitoringMode == mode {
@@ -152,7 +151,7 @@ func (mi *EventMonitoredItem) SetMonitoringMode(ctx context.Context, mode ua.Mon
 	} else {
 		mi.sub.disabledMonitoredItemCount--
 	}
-	mi.startMonitoring(ctx)
+	mi.startMonitoring()
 }
 
 func (mi *EventMonitoredItem) setQueueSize(queueSize uint32) {
@@ -280,7 +279,7 @@ func (mi *EventMonitoredItem) selectFields(evt ua.Event) []ua.Variant {
 	return ret
 }
 
-func (mi *EventMonitoredItem) startMonitoring(ctx context.Context) {
+func (mi *EventMonitoredItem) startMonitoring() {
 	if mi.monitoringMode == ua.MonitoringModeDisabled {
 		return
 	}

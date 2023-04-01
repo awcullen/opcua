@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -140,6 +139,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		}
 	}
 	subscriptionDiagnosticsVariable := NewVariableNode(
+		srv,
 		s.diagnosticsNodeId,
 		ua.NewQualifiedName(uint16(1), fmt.Sprint(s.id)),
 		ua.NewLocalizedText(fmt.Sprint(s.id), ""),
@@ -155,7 +155,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	subscriptionDiagnosticsVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	subscriptionDiagnosticsVariable.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		s.RLock()
 		defer s.RUnlock()
 		dv := ua.NewDataValue(ua.SubscriptionDiagnosticsDataType{
@@ -195,6 +195,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 	})
 	nodes = append(nodes, subscriptionDiagnosticsVariable)
 	n := NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SessionId"),
 		ua.NewLocalizedText("SessionId", ""),
@@ -213,12 +214,13 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.sessionId, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SubscriptionId"),
 		ua.NewLocalizedText("SubscriptionId", ""),
@@ -237,11 +239,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.id, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "Priority"),
 		ua.NewLocalizedText("Priority", ""),
@@ -260,11 +263,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.priority, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "PublishingInterval"),
 		ua.NewLocalizedText("PublishingInterval", ""),
@@ -283,11 +287,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.publishingInterval, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "MaxKeepAliveCount"),
 		ua.NewLocalizedText("MaxKeepAliveCount", ""),
@@ -306,11 +311,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.maxKeepAliveCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "MaxLifetimeCount"),
 		ua.NewLocalizedText("MaxLifetimeCount", ""),
@@ -329,11 +335,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.lifetimeCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "MaxNotificationsPerPublish"),
 		ua.NewLocalizedText("MaxNotificationsPerPublish", ""),
@@ -352,11 +359,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.maxNotificationsPerPublish, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "PublishingEnabled"),
 		ua.NewLocalizedText("PublishingEnabled", ""),
@@ -375,11 +383,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.publishingEnabled, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ModifyCount"),
 		ua.NewLocalizedText("ModifyCount", ""),
@@ -398,11 +407,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.modifyCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "EnableCount"),
 		ua.NewLocalizedText("EnableCount", ""),
@@ -421,11 +431,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "DisableCount"),
 		ua.NewLocalizedText("DisableCount", ""),
@@ -444,11 +455,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "RepublishRequestCount"),
 		ua.NewLocalizedText("RepublishRequestCount", ""),
@@ -467,11 +479,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.republishRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "RepublishMessageRequestCount"),
 		ua.NewLocalizedText("RepublishMessageRequestCount", ""),
@@ -490,11 +503,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.republishMessageRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "RepublishMessageCount"),
 		ua.NewLocalizedText("RepublishMessageCount", ""),
@@ -513,11 +527,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.republishMessageCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "TransferRequestCount"),
 		ua.NewLocalizedText("TransferRequestCount", ""),
@@ -536,11 +551,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "TransferredToAltClientCount"),
 		ua.NewLocalizedText("TransferredToAltClientCount", ""),
@@ -559,11 +575,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "TransferredToSameClientCount"),
 		ua.NewLocalizedText("TransferredToSameClientCount", ""),
@@ -582,11 +599,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "PublishRequestCount"),
 		ua.NewLocalizedText("PublishRequestCount", ""),
@@ -605,11 +623,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.publishRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "DataChangeNotificationsCount"),
 		ua.NewLocalizedText("DataChangeNotificationsCount", ""),
@@ -628,11 +647,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.dataChangeNotificationsCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "EventNotificationsCount"),
 		ua.NewLocalizedText("EventNotificationsCount", ""),
@@ -651,11 +671,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.eventNotificationsCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "NotificationsCount"),
 		ua.NewLocalizedText("NotificationsCount", ""),
@@ -674,11 +695,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.notificationsCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "LatePublishRequestCount"),
 		ua.NewLocalizedText("LatePublishRequestCount", ""),
@@ -697,11 +719,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.latePublishRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "CurrentKeepAliveCount"),
 		ua.NewLocalizedText("CurrentKeepAliveCount", ""),
@@ -720,11 +743,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.keepAliveCounter, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "CurrentLifetimeCount"),
 		ua.NewLocalizedText("CurrentLifetimeCount", ""),
@@ -743,11 +767,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.lifetimeCounter, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "UnacknowledgedMessageCount"),
 		ua.NewLocalizedText("UnacknowledgedMessageCount", ""),
@@ -766,11 +791,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.unacknowledgedMessageCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "DiscardedMessageCount"),
 		ua.NewLocalizedText("DiscardedMessageCount", ""),
@@ -789,11 +815,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "MonitoredItemCount"),
 		ua.NewLocalizedText("MonitoredItemCount", ""),
@@ -812,11 +839,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.monitoredItemCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "DisabledMonitoredItemCount"),
 		ua.NewLocalizedText("DisabledMonitoredItemCount", ""),
@@ -835,11 +863,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.disabledMonitoredItemCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "MonitoringQueueOverflowCount"),
 		ua.NewLocalizedText("MonitoringQueueOverflowCount", ""),
@@ -858,11 +887,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.monitoringQueueOverflowCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "NextSequenceNumber"),
 		ua.NewLocalizedText("NextSequenceNumber", ""),
@@ -881,11 +911,12 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.seqNum, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "EventQueueOverFlowCount"),
 		ua.NewLocalizedText("EventQueueOverFlowCount", ""),
@@ -904,7 +935,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(0), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)

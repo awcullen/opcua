@@ -3,7 +3,6 @@
 package server
 
 import (
-	"context"
 	"time"
 
 	"github.com/awcullen/opcua/ua"
@@ -29,9 +28,9 @@ type MonitoredItem interface {
 	ClientHandle() uint32
 	Triggered() bool
 	SetTriggered(bool)
-	Modify(ctx context.Context, req ua.MonitoredItemModifyRequest) ua.MonitoredItemModifyResult
+	Modify(req ua.MonitoredItemModifyRequest) ua.MonitoredItemModifyResult
 	Delete()
-	SetMonitoringMode(ctx context.Context, mode ua.MonitoringMode)
+	SetMonitoringMode(mode ua.MonitoringMode)
 	notifications(max int) (notifications []any, more bool)
 	notificationsAvailable(tn time.Time, late bool, resend bool) bool
 	AddTriggeredItem(item MonitoredItem) bool

@@ -1,10 +1,10 @@
 package server
 
 import (
-	"context"
 	"crypto/rsa"
 	"crypto/tls"
 	_ "embed"
+	"fmt"
 	"log"
 	"math"
 	mathrand "math/rand"
@@ -18,11 +18,7 @@ import (
 	"github.com/gammazero/workerpool"
 )
 
-type key string
-
 const (
-	// SessionKey stores the current session in context
-	SessionKey key = "opcua-session"
 	// documents the version of binary protocol that this library supports.
 	protocolVersion uint32 = 0
 	// the default size of the send and recieve buffers.
@@ -31,8 +27,10 @@ const (
 	defaultMaxMessageSize uint32 = 16 * 1024 * 1024
 	// defaultMaxChunkCount sets the limit on the number of message chunks that may be accepted.
 	defaultMaxChunkCount uint32 = 4 * 1024
-	// the default number of milliseconds that a session may be unused before being closed by the server. (2 min)
-	defaultSessionTimeout float64 = 120 * 1000
+	// the minimum number of milliseconds that a session may be unused before being closed by the server. (2 min)
+	minSessionTimeout float64 = 60 * 1000
+	// the maximum number of milliseconds that a session may be unused before being closed by the server. (60 min)
+	maxSessionTimeout float64 = 3600 * 1000
 	// the default number of sessions that may be active.
 	defaultMaxSessionCount uint32 = 0
 	// the default number of subscriptions that may be active.
@@ -53,7 +51,6 @@ type Server struct {
 	sync.RWMutex
 	localDescription                   ua.ApplicationDescription
 	endpoints                          []ua.EndpointDescription
-	sessionTimeout                     float64
 	maxSessionCount                    uint32
 	maxSubscriptionCount               uint32
 	serverCapabilities                 *ua.ServerCapabilities
@@ -81,7 +78,6 @@ type Server struct {
 	secondsTillShutdown                uint32
 	shutdownReason                     ua.LocalizedText
 	workerpool                         *workerpool.WorkerPool
-	channelManager                     *ChannelManager
 	sessionManager                     *SessionManager
 	subscriptionManager                *SubscriptionManager
 	namespaceManager                   *NamespaceManager
@@ -110,7 +106,6 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		certPath:                           certPath,
 		keyPath:                            keyPath,
 		endpointURL:                        endpointURL,
-		sessionTimeout:                     defaultSessionTimeout,
 		maxSessionCount:                    defaultMaxSessionCount,
 		maxSubscriptionCount:               defaultMaxSubscriptionCount,
 		serverCapabilities:                 ua.NewServerCapabilities(),
@@ -145,7 +140,6 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 	}
 
 	srv.workerpool = workerpool.New(srv.maxWorkerThreads)
-	srv.channelManager = NewChannelManager(srv)
 	srv.sessionManager = NewSessionManager(srv)
 	srv.subscriptionManager = NewSubscriptionManager(srv)
 	srv.namespaceManager = NewNamespaceManager(srv)
@@ -243,13 +237,6 @@ func (srv *Server) WorkerPool() *workerpool.WorkerPool {
 	srv.RLock()
 	defer srv.RUnlock()
 	return srv.workerpool
-}
-
-// ChannelManager gets the secure channel manager.
-func (srv *Server) ChannelManager() *ChannelManager {
-	srv.RLock()
-	defer srv.RUnlock()
-	return srv.channelManager
 }
 
 // SessionManager gets the session manager.
@@ -375,6 +362,11 @@ func (srv *Server) Close() error {
 	return nil
 }
 
+// GetRoles returns the roles for the given user identity and connection information.
+func (srv *Server) GetRoles(userIdentity any, applicationURI string, endpointURL string) ([]ua.NodeID, error) {
+	return srv.rolesProvider.GetRoles(userIdentity, applicationURI, endpointURL)
+}
+
 func (srv *Server) serve(l net.Listener) error {
 	var delay time.Duration
 	for {
@@ -408,11 +400,14 @@ func (srv *Server) serve(l net.Listener) error {
 				log.Printf("Error opening secure channel. %s\n", err)
 				return
 			}
-			srv.channelManager.Add(ch)
-			defer srv.channelManager.Delete(ch)
+			log.Printf("Success opening secure channel '%d'.\n", ch.channelID)
 			err = srv.requestWorker(ch)
+			if err == ua.Good {
+				log.Printf("Success closing secure channel '%d'.\n", ch.channelID)
+				return
+			}
 			if err != nil {
-				log.Printf("Error handling service request. %s\n", err)
+				log.Printf("Error handling service request for channel id '%d'. %s\n", ch.channelID, err)
 				return
 			}
 		}(conn)
@@ -427,9 +422,6 @@ func (srv *Server) requestWorker(ch *serverSecureChannel) error {
 			return err
 		}
 		err = srv.handleRequest(ch, req, id)
-		if err == ua.BadConnectionClosed {
-			return nil
-		}
 		if err != nil {
 			return err
 		}
@@ -482,7 +474,7 @@ func (srv *Server) handleRequest(ch *serverSecureChannel, req ua.ServiceRequest,
 	case *ua.OpenSecureChannelRequest:
 		return ch.handleOpenSecureChannel(requestid, req)
 	case *ua.CloseSecureChannelRequest:
-		return ua.BadConnectionClosed
+		return ch.handleCloseSecureChannel(requestid, req)
 	case *ua.FindServersRequest:
 		return srv.findServers(ch, requestid, req)
 	case *ua.GetEndpointsRequest:
@@ -495,7 +487,6 @@ func (srv *Server) handleRequest(ch *serverSecureChannel, req ua.ServiceRequest,
 		return srv.handleSetTriggering(ch, requestid, req)
 	case *ua.CancelRequest:
 		return srv.handleCancel(ch, requestid, req)
-
 	default:
 		err := ch.Write(
 			&ua.ServiceFault{
@@ -510,7 +501,7 @@ func (srv *Server) handleRequest(ch *serverSecureChannel, req ua.ServiceRequest,
 		if err != nil {
 			return err
 		}
-		return ua.BadConnectionClosed
+		return nil
 	}
 }
 
@@ -548,17 +539,17 @@ func (srv *Server) initializeNamespace() error {
 	}
 
 	if n, ok := nm.FindVariable(ua.VariableIDServerNamespaceArray); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.NamespaceUris(), 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerArray); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.ServerUris(), 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatus); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(
 				ua.ServerStatusDataType{
 					StartTime:           srv.startTime,
@@ -571,22 +562,22 @@ func (srv *Server) initializeNamespace() error {
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusState); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(int32(srv.State()), 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusCurrentTime); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(time.Now(), 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusSecondsTillShutdown); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.secondsTillShutdown, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerStatusShutdownReason); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.shutdownReason, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
@@ -751,72 +742,72 @@ func (srv *Server) initializeNamespace() error {
 		n.SetValue(ua.NewDataValue(srv.serverDiagnostics, 0, time.Now(), 0, time.Now(), 0))
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummary); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCumulatedSessionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.CumulatedSessionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCumulatedSubscriptionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.CumulatedSubscriptionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCurrentSessionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.CurrentSessionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryCurrentSubscriptionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.CurrentSubscriptionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryServerViewCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.ServerViewCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySecurityRejectedSessionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.SecurityRejectedSessionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySessionAbortCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.SessionAbortCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryPublishingIntervalCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.PublishingIntervalCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySecurityRejectedRequestsCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.SecurityRejectedRequestsCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryRejectedRequestsCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.RejectedRequestsCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummaryRejectedSessionCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.RejectedSessionCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummarySessionTimeoutCount); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			return ua.NewDataValue(srv.serverDiagnosticsSummary.SessionTimeoutCount, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsSubscriptionDiagnosticsArray); ok {
-		n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 			if !srv.serverDiagnostics {
 				return ua.NewDataValue(nil, 0, time.Now(), 0, time.Now(), 0)
 			}
@@ -867,7 +858,7 @@ func (srv *Server) initializeNamespace() error {
 	}
 
 	if n, ok := nm.FindMethod(ua.MethodIDServerGetMonitoredItems); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
@@ -888,8 +879,7 @@ func (srv *Server) initializeNamespace() error {
 			if !ok {
 				return ua.CallMethodResult{StatusCode: ua.BadSubscriptionIDInvalid}
 			}
-			session, ok := ctx.Value(SessionKey).(*Session)
-			if !ok || sub.session != session {
+			if session == nil || sub.session != session {
 				return ua.CallMethodResult{StatusCode: ua.BadUserAccessDenied}
 			}
 			svrHandles := []uint32{}
@@ -903,7 +893,7 @@ func (srv *Server) initializeNamespace() error {
 	}
 
 	if n, ok := nm.FindMethod(ua.MethodIDServerGetMonitoredItems); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
@@ -924,8 +914,7 @@ func (srv *Server) initializeNamespace() error {
 			if !ok {
 				return ua.CallMethodResult{StatusCode: ua.BadSubscriptionIDInvalid}
 			}
-			session, ok := ctx.Value(SessionKey).(*Session)
-			if !ok || sub.session != session {
+			if session == nil || sub.session != session {
 				return ua.CallMethodResult{StatusCode: ua.BadUserAccessDenied}
 			}
 			svrHandles := []uint32{}
@@ -939,7 +928,7 @@ func (srv *Server) initializeNamespace() error {
 	}
 
 	if n, ok := nm.FindMethod(ua.MethodIDServerResendData); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
@@ -960,8 +949,7 @@ func (srv *Server) initializeNamespace() error {
 			if !ok {
 				return ua.CallMethodResult{StatusCode: ua.BadSubscriptionIDInvalid}
 			}
-			session, ok := ctx.Value(SessionKey).(*Session)
-			if !ok || sub.session != session {
+			if session == nil || sub.session != session {
 				return ua.CallMethodResult{StatusCode: ua.BadUserAccessDenied}
 			}
 			sub.resendData()
@@ -977,21 +965,21 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          ua.UserTokenTypeAnonymous.String(),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeAnonymous, 0),
 				TokenType:         ua.UserTokenTypeAnonymous,
 				SecurityPolicyURI: ua.SecurityPolicyURINone,
 			})
 		}
 		if srv.userNameIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          ua.UserTokenTypeUserName.String(),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeUserName, 0),
 				TokenType:         ua.UserTokenTypeUserName,
 				SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
 			})
 		}
 		if srv.x509IdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          ua.UserTokenTypeCertificate.String(),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeCertificate, 0),
 				TokenType:         ua.UserTokenTypeCertificate,
 				SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
 			})
@@ -1013,25 +1001,25 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		ua.SecurityPolicyURIAes128Sha256RsaOaep,
 		ua.SecurityPolicyURIAes256Sha256RsaPss,
 	}
-	for _, uri := range uris {
+	for i, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          ua.UserTokenTypeAnonymous.String(),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeAnonymous, i+1),
 				TokenType:         ua.UserTokenTypeAnonymous,
 				SecurityPolicyURI: ua.SecurityPolicyURINone,
 			})
 		}
 		if srv.userNameIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          ua.UserTokenTypeUserName.String(),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeUserName, i+1),
 				TokenType:         ua.UserTokenTypeUserName,
 				SecurityPolicyURI: uri,
 			})
 		}
 		if srv.x509IdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          ua.UserTokenTypeCertificate.String(),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeCertificate, i+1),
 				TokenType:         ua.UserTokenTypeCertificate,
 				SecurityPolicyURI: uri,
 			})

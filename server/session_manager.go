@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"log"
 	"sync"
 	"time"
@@ -15,13 +14,14 @@ type SessionManager struct {
 	sync.RWMutex
 	server          *Server
 	sessionsByToken map[ua.NodeID]*Session
+	maxSessionCount uint32
 }
 
 // NewSessionManager instantiates a new SessionManager.
 func NewSessionManager(server *Server) *SessionManager {
-	m := &SessionManager{server: server, sessionsByToken: make(map[ua.NodeID]*Session)}
+	m := &SessionManager{server: server, sessionsByToken: make(map[ua.NodeID]*Session), maxSessionCount: server.MaxSessionCount()}
 	go func(m *SessionManager) {
-		ticker := time.NewTicker(60 * time.Second)
+		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
@@ -50,7 +50,7 @@ func (m *SessionManager) Get(authenticationToken ua.NodeID) (*Session, bool) {
 func (m *SessionManager) Add(s *Session) error {
 	m.Lock()
 	defer m.Unlock()
-	if maxSessionCount := m.server.MaxSessionCount(); maxSessionCount > 0 && len(m.sessionsByToken) >= int(maxSessionCount) {
+	if m.maxSessionCount > 0 && len(m.sessionsByToken) >= int(m.maxSessionCount) {
 		return ua.BadTooManySessions
 	}
 	m.sessionsByToken[s.authenticationToken] = s
@@ -108,6 +108,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 	nm := srv.NamespaceManager()
 	nodes := []Node{}
 	sessionDiagnosticsObject := NewObjectNode(
+		srv,
 		s.sessionId,
 		ua.NewQualifiedName(1, s.sessionName),
 		ua.NewLocalizedText(s.sessionName, ""),
@@ -121,6 +122,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 	)
 	nodes = append(nodes, sessionDiagnosticsObject)
 	sessionDiagnosticsVariable := NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SessionDiagnostics"),
 		ua.NewLocalizedText("SessionDiagnostics", ""),
@@ -140,7 +142,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	sessionDiagnosticsVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	sessionDiagnosticsVariable.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		subCount := 0
 		itemCount := 0
 		subs := srv.subscriptionManager.GetBySession(s)
@@ -153,9 +155,9 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 			SessionName:                        s.sessionName,
 			ClientDescription:                  s.clientDescription,
 			ServerURI:                          s.serverUri,
-			EndpointURL:                        s.endpointUrl,
+			EndpointURL:                        s.endpointURL,
 			LocaleIDs:                          s.localeIds,
-			ActualSessionTimeout:               float64(s.timeout.Nanoseconds() / 1000000),
+			ActualSessionTimeout:               s.timeout,
 			MaxResponseMessageSize:             s.maxResponseMessageSize,
 			ClientConnectionTime:               s.timeCreated,
 			ClientLastContactTime:              s.lastAccess,
@@ -196,6 +198,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 	})
 	nodes = append(nodes, sessionDiagnosticsVariable)
 	n := NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SessionId"),
 		ua.NewLocalizedText("SessionId", ""),
@@ -214,11 +217,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.sessionId, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SessionName"),
 		ua.NewLocalizedText("SessionName", ""),
@@ -237,11 +241,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.sessionName, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ClientDescription"),
 		ua.NewLocalizedText("ClientDescription", ""),
@@ -260,11 +265,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.clientDescription, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ServerUri"),
 		ua.NewLocalizedText("ServerUri", ""),
@@ -283,11 +289,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.serverUri, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "EndpointUrl"),
 		ua.NewLocalizedText("EndpointUrl", ""),
@@ -306,11 +313,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		return ua.NewDataValue(s.endpointUrl, 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.endpointURL, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "LocaleIds"),
 		ua.NewLocalizedText("LocaleIds", ""),
@@ -329,11 +337,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.localeIds, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ActualSessionTimeout"),
 		ua.NewLocalizedText("ActualSessionTimeout", ""),
@@ -352,11 +361,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		return ua.NewDataValue(float64(s.timeout.Nanoseconds()/1000000), 0, time.Now(), 0, time.Now(), 0)
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		return ua.NewDataValue(s.timeout, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "MaxResponseMessageSize"),
 		ua.NewLocalizedText("MaxResponseMessageSize", ""),
@@ -375,11 +385,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.maxResponseMessageSize, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ClientConnectionTime"),
 		ua.NewLocalizedText("ClientConnectionTime", ""),
@@ -398,11 +409,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.timeCreated, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ClientLastContactTime"),
 		ua.NewLocalizedText("ClientLastContactTime", ""),
@@ -421,11 +433,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.lastAccess, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "CurrentSubscriptionsCount"),
 		ua.NewLocalizedText("CurrentSubscriptionsCount", ""),
@@ -444,11 +457,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(len(srv.subscriptionManager.GetBySession(s))), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "CurrentMonitoredItemsCount"),
 		ua.NewLocalizedText("CurrentMonitoredItemsCount", ""),
@@ -467,7 +481,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		itemCount := 0
 		subs := srv.subscriptionManager.GetBySession(s)
 		for _, sub := range subs {
@@ -477,6 +491,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "CurrentPublishRequestsInQueue"),
 		ua.NewLocalizedText("CurrentPublishRequestsInQueue", ""),
@@ -495,11 +510,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(uint32(len(s.publishRequests)), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "TotalRequestCount"),
 		ua.NewLocalizedText("TotalRequestCount", ""),
@@ -518,11 +534,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.requestCount, ErrorCount: s.errorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "UnauthorizedRequestCount"),
 		ua.NewLocalizedText("UnauthorizedRequestCount", ""),
@@ -541,11 +558,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(s.unauthorizedRequestCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ReadCount"),
 		ua.NewLocalizedText("ReadCount", ""),
@@ -564,11 +582,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.readCount, ErrorCount: s.readErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "HistoryReadCount"),
 		ua.NewLocalizedText("HistoryReadCount", ""),
@@ -587,11 +606,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.historyReadCount, ErrorCount: s.historyReadErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "WriteCount"),
 		ua.NewLocalizedText("WriteCount", ""),
@@ -610,11 +630,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.writeCount, ErrorCount: s.writeErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "HistoryUpdateCount"),
 		ua.NewLocalizedText("HistoryUpdateCount", ""),
@@ -633,11 +654,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.historyUpdateCount, ErrorCount: s.historyUpdateErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "CallCount"),
 		ua.NewLocalizedText("CallCount", ""),
@@ -656,11 +678,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.callCount, ErrorCount: s.callErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "CreateMonitoredItemsCount"),
 		ua.NewLocalizedText("CreateMonitoredItemsCount", ""),
@@ -679,11 +702,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.createMonitoredItemsCount, ErrorCount: s.createMonitoredItemsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ModifyMonitoredItemsCount"),
 		ua.NewLocalizedText("ModifyMonitoredItemsCount", ""),
@@ -702,11 +726,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.modifyMonitoredItemsCount, ErrorCount: s.modifyMonitoredItemsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SetMonitoringModeCount"),
 		ua.NewLocalizedText("SetMonitoringModeCount", ""),
@@ -725,11 +750,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.setMonitoringModeCount, ErrorCount: s.setMonitoringModeErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SetTriggeringCount"),
 		ua.NewLocalizedText("SetTriggeringCount", ""),
@@ -748,11 +774,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.setTriggeringCount, ErrorCount: s.setTriggeringErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "DeleteMonitoredItemsCount"),
 		ua.NewLocalizedText("DeleteMonitoredItemsCount", ""),
@@ -771,11 +798,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.deleteMonitoredItemsCount, ErrorCount: s.deleteMonitoredItemsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "CreateSubscriptionCount"),
 		ua.NewLocalizedText("CreateSubscriptionCount", ""),
@@ -794,11 +822,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.createSubscriptionCount, ErrorCount: s.createSubscriptionErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ModifySubscriptionCount"),
 		ua.NewLocalizedText("ModifySubscriptionCount", ""),
@@ -817,11 +846,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.modifySubscriptionCount, ErrorCount: s.modifySubscriptionErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SetPublishingModeCount"),
 		ua.NewLocalizedText("SetPublishingModeCount", ""),
@@ -840,11 +870,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.setPublishingModeCount, ErrorCount: s.setPublishingModeErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "PublishCount"),
 		ua.NewLocalizedText("PublishCount", ""),
@@ -863,11 +894,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.publishCount, ErrorCount: s.publishErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "RepublishCount"),
 		ua.NewLocalizedText("RepublishCount", ""),
@@ -886,11 +918,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.republishCount, ErrorCount: s.republishErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "TransferSubscriptionsCount"),
 		ua.NewLocalizedText("TransferSubscriptionsCount", ""),
@@ -909,11 +942,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.transferSubscriptionsCount, ErrorCount: s.transferSubscriptionsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "DeleteSubscriptionsCount"),
 		ua.NewLocalizedText("DeleteSubscriptionsCount", ""),
@@ -932,11 +966,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.deleteSubscriptionsCount, ErrorCount: s.deleteSubscriptionsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "AddNodesCount"),
 		ua.NewLocalizedText("AddNodesCount", ""),
@@ -955,11 +990,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.addNodesCount, ErrorCount: s.addNodesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "AddReferencesCount"),
 		ua.NewLocalizedText("AddReferencesCount", ""),
@@ -978,11 +1014,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.addReferencesCount, ErrorCount: s.addReferencesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "DeleteNodesCount"),
 		ua.NewLocalizedText("DeleteNodesCount", ""),
@@ -1001,11 +1038,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.deleteNodesCount, ErrorCount: s.deleteNodesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "DeleteReferencesCount"),
 		ua.NewLocalizedText("DeleteReferencesCount", ""),
@@ -1024,11 +1062,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.deleteReferencesCount, ErrorCount: s.deleteReferencesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "BrowseCount"),
 		ua.NewLocalizedText("BrowseCount", ""),
@@ -1047,11 +1086,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.browseCount, ErrorCount: s.browseErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "BrowseNextCount"),
 		ua.NewLocalizedText("BrowseNextCount", ""),
@@ -1070,11 +1110,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.browseNextCount, ErrorCount: s.browseNextErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "TranslateBrowsePathsToNodeIdsCount"),
 		ua.NewLocalizedText("TranslateBrowsePathsToNodeIdsCount", ""),
@@ -1093,11 +1134,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.translateBrowsePathsToNodeIdsCount, ErrorCount: s.translateBrowsePathsToNodeIdsErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "QueryFirstCount"),
 		ua.NewLocalizedText("QueryFirstCount", ""),
@@ -1116,11 +1158,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.queryFirstCount, ErrorCount: s.queryFirstErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "QueryNextCount"),
 		ua.NewLocalizedText("QueryNextCount", ""),
@@ -1139,11 +1182,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.queryNextCount, ErrorCount: s.queryNextErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "RegisterNodesCount"),
 		ua.NewLocalizedText("RegisterNodesCount", ""),
@@ -1162,11 +1206,12 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.registerNodesCount, ErrorCount: s.registerNodesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "UnregisterNodesCount"),
 		ua.NewLocalizedText("UnregisterNodesCount", ""),
@@ -1185,13 +1230,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue(ua.ServiceCounterDataType{TotalCount: s.unregisterNodesCount, ErrorCount: s.unregisterNodesErrorCount}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 
 	// SessionSecurityDiagnostics
 	sessionSecurityDiagnosticsVariable := NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SessionSecurityDiagnostics"),
 		ua.NewLocalizedText("SessionSecurityDiagnostics", ""),
@@ -1211,13 +1257,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	sessionSecurityDiagnosticsVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	sessionSecurityDiagnosticsVariable.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1225,11 +1274,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
 		return ua.NewDataValue(ua.SessionSecurityDiagnosticsDataType{
@@ -1239,13 +1284,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 			AuthenticationMechanism: s.authenticationMechanism,
 			Encoding:                "UA Binary",
 			TransportProtocol:       ua.TransportProfileURIUaTcpTransport,
-			SecurityMode:            ch.SecurityMode(),
-			SecurityPolicyURI:       ch.SecurityPolicyURI(),
-			ClientCertificate:       ua.ByteString(ch.RemoteCertificate()),
+			SecurityMode:            session.SecurityMode(),
+			SecurityPolicyURI:       session.SecurityPolicyURI(),
+			ClientCertificate:       session.ClientCertificate(),
 		}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, sessionSecurityDiagnosticsVariable)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SessionId"),
 		ua.NewLocalizedText("SessionId", ""),
@@ -1264,13 +1310,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1278,17 +1327,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
 		return ua.NewDataValue(s.sessionId, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ClientUserIdOfSession"),
 		ua.NewLocalizedText("ClientUserIdOfSession", ""),
@@ -1307,13 +1353,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1321,17 +1370,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
 		return ua.NewDataValue(s.clientUserIdOfSession, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ClientUserIdHistory"),
 		ua.NewLocalizedText("ClientUserIdHistory", ""),
@@ -1350,13 +1396,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1364,17 +1413,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
 		return ua.NewDataValue(s.clientUserIdHistory, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "AuthenticationMechanism"),
 		ua.NewLocalizedText("AuthenticationMechanism", ""),
@@ -1393,13 +1439,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1407,17 +1456,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
 		return ua.NewDataValue(s.authenticationMechanism, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "Encoding"),
 		ua.NewLocalizedText("Encoding", ""),
@@ -1436,13 +1482,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1450,17 +1499,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
 		return ua.NewDataValue("UA Binary", 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "TransportProtocol"),
 		ua.NewLocalizedText("TransportProtocol", ""),
@@ -1479,13 +1525,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1493,17 +1542,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
 		return ua.NewDataValue(ua.TransportProfileURIUaTcpTransport, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SecurityMode"),
 		ua.NewLocalizedText("SecurityMode", ""),
@@ -1522,13 +1568,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1536,17 +1585,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
-		return ua.NewDataValue(int32(ch.SecurityMode()), 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(int32(session.SecurityMode()), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SecurityPolicyURI"),
 		ua.NewLocalizedText("SecurityPolicyURI", ""),
@@ -1565,13 +1611,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1579,17 +1628,14 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
-		return ua.NewDataValue(ch.SecurityPolicyURI(), 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(session.SecurityPolicyURI(), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "ClientCertificate"),
 		ua.NewLocalizedText("ClientCertificate", ""),
@@ -1608,13 +1654,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	n.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
-		session, ok := ctx.Value(SessionKey).(*Session)
-		if !ok {
+	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
+		if session == nil {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ok = false
-		for _, n := range session.userRoles {
+		roles, err := n.server.GetRoles(session.userIdentity, "", "")
+		if err != nil {
+			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
+		}
+		ok := false
+		for _, n := range roles {
 			if n == ua.ObjectIDWellKnownRoleAuthenticatedUser {
 				ok = true
 			}
@@ -1622,19 +1671,16 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		if !ok {
 			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
 		}
-		ch, ok := srv.ChannelManager().Get(session.SecureChannelId())
-		if !ok {
-			return ua.NewDataValue(nil, ua.BadUserAccessDenied, time.Now(), 0, time.Now(), 0)
-		}
-		if ch.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
+		if session.SecurityMode() != ua.MessageSecurityModeSignAndEncrypt {
 			return ua.NewDataValue(nil, ua.BadSecurityModeInsufficient, time.Now(), 0, time.Now(), 0)
 		}
-		return ua.NewDataValue(ua.ByteString(ch.RemoteCertificate()), 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(session.ClientCertificate(), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 
 	// SubscriptionDiagnostics
 	subscriptionDiagnosticsArrayVariable := NewVariableNode(
+		srv,
 		ua.NewNodeIDGUID(1, uuid.New()),
 		ua.NewQualifiedName(0, "SubscriptionDiagnosticsArray"),
 		ua.NewLocalizedText("SubscriptionDiagnosticsArray", ""),
@@ -1653,7 +1699,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		false,
 		srv.historian,
 	)
-	subscriptionDiagnosticsArrayVariable.SetReadValueHandler(func(ctx context.Context, req ua.ReadValueID) ua.DataValue {
+	subscriptionDiagnosticsArrayVariable.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
 		return ua.NewDataValue([]ua.ExtensionObject{}, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, subscriptionDiagnosticsArrayVariable)

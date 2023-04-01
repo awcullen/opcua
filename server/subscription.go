@@ -2,7 +2,6 @@ package server
 
 import (
 	"container/list"
-	"context"
 	"log"
 	"math"
 	"sync"
@@ -148,7 +147,7 @@ func (s *Subscription) AppendItem(item MonitoredItem) bool {
 	return ret
 }
 
-func (s *Subscription) DeleteItem(ctx context.Context, id uint32) bool {
+func (s *Subscription) DeleteItem(id uint32) bool {
 	s.Lock()
 	defer s.Unlock()
 	ret := false
