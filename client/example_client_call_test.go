@@ -19,9 +19,9 @@ func ExampleClient_Call() {
 	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://localhost:46010",
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"), // need secure channel to send password
-		client.WithUserNameIdentity("root", "secret"),                            // need role of "operator" to call this method
-		client.WithInsecureSkipVerify(),                                          // skips verification of server certificate
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"), // need secure channel to send password
+		client.WithUserNameIdentity("root", "secret"),                             // need role of "operator" to call this method
+		client.WithInsecureSkipVerify(),                                           // skips verification of server certificate
 	)
 	if err != nil {
 		fmt.Printf("Error opening client connection. %s\n", err.Error())

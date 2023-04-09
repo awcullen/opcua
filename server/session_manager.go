@@ -14,12 +14,12 @@ type SessionManager struct {
 	sync.RWMutex
 	server          *Server
 	sessionsByToken map[ua.NodeID]*Session
-	maxSessionCount uint32
+	maxSessionCount int
 }
 
 // NewSessionManager instantiates a new SessionManager.
 func NewSessionManager(server *Server) *SessionManager {
-	m := &SessionManager{server: server, sessionsByToken: make(map[ua.NodeID]*Session), maxSessionCount: server.MaxSessionCount()}
+	m := &SessionManager{server: server, sessionsByToken: make(map[ua.NodeID]*Session), maxSessionCount: int(server.MaxSessionCount())}
 	go func(m *SessionManager) {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
@@ -39,7 +39,7 @@ func NewSessionManager(server *Server) *SessionManager {
 func (m *SessionManager) Get(authenticationToken ua.NodeID) (*Session, bool) {
 	m.RLock()
 	defer m.RUnlock()
-	if s, ok := m.sessionsByToken[authenticationToken]; ok {
+	if s, ok := m.sessionsByToken[authenticationToken]; ok && !s.IsExpired(){
 		s.SetLastAccess(time.Now())
 		return s, ok
 	}
@@ -50,7 +50,7 @@ func (m *SessionManager) Get(authenticationToken ua.NodeID) (*Session, bool) {
 func (m *SessionManager) Add(s *Session) error {
 	m.Lock()
 	defer m.Unlock()
-	if m.maxSessionCount > 0 && len(m.sessionsByToken) >= int(m.maxSessionCount) {
+	if m.maxSessionCount > 0 && len(m.sessionsByToken) >= m.maxSessionCount {
 		return ua.BadTooManySessions
 	}
 	m.sessionsByToken[s.authenticationToken] = s

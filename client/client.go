@@ -64,11 +64,13 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 
 	// if client certificate is not set then limit secuity policy to none
 	securityPolicyURI := cli.securityPolicyURI
+	securityMode := cli.securityMode
 	if securityPolicyURI == ua.SecurityPolicyURIBestAvailable && len(cli.localCertificate) == 0 {
 		securityPolicyURI = ua.SecurityPolicyURINone
+		securityMode = ua.MessageSecurityModeNone
 	}
 
-	// select first endpoint with matching policy uri.
+	// select first endpoint with matching policy uri and security mode.
 	var selectedEndpoint *ua.EndpointDescription
 	for _, e := range orderedEndpoints {
 		// filter out unsupported policy uri
@@ -79,13 +81,9 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		default:
 			continue
 		}
-		// if policy uri is empty string, select the first endpoint
-		if securityPolicyURI == "" {
-			selectedEndpoint = &e
-			break
-		}
 		// if policy uri is a match
-		if e.SecurityPolicyURI == securityPolicyURI {
+		if (securityPolicyURI == "" || e.SecurityPolicyURI == securityPolicyURI) &&
+			(securityMode == ua.MessageSecurityModeInvalid || e.SecurityMode == securityMode) {
 			selectedEndpoint = &e
 			break
 		}
@@ -122,9 +120,14 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		cli.serverCertificate,
 		cli.connectTimeout,
 		cli.trustedCertsPath,
+		cli.trustedCRLsPath,
+		cli.issuerCertsPath,
+		cli.issuerCRLsPath,
+		cli.rejectedCertsPath,
 		cli.suppressHostNameInvalid,
 		cli.suppressCertificateExpired,
 		cli.suppressCertificateChainIncomplete,
+		cli.suppressCertificateRevocationUnknown,
 		cli.timeoutHint,
 		cli.diagnosticsHint,
 		cli.tokenLifetime,
@@ -142,32 +145,37 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 // Client for exchanging binary encoded requests and responses with an OPC UA server.
 // Uses TCP with the binary security protocol UA-SecureConversation 1.0 and the binary message encoding UA-Binary 1.0.
 type Client struct {
-	channel                            *clientSecureChannel
-	localDescription                   ua.ApplicationDescription
-	endpointURL                        string
-	securityPolicyURI                  string
-	securityMode                       ua.MessageSecurityMode
-	serverCertificate                  []byte
-	userTokenPolicies                  []ua.UserTokenPolicy
-	userIdentity                       any
-	sessionID                          ua.NodeID
-	sessionName                        string
-	applicationName                    string
-	sessionTimeout                     float64
-	clientSignature                    ua.SignatureData
-	identityToken                      any
-	identityTokenSignature             ua.SignatureData
-	timeoutHint                        uint32
-	diagnosticsHint                    uint32
-	tokenLifetime                      uint32
-	localCertificate                   []byte
-	localPrivateKey                    *rsa.PrivateKey
-	trustedCertsPath                   string
-	suppressHostNameInvalid            bool
-	suppressCertificateExpired         bool
-	suppressCertificateChainIncomplete bool
-	connectTimeout                     int64
-	trace                              bool
+	channel                              *clientSecureChannel
+	localDescription                     ua.ApplicationDescription
+	endpointURL                          string
+	securityPolicyURI                    string
+	securityMode                         ua.MessageSecurityMode
+	serverCertificate                    []byte
+	userTokenPolicies                    []ua.UserTokenPolicy
+	userIdentity                         any
+	sessionID                            ua.NodeID
+	sessionName                          string
+	applicationName                      string
+	sessionTimeout                       float64
+	clientSignature                      ua.SignatureData
+	identityToken                        any
+	identityTokenSignature               ua.SignatureData
+	timeoutHint                          uint32
+	diagnosticsHint                      uint32
+	tokenLifetime                        uint32
+	localCertificate                     []byte
+	localPrivateKey                      *rsa.PrivateKey
+	trustedCertsPath                     string
+	trustedCRLsPath                      string
+	issuerCertsPath                      string
+	issuerCRLsPath                       string
+	rejectedCertsPath                    string
+	suppressHostNameInvalid              bool
+	suppressCertificateExpired           bool
+	suppressCertificateChainIncomplete   bool
+	suppressCertificateRevocationUnknown bool
+	connectTimeout                       int64
+	trace                                bool
 }
 
 // EndpointURL gets the EndpointURL of the server.

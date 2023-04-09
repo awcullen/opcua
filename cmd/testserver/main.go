@@ -34,7 +34,7 @@ import (
 var (
 	host, _         = os.Hostname()
 	port            = 46010
-	SoftwareVersion = "0.3.0"
+	SoftwareVersion = "1.0.0"
 	//go:embed nodeset.xml
 	nodeset []byte
 )
@@ -121,16 +121,37 @@ func main() {
 		server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
 			cert, err := x509.ParseCertificate([]byte(userIdentity.Certificate))
 			if err != nil {
-				return ua.BadUserAccessDenied
+				return ua.BadIdentityTokenRejected
 			}
-			log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
+			err = ua.ValidateCertificate(
+				cert,
+				[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+				"",
+				"./pki/X509UserIdentity_PKI/trusted/certs",
+				"./pki/X509UserIdentity_PKI/trusted/crl",
+				"./pki/X509UserIdentity_PKI/issuers/certs",
+				"./pki/X509UserIdentity_PKI/issuers/crl",
+				"",
+				false,
+				false,
+				false,
+				false,
+			)
+			if err != nil {
+				return ua.BadIdentityTokenRejected
+			}
+			log.Printf("Login %s from %s\n", cert.Subject.CommonName, applicationURI)
 			return nil
 		}),
 		server.WithSecurityPolicyNone(true),
 		//server.WithInsecureSkipVerify(),
-		server.WithTrustedCertificatesFile("./pki/trusted.crt"),
+		server.WithTrustedCertificatesPaths("./pki/ApplicationInstance_PKI/trusted/certs", "./pki/ApplicationInstance_PKI/trusted/crl"),
+		server.WithIssuerCertificatesPaths("./pki/ApplicationInstance_PKI/issuers/certs", "./pki/ApplicationInstance_PKI/issuers/crl"),
+		// server.WithRejectedCertificatesPath("./pki/ApplicationInstance_PKI/rejected"),
 		server.WithServerDiagnostics(true),
-		server.WithMaxSessionCount(50),
+		server.WithMaxSessionCount(10),
+		server.WithMaxSubscriptionCount(100),
+		server.WithMaxWorkerThreads(1),
 		// server.WithTrace(),
 	)
 	if err != nil {

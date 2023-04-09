@@ -28,12 +28,12 @@ const (
 	// defaultMaxChunkCount sets the limit on the number of message chunks that may be accepted.
 	defaultMaxChunkCount uint32 = 4 * 1024
 	// the minimum number of milliseconds that a session may be unused before being closed by the server. (2 min)
-	minSessionTimeout float64 = 60 * 1000
+	minSessionTimeout float64 = 10 * 1000
 	// the maximum number of milliseconds that a session may be unused before being closed by the server. (60 min)
 	maxSessionTimeout float64 = 3600 * 1000
-	// the default number of sessions that may be active.
+	// the default number of sessions that may be active. (no limit)
 	defaultMaxSessionCount uint32 = 0
-	// the default number of subscriptions that may be active.
+	// the default number of subscriptions that may be active. (no limit)
 	defaultMaxSubscriptionCount uint32 = 0
 	// the default number of worker threads that may be created.
 	defaultMaxWorkerThreads int = 4
@@ -49,51 +49,56 @@ var (
 // Server implements an OpcUa server for clients.
 type Server struct {
 	sync.RWMutex
-	localDescription                   ua.ApplicationDescription
-	endpoints                          []ua.EndpointDescription
-	maxSessionCount                    uint32
-	maxSubscriptionCount               uint32
-	serverCapabilities                 *ua.ServerCapabilities
-	buildInfo                          ua.BuildInfo
-	certPath                           string
-	keyPath                            string
-	trustedCertsPath                   string
-	endpointURL                        string
-	suppressCertificateExpired         bool
-	suppressCertificateChainIncomplete bool
-	receiveBufferSize                  uint32
-	sendBufferSize                     uint32
-	maxMessageSize                     uint32
-	maxChunkCount                      uint32
-	maxWorkerThreads                   int
-	serverDiagnostics                  bool
-	trace                              bool
-	localCertificate                   []byte
-	localPrivateKey                    *rsa.PrivateKey
-	listeners                          []net.Listener
-	closed                             chan struct{}
-	closing                            chan struct{}
-	stateSemaphore                     chan struct{}
-	state                              ua.ServerState
-	secondsTillShutdown                uint32
-	shutdownReason                     ua.LocalizedText
-	workerpool                         *workerpool.WorkerPool
-	sessionManager                     *SessionManager
-	subscriptionManager                *SubscriptionManager
-	namespaceManager                   *NamespaceManager
-	serverUris                         []string
-	startTime                          time.Time
-	serverDiagnosticsSummary           *ua.ServerDiagnosticsSummaryDataType
-	scheduler                          *Scheduler
-	historian                          HistoryReadWriter
-	allowSecurityPolicyNone            bool
-	anonymousIdentityAuthenticator     AnonymousIdentityAuthenticator
-	userNameIdentityAuthenticator      UserNameIdentityAuthenticator
-	x509IdentityAuthenticator          X509IdentityAuthenticator
-	issuedIdentityAuthenticator        IssuedIdentityAuthenticator
-	rolesProvider                      RolesProvider
-	rolePermissions                    []ua.RolePermissionType
-	lastChannelID                      uint32
+	localDescription                     ua.ApplicationDescription
+	endpoints                            []ua.EndpointDescription
+	maxSessionCount                      uint32
+	maxSubscriptionCount                 uint32
+	serverCapabilities                   *ua.ServerCapabilities
+	buildInfo                            ua.BuildInfo
+	certPath                             string
+	keyPath                              string
+	trustedCertsPath                     string
+	trustedCRLsPath                      string
+	issuerCertsPath                      string
+	issuerCRLsPath                       string
+	rejectedCertsPath                    string
+	endpointURL                          string
+	suppressCertificateExpired           bool
+	suppressCertificateChainIncomplete   bool
+	suppressCertificateRevocationUnknown bool
+	receiveBufferSize                    uint32
+	sendBufferSize                       uint32
+	maxMessageSize                       uint32
+	maxChunkCount                        uint32
+	maxWorkerThreads                     int
+	serverDiagnostics                    bool
+	trace                                bool
+	localCertificate                     []byte
+	localPrivateKey                      *rsa.PrivateKey
+	listeners                            []net.Listener
+	closed                               chan struct{}
+	closing                              chan struct{}
+	stateSemaphore                       chan struct{}
+	state                                ua.ServerState
+	secondsTillShutdown                  uint32
+	shutdownReason                       ua.LocalizedText
+	workerpool                           *workerpool.WorkerPool
+	sessionManager                       *SessionManager
+	subscriptionManager                  *SubscriptionManager
+	namespaceManager                     *NamespaceManager
+	serverUris                           []string
+	startTime                            time.Time
+	serverDiagnosticsSummary             *ua.ServerDiagnosticsSummaryDataType
+	scheduler                            *Scheduler
+	historian                            HistoryReadWriter
+	allowSecurityPolicyNone              bool
+	anonymousIdentityAuthenticator       AnonymousIdentityAuthenticator
+	userNameIdentityAuthenticator        UserNameIdentityAuthenticator
+	x509IdentityAuthenticator            X509IdentityAuthenticator
+	issuedIdentityAuthenticator          IssuedIdentityAuthenticator
+	rolesProvider                        RolesProvider
+	rolePermissions                      []ua.RolePermissionType
+	lastChannelID                        uint32
 }
 
 // New initializes a new instance of the Server.
@@ -397,19 +402,19 @@ func (srv *Server) serve(l net.Listener) error {
 			ch := newServerSecureChannel(srv, conn, srv.receiveBufferSize, srv.sendBufferSize, srv.maxMessageSize, srv.maxChunkCount, srv.trace)
 			err := ch.Open()
 			if err != nil {
-				log.Printf("Error opening secure channel. %s\n", err)
+				// log.Printf("Error opening secure channel. %s\n", err)
+				if c, ok := err.(ua.StatusCode); ok {
+					ch.Abort(c, "")
+				}
 				return
 			}
-			log.Printf("Success opening secure channel '%d'.\n", ch.channelID)
+			// log.Printf("Success opening secure channel '%d'.\n", ch.channelID)
 			err = srv.requestWorker(ch)
-			if err == ua.Good {
-				log.Printf("Success closing secure channel '%d'.\n", ch.channelID)
-				return
-			}
 			if err != nil {
-				log.Printf("Error handling service request for channel id '%d'. %s\n", ch.channelID, err)
+				// log.Printf("Error handling service request for channel id '%d'. %s\n", ch.channelID, err)
 				return
 			}
+			// log.Printf("Success closing secure channel '%d'.\n", ch.channelID)
 		}(conn)
 	}
 }
@@ -739,6 +744,7 @@ func (srv *Server) initializeNamespace() error {
 	}
 
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsEnabledFlag); ok {
+		n.accessLevel = ua.AccessLevelsCurrentRead
 		n.SetValue(ua.NewDataValue(srv.serverDiagnostics, 0, time.Now(), 0, time.Now(), 0))
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerDiagnosticsServerDiagnosticsSummary); ok {
@@ -820,7 +826,7 @@ func (srv *Server) initializeNamespace() error {
 					Priority:                   s.priority,
 					PublishingInterval:         s.publishingInterval,
 					MaxKeepAliveCount:          s.maxKeepAliveCount,
-					MaxLifetimeCount:           s.lifetimeCount,
+					MaxLifetimeCount:           s.maxLifetimeCount,
 					MaxNotificationsPerPublish: s.maxNotificationsPerPublish,
 					PublishingEnabled:          s.publishingEnabled,
 					ModifyCount:                s.modifyCount,
@@ -837,14 +843,14 @@ func (srv *Server) initializeNamespace() error {
 					EventNotificationsCount:      s.eventNotificationsCount,
 					NotificationsCount:           s.notificationsCount,
 					LatePublishRequestCount:      s.latePublishRequestCount,
-					CurrentKeepAliveCount:        s.keepAliveCounter,
-					CurrentLifetimeCount:         s.lifetimeCounter,
+					CurrentKeepAliveCount:        s.keepAliveCount,
+					CurrentLifetimeCount:         s.lifetimeCount,
 					UnacknowledgedMessageCount:   s.unacknowledgedMessageCount,
 					// DiscardedMessageCount:        uint32(0),
 					MonitoredItemCount:           s.monitoredItemCount,
 					DisabledMonitoredItemCount:   s.disabledMonitoredItemCount,
 					MonitoringQueueOverflowCount: s.monitoringQueueOverflowCount,
-					NextSequenceNumber:           s.seqNum,
+					NextSequenceNumber:           s.nextSequenceNumber,
 					// EventQueueOverFlowCount:      uint32(0),
 				}
 				s.RUnlock()
@@ -965,21 +971,21 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeAnonymous, 0),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeAnonymous, len(eds)),
 				TokenType:         ua.UserTokenTypeAnonymous,
 				SecurityPolicyURI: ua.SecurityPolicyURINone,
 			})
 		}
 		if srv.userNameIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeUserName, 0),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeUserName, len(eds)),
 				TokenType:         ua.UserTokenTypeUserName,
 				SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
 			})
 		}
 		if srv.x509IdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeCertificate, 0),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeCertificate, len(eds)),
 				TokenType:         ua.UserTokenTypeCertificate,
 				SecurityPolicyURI: ua.SecurityPolicyURIBasic256Sha256,
 			})
@@ -997,29 +1003,65 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 	}
 
 	uris := []string{
+		ua.SecurityPolicyURIBasic128Rsa15,
+		ua.SecurityPolicyURIBasic256,
 		ua.SecurityPolicyURIBasic256Sha256,
 		ua.SecurityPolicyURIAes128Sha256RsaOaep,
 		ua.SecurityPolicyURIAes256Sha256RsaPss,
 	}
-	for i, uri := range uris {
+	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeAnonymous, i+1),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeAnonymous, len(eds)),
 				TokenType:         ua.UserTokenTypeAnonymous,
 				SecurityPolicyURI: ua.SecurityPolicyURINone,
 			})
 		}
 		if srv.userNameIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeUserName, i+1),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeUserName, len(eds)),
 				TokenType:         ua.UserTokenTypeUserName,
 				SecurityPolicyURI: uri,
 			})
 		}
 		if srv.x509IdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
-				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeCertificate, i+1),
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeCertificate, len(eds)),
+				TokenType:         ua.UserTokenTypeCertificate,
+				SecurityPolicyURI: uri,
+			})
+		}
+		eds = append(eds, ua.EndpointDescription{
+			EndpointURL:         srv.endpointURL,
+			Server:              srv.localDescription,
+			ServerCertificate:   ua.ByteString(srv.LocalCertificate()),
+			SecurityMode:        ua.MessageSecurityModeSign,
+			SecurityPolicyURI:   uri,
+			TransportProfileURI: ua.TransportProfileURIUaTcpTransport,
+			SecurityLevel:       byte(len(eds)),
+			UserIdentityTokens:  toks,
+		})
+	}
+	for _, uri := range uris {
+		toks := []ua.UserTokenPolicy{}
+		if srv.anonymousIdentityAuthenticator != nil {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeAnonymous, len(eds)),
+				TokenType:         ua.UserTokenTypeAnonymous,
+				SecurityPolicyURI: ua.SecurityPolicyURINone,
+			})
+		}
+		if srv.userNameIdentityAuthenticator != nil {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeUserName, len(eds)),
+				TokenType:         ua.UserTokenTypeUserName,
+				SecurityPolicyURI: uri,
+			})
+		}
+		if srv.x509IdentityAuthenticator != nil {
+			toks = append(toks, ua.UserTokenPolicy{
+				PolicyID:          fmt.Sprintf("%s_%d", ua.UserTokenTypeCertificate, len(eds)),
 				TokenType:         ua.UserTokenTypeCertificate,
 				SecurityPolicyURI: uri,
 			})
@@ -1038,8 +1080,8 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 	return eds
 }
 
-// getNextSecureChannelID gets next id in sequence, skipping zero.
-func (srv *Server) getNextSecureChannelID() uint32 {
+// getNextChannelID gets next id in sequence, skipping zero.
+func (srv *Server) getNextChannelID() uint32 {
 	for {
 		old := atomic.LoadUint32(&srv.lastChannelID)
 		new := old

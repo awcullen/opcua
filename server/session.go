@@ -365,11 +365,8 @@ func (s *Session) removeBrowseContinuationPoint(cp []byte) ([]ua.ReferenceDescri
 	s.Lock()
 	defer s.Unlock()
 	id := binary.LittleEndian.Uint32(cp)
-	x, ok := s.browseCPs[id]
-	if ok {
+	if x, ok := s.browseCPs[id]; ok {
 		delete(s.browseCPs, id)
-	}
-	if ok {
 		return x.data, x.max, ok
 	}
 	return nil, 0, false

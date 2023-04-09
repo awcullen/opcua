@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	_ "embed"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"time"
@@ -20,7 +19,7 @@ import (
 var (
 	host, _         = os.Hostname()
 	port            = 46010
-	SoftwareVersion = "0.3.0"
+	SoftwareVersion = "1.0.0"
 	//go:embed testnodeset_test.xml
 	testnodeset []byte
 )
@@ -72,7 +71,7 @@ func NewTestServer() (*server.Server, error) {
 				SoftwareVersion:  SoftwareVersion,
 			}),
 		server.WithAuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
-			log.Printf("Login anonymous identity from %s\n", applicationURI)
+			// log.Printf("Login anonymous identity from %s\n", applicationURI)
 			return nil
 		}),
 		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
@@ -88,15 +87,15 @@ func NewTestServer() (*server.Server, error) {
 			if !valid {
 				return ua.BadUserAccessDenied
 			}
-			log.Printf("Login %s from %s\n", userIdentity.UserName, applicationURI)
+			// log.Printf("Login %s from %s\n", userIdentity.UserName, applicationURI)
 			return nil
 		}),
 		server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
-			cert, err := x509.ParseCertificate([]byte(userIdentity.Certificate))
+			_, err := x509.ParseCertificate([]byte(userIdentity.Certificate))
 			if err != nil {
 				return ua.BadUserAccessDenied
 			}
-			log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
+			// log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
 			return nil
 		}),
 		server.WithSecurityPolicyNone(true),

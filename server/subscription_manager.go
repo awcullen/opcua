@@ -13,13 +13,14 @@ import (
 // SubscriptionManager manages the subscriptions for a server.
 type SubscriptionManager struct {
 	sync.RWMutex
-	server            *Server
-	subscriptionsByID map[uint32]*Subscription
+	server               *Server
+	subscriptionsByID    map[uint32]*Subscription
+	maxSubscriptionCount int
 }
 
 // NewSubscriptionManager instantiates a new SubscriptionManager.
 func NewSubscriptionManager(server *Server) *SubscriptionManager {
-	m := &SubscriptionManager{server: server, subscriptionsByID: make(map[uint32]*Subscription)}
+	m := &SubscriptionManager{server: server, subscriptionsByID: make(map[uint32]*Subscription), maxSubscriptionCount: int(server.MaxSubscriptionCount())}
 	go func(m *SubscriptionManager) {
 		ticker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
@@ -50,8 +51,7 @@ func (m *SubscriptionManager) Get(id uint32) (*Subscription, bool) {
 func (m *SubscriptionManager) Add(s *Subscription) error {
 	m.Lock()
 	defer m.Unlock()
-	maxSubscriptionCount := m.server.MaxSubscriptionCount()
-	if maxSubscriptionCount > 0 && len(m.subscriptionsByID) >= int(maxSubscriptionCount) {
+	if m.maxSubscriptionCount > 0 && len(m.subscriptionsByID) >= m.maxSubscriptionCount {
 		return ua.BadTooManySubscriptions
 	}
 	m.subscriptionsByID[s.id] = s
@@ -164,7 +164,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 			Priority:                   s.priority,
 			PublishingInterval:         s.publishingInterval,
 			MaxKeepAliveCount:          s.maxKeepAliveCount,
-			MaxLifetimeCount:           s.lifetimeCount,
+			MaxLifetimeCount:           s.maxLifetimeCount,
 			MaxNotificationsPerPublish: s.maxNotificationsPerPublish,
 			PublishingEnabled:          s.publishingEnabled,
 			ModifyCount:                s.modifyCount,
@@ -181,14 +181,14 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 			EventNotificationsCount:      s.eventNotificationsCount,
 			NotificationsCount:           s.notificationsCount,
 			LatePublishRequestCount:      s.latePublishRequestCount,
-			CurrentKeepAliveCount:        s.keepAliveCounter,
-			CurrentLifetimeCount:         s.lifetimeCounter,
+			CurrentKeepAliveCount:        s.keepAliveCount,
+			CurrentLifetimeCount:         s.lifetimeCount,
 			UnacknowledgedMessageCount:   s.unacknowledgedMessageCount,
 			// DiscardedMessageCount:        uint32(0),
 			MonitoredItemCount:           s.monitoredItemCount,
 			DisabledMonitoredItemCount:   s.disabledMonitoredItemCount,
 			MonitoringQueueOverflowCount: s.monitoringQueueOverflowCount,
-			NextSequenceNumber:           s.seqNum,
+			NextSequenceNumber:           s.nextSequenceNumber,
 			// EventQueueOverFlowCount:      uint32(0),
 		}, 0, time.Now(), 0, time.Now(), 0)
 		return dv
@@ -336,7 +336,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		srv.historian,
 	)
 	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
-		return ua.NewDataValue(s.lifetimeCount, 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(s.maxLifetimeCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
@@ -744,7 +744,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		srv.historian,
 	)
 	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
-		return ua.NewDataValue(s.keepAliveCounter, 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(s.keepAliveCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
@@ -768,7 +768,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		srv.historian,
 	)
 	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
-		return ua.NewDataValue(s.lifetimeCounter, 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(s.lifetimeCount, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
@@ -912,7 +912,7 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 		srv.historian,
 	)
 	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
-		return ua.NewDataValue(s.seqNum, 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(s.nextSequenceNumber, 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(

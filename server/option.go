@@ -23,7 +23,7 @@ func WithMaxSubscriptionCount(value uint32) Option {
 	}
 }
 
-// WithServerCapabilities sets the number of subscription that may be active. (default: no limit)
+// WithServerCapabilities sets the ServerCapabilities.
 func WithServerCapabilities(value *ua.ServerCapabilities) Option {
 	return func(srv *Server) error {
 		srv.serverCapabilities = value
@@ -39,11 +39,32 @@ func WithBuildInfo(value ua.BuildInfo) Option {
 	}
 }
 
-// WithTrustedCertificatesFile sets the file path of the trusted client certificates or certificate authorities.
-// The file must contain PEM encoded data.
-func WithTrustedCertificatesFile(path string) Option {
+// WithTrustedCertificatesPaths sets the file path of the trusted certificates and revocation lists.
+// Path may be to a file, comma-separated list of files, or directory.
+func WithTrustedCertificatesPaths(certPath, crlPath string) Option {
 	return func(srv *Server) error {
-		srv.trustedCertsPath = path
+		srv.trustedCertsPath = certPath
+		srv.trustedCRLsPath = crlPath
+		return nil
+	}
+}
+
+// WithIssuerCertificatesPaths sets the file path of the issuer certificates and revocation lists.
+// Issuer certificates are needed for validation, but are not trusted.
+// Path may be to a file, comma-separated list of files, or directory.
+func WithIssuerCertificatesPaths(certPath, crlPath string) Option {
+	return func(srv *Server) error {
+		srv.issuerCertsPath = certPath
+		srv.issuerCRLsPath = crlPath
+		return nil
+	}
+}
+
+// WithRejectedCertificatesPath sets the file path where rejected certificates are stored.
+// Path must be to a directory.
+func WithRejectedCertificatesPath(path string) Option {
+	return func(srv *Server) error {
+		srv.rejectedCertsPath = path
 		return nil
 	}
 }
@@ -53,6 +74,7 @@ func WithInsecureSkipVerify() Option {
 	return func(srv *Server) error {
 		srv.suppressCertificateExpired = true
 		srv.suppressCertificateChainIncomplete = true
+		srv.suppressCertificateRevocationUnknown = true
 		return nil
 	}
 }

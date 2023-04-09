@@ -124,8 +124,8 @@ func TestOpenClientWithSecurity(t *testing.T) {
 		ch, err := client.Dial(
 			ctx,
 			endpointURL,
-			client.WithSecurityPolicyURI(e.SecurityPolicyURI),
-			client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+			client.WithSecurityPolicyURI(e.SecurityPolicyURI, e.SecurityMode),
+			client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 			client.WithInsecureSkipVerify(),
 			client.WithUserNameIdentity("root", "secret"),
 		)
@@ -158,8 +158,8 @@ func TestOpenClientWithX509Identity(t *testing.T) {
 		ch, err := client.Dial(
 			ctx,
 			endpointURL,
-			client.WithSecurityPolicyURI(e.SecurityPolicyURI),
-			client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+			client.WithSecurityPolicyURI(e.SecurityPolicyURI, e.SecurityMode),
+			client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 			client.WithInsecureSkipVerify(),
 			client.WithX509IdentityFile("./pki/client.crt", "./pki/client.key"),
 		)
@@ -185,7 +185,7 @@ func TestReadServerStatus(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
@@ -308,7 +308,7 @@ func TestReadAttributes(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
@@ -360,7 +360,7 @@ func TestWrite(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
@@ -444,7 +444,7 @@ func TestWriteIndexRange(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
@@ -824,7 +824,7 @@ func TestCallMethod(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
@@ -870,7 +870,7 @@ func TestTranslate(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
