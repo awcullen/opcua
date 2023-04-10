@@ -3,7 +3,6 @@
 package server
 
 import (
-	"context"
 	"sync"
 
 	"github.com/awcullen/opcua/ua"
@@ -12,6 +11,7 @@ import (
 // MethodNode is a Node class that describes the syntax of a object's Method.
 type MethodNode struct {
 	sync.RWMutex
+	server             *Server
 	nodeID             ua.NodeID
 	nodeClass          ua.NodeClass
 	browseName         ua.QualifiedName
@@ -21,14 +21,15 @@ type MethodNode struct {
 	accessRestrictions uint16
 	references         []ua.Reference
 	executable         bool
-	callMethodHandler  func(context.Context, ua.CallMethodRequest) ua.CallMethodResult
+	callMethodHandler  func(*Session, ua.CallMethodRequest) ua.CallMethodResult
 }
 
 var _ Node = (*MethodNode)(nil)
 
 // NewMethodNode constructs a new MethodNode.
-func NewMethodNode(nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, executable bool) *MethodNode {
+func NewMethodNode(server *Server, nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, executable bool) *MethodNode {
 	return &MethodNode{
+		server:             server,
 		nodeID:             nodeID,
 		nodeClass:          ua.NodeClassMethod,
 		browseName:         browseName,
@@ -72,19 +73,15 @@ func (n *MethodNode) RolePermissions() []ua.RolePermissionType {
 }
 
 // UserRolePermissions returns the RolePermissions attribute of this node for the current user.
-func (n *MethodNode) UserRolePermissions(ctx context.Context) []ua.RolePermissionType {
+func (n *MethodNode) UserRolePermissions(userIdentity any) []ua.RolePermissionType {
 	filteredPermissions := []ua.RolePermissionType{}
-	session, ok := ctx.Value(SessionKey).(*Session)
-	if !ok {
-		return filteredPermissions
-	}
-	roles := session.UserRoles()
-	if len(roles) == 0 {
+	roles, err := n.server.GetRoles(userIdentity, "", "")
+	if err != nil {
 		return filteredPermissions
 	}
 	rolePermissions := n.RolePermissions()
 	if rolePermissions == nil {
-		rolePermissions = session.Server().RolePermissions()
+		rolePermissions = n.server.RolePermissions()
 	}
 	for _, rp := range rolePermissions {
 		for _, r := range roles {
@@ -116,18 +113,17 @@ func (n *MethodNode) Executable() bool {
 }
 
 // UserExecutable returns the UserExecutable attribute of this node.
-func (n *MethodNode) UserExecutable(ctx context.Context) bool {
+func (n *MethodNode) UserExecutable(userIdentity any) bool {
 	if !n.executable {
 		return false
 	}
-	session, ok := ctx.Value(SessionKey).(*Session)
-	if !ok {
+	roles, err := n.server.GetRoles(userIdentity, "", "")
+	if err != nil {
 		return false
 	}
-	roles := session.UserRoles()
 	rolePermissions := n.RolePermissions()
 	if rolePermissions == nil {
-		rolePermissions = session.Server().RolePermissions()
+		rolePermissions = n.server.RolePermissions()
 	}
 	for _, role := range roles {
 		for _, rp := range rolePermissions {
@@ -140,7 +136,7 @@ func (n *MethodNode) UserExecutable(ctx context.Context) bool {
 }
 
 // SetCallMethodHandler sets the CallMethod of the Variable.
-func (n *MethodNode) SetCallMethodHandler(value func(context.Context, ua.CallMethodRequest) ua.CallMethodResult) {
+func (n *MethodNode) SetCallMethodHandler(value func(*Session, ua.CallMethodRequest) ua.CallMethodResult) {
 	n.Lock()
 	defer n.Unlock()
 	n.callMethodHandler = value

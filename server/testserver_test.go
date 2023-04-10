@@ -3,7 +3,7 @@
 package server_test
 
 import (
-	"context"
+	"crypto/x509"
 	_ "embed"
 	"fmt"
 	"os"
@@ -16,7 +16,7 @@ import (
 var (
 	host, _         = os.Hostname()
 	port            = 46010
-	SoftwareVersion = "0.3.0"
+	SoftwareVersion = "1.0.0"
 	//go:embed testnodeset_test.xml
 	testnodeset []byte
 )
@@ -58,6 +58,10 @@ func NewTestServer() (*server.Server, error) {
 				ProductName:      "testserver",
 				SoftwareVersion:  SoftwareVersion,
 			}),
+		server.WithAuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
+			// log.Printf("Login anonymous identity from %s\n", applicationURI)
+			return nil
+		}),
 		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
 			valid := false
 			for _, user := range userids {
@@ -71,10 +75,17 @@ func NewTestServer() (*server.Server, error) {
 			if !valid {
 				return ua.BadUserAccessDenied
 			}
-			// log.Printf("Login user: %s from %s\n", userIdentity.UserName, applicationURI)
+			// log.Printf("Login %s from %s\n", userIdentity.UserName, applicationURI)
 			return nil
 		}),
-		server.WithAnonymousIdentity(true),
+		server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
+			_, err := x509.ParseCertificate([]byte(userIdentity.Certificate))
+			if err != nil {
+				return ua.BadUserAccessDenied
+			}
+			// log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
+			return nil
+		}),
 		server.WithSecurityPolicyNone(true),
 		server.WithInsecureSkipVerify(),
 	)
@@ -90,14 +101,14 @@ func NewTestServer() (*server.Server, error) {
 
 	// install MethodNoArgs method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodNoArgs")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			return ua.CallMethodResult{}
 		})
 	}
 
 	// install MethodI method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodI")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 1 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}
@@ -120,7 +131,7 @@ func NewTestServer() (*server.Server, error) {
 
 	// install MethodO method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodO")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) > 0 {
 				return ua.CallMethodResult{StatusCode: ua.BadTooManyArguments}
 			}
@@ -131,7 +142,7 @@ func NewTestServer() (*server.Server, error) {
 
 	// install MethodIO method
 	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.Methods.MethodIO")); ok {
-		n.SetCallMethodHandler(func(ctx context.Context, req ua.CallMethodRequest) ua.CallMethodResult {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			if len(req.InputArguments) < 2 {
 				return ua.CallMethodResult{StatusCode: ua.BadArgumentsMissing}
 			}

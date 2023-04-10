@@ -59,21 +59,26 @@ const (
 // clientSecureChannel implements a secure channel for binary data over Tcp.
 type clientSecureChannel struct {
 	sync.RWMutex
-	localDescription                   ua.ApplicationDescription
-	timeoutHint                        uint32
-	diagnosticsHint                    uint32
-	tokenRequestedLifetime             uint32
-	endpointURL                        string
-	receiveBufferSize                  uint32
-	sendBufferSize                     uint32
-	maxMessageSize                     uint32
-	maxChunkCount                      uint32
-	conn                               net.Conn
-	connectTimeout                     int64
-	trustedCertsFile                   string
-	suppressHostNameInvalid            bool
-	suppressCertificateExpired         bool
-	suppressCertificateChainIncomplete bool
+	localDescription                     ua.ApplicationDescription
+	timeoutHint                          uint32
+	diagnosticsHint                      uint32
+	tokenRequestedLifetime               uint32
+	endpointURL                          string
+	receiveBufferSize                    uint32
+	sendBufferSize                       uint32
+	maxMessageSize                       uint32
+	maxChunkCount                        uint32
+	conn                                 net.Conn
+	connectTimeout                       int64
+	trustedCertsPath                     string
+	trustedCRLsPath                      string
+	issuerCertsPath                      string
+	issuerCRLsPath                       string
+	rejectedCertsPath                    string
+	suppressHostNameInvalid              bool
+	suppressCertificateExpired           bool
+	suppressCertificateChainIncomplete   bool
+	suppressCertificateRevocationUnknown bool
 	//
 	localCertificate           []byte
 	remoteCertificate          []byte
@@ -127,10 +132,15 @@ func newClientSecureChannel(
 	securityMode ua.MessageSecurityMode,
 	remoteCertificate []byte,
 	connectTimeout int64,
-	trustedCertsFile string,
+	trustedCertsPath string,
+	trustedCRLsPath string,
+	issuerCertsPath string,
+	issuerCRLsPath string,
+	rejectedCertsPath string,
 	suppressHostNameInvalid bool,
 	suppressCertificateExpired bool,
 	suppressCertificateChainIncomplete bool,
+	suppressCertificateRevocationUnknown bool,
 	timeoutHint uint32,
 	diagnosticsHint uint32,
 	tokenLifetime uint32,
@@ -138,24 +148,29 @@ func newClientSecureChannel(
 ) *clientSecureChannel {
 
 	ch := &clientSecureChannel{
-		localDescription:                   localDescription,
-		endpointURL:                        endpointURL,
-		securityPolicyURI:                  securityPolicyURI,
-		securityMode:                       securityMode,
-		localCertificate:                   localCertificate,
-		localPrivateKey:                    localPrivateKey,
-		remoteCertificate:                  remoteCertificate,
-		namespaceURIs:                      []string{"http://opcfoundation.org/UA/"},
-		serverURIs:                         []string{},
-		connectTimeout:                     connectTimeout,
-		trustedCertsFile:                   trustedCertsFile,
-		suppressHostNameInvalid:            suppressHostNameInvalid,
-		suppressCertificateExpired:         suppressCertificateExpired,
-		suppressCertificateChainIncomplete: suppressCertificateChainIncomplete,
-		timeoutHint:                        timeoutHint,
-		diagnosticsHint:                    diagnosticsHint,
-		tokenRequestedLifetime:             tokenLifetime,
-		trace:                              trace,
+		localDescription:                     localDescription,
+		endpointURL:                          endpointURL,
+		securityPolicyURI:                    securityPolicyURI,
+		securityMode:                         securityMode,
+		localCertificate:                     localCertificate,
+		localPrivateKey:                      localPrivateKey,
+		remoteCertificate:                    remoteCertificate,
+		namespaceURIs:                        []string{"http://opcfoundation.org/UA/"},
+		serverURIs:                           []string{},
+		connectTimeout:                       connectTimeout,
+		trustedCertsPath:                     trustedCertsPath,
+		trustedCRLsPath:                      trustedCRLsPath,
+		issuerCertsPath:                      issuerCertsPath,
+		issuerCRLsPath:                       issuerCRLsPath,
+		rejectedCertsPath:                    rejectedCertsPath,
+		suppressHostNameInvalid:              suppressHostNameInvalid,
+		suppressCertificateExpired:           suppressCertificateExpired,
+		suppressCertificateChainIncomplete:   suppressCertificateChainIncomplete,
+		suppressCertificateRevocationUnknown: suppressCertificateRevocationUnknown,
+		timeoutHint:                          timeoutHint,
+		diagnosticsHint:                      diagnosticsHint,
+		tokenRequestedLifetime:               tokenLifetime,
+		trace:                                trace,
 	}
 	if cert, err := x509.ParseCertificate(ch.remoteCertificate); err == nil {
 		ch.remotePublicKey = cert.PublicKey.(*rsa.PublicKey)
@@ -271,7 +286,20 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		if err != nil {
 			return ua.BadSecurityChecksFailed
 		}
-		_, err = validateServerCertificate(cert, remoteURL.Hostname(), ch.trustedCertsFile, ch.suppressHostNameInvalid, ch.suppressCertificateExpired, ch.suppressCertificateChainIncomplete)
+		err = ua.ValidateCertificate(
+			cert,
+			[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			remoteURL.Hostname(),
+			ch.trustedCertsPath,
+			ch.trustedCRLsPath,
+			ch.issuerCertsPath,
+			ch.issuerCRLsPath,
+			ch.rejectedCertsPath,
+			ch.suppressHostNameInvalid,
+			ch.suppressCertificateExpired,
+			ch.suppressCertificateChainIncomplete,
+			ch.suppressCertificateRevocationUnknown,
+		)
 		if err != nil {
 			return err
 		}
@@ -583,13 +611,13 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 			plainTextBlockSize = 1
 			paddingHeaderSize = 0
 			paddingSize = 0
-			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize - paddingHeaderSize - signatureSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
 			} else {
 				bodySize = maxBodySize
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize
 		}
 
 		var stream = ua.NewWriter(sendBuffer)
@@ -775,13 +803,13 @@ func (ch *clientSecureChannel) sendCloseSecureChannelRequest(ctx context.Context
 			plainHeaderSize = 16
 			paddingHeaderSize = 0
 			paddingSize = 0
-			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize - paddingHeaderSize - signatureSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
 			} else {
 				bodySize = maxBodySize
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize
 		}
 
 		var stream = ua.NewWriter(sendBuffer)
@@ -1214,13 +1242,13 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request u
 			plainHeaderSize = 16
 			paddingHeaderSize = 0
 			paddingSize = 0
-			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize - paddingHeaderSize - signatureSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
 			} else {
 				bodySize = maxBodySize
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize
 		}
 
 		var stream = ua.NewWriter(sendBuffer)

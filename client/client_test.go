@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -98,10 +97,10 @@ func TestOpenClientlWithoutSecurity(t *testing.T) {
 		client.WithInsecureSkipVerify(), // skips verification of server certificate
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
 	t.Logf("  SecurityMode: %s", ch.SecurityMode())
 	err = ch.Close(ctx)
@@ -125,16 +124,16 @@ func TestOpenClientWithSecurity(t *testing.T) {
 		ch, err := client.Dial(
 			ctx,
 			endpointURL,
-			client.WithSecurityPolicyURI(e.SecurityPolicyURI),
-			client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+			client.WithSecurityPolicyURI(e.SecurityPolicyURI, e.SecurityMode),
+			client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 			client.WithInsecureSkipVerify(),
 			client.WithUserNameIdentity("root", "secret"),
 		)
 		if err != nil {
-			t.Error(errors.Wrap(err, "Error opening client"))
+			t.Error(errors.Wrap(err, "Error connecting to server"))
 			return
 		}
-		t.Logf("Success opening client: %s", ch.EndpointURL())
+		t.Logf("Success connecting to server: %s", ch.EndpointURL())
 		t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
 		t.Logf("  SecurityMode: %s", ch.SecurityMode())
 		err = ch.Close(ctx)
@@ -148,14 +147,6 @@ func TestOpenClientWithSecurity(t *testing.T) {
 
 // TestOpenClientWithX509Identity tests opening a connection with a server using each security policy the server offers.
 func TestOpenClientWithX509Identity(t *testing.T) {
-	cert, err := tls.LoadX509KeyPair("./pki/client.crt", "./pki/client.key")
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error loading certificate"))
-		return
-	}
-	userCert := cert.Certificate[0]
-	userPrivKey := cert.PrivateKey.(*rsa.PrivateKey)
-
 	ctx := context.Background()
 	res, err := client.GetEndpoints(context.Background(), &ua.GetEndpointsRequest{EndpointURL: endpointURL})
 	if err != nil {
@@ -167,16 +158,16 @@ func TestOpenClientWithX509Identity(t *testing.T) {
 		ch, err := client.Dial(
 			ctx,
 			endpointURL,
-			client.WithSecurityPolicyURI(e.SecurityPolicyURI),
-			client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+			client.WithSecurityPolicyURI(e.SecurityPolicyURI, e.SecurityMode),
+			client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 			client.WithInsecureSkipVerify(),
-			client.WithX509Identity(ua.ByteString(userCert), userPrivKey),
+			client.WithX509IdentityFile("./pki/client.crt", "./pki/client.key"),
 		)
 		if err != nil {
-			t.Error(errors.Wrap(err, "Error opening client"))
+			t.Error(errors.Wrap(err, "Error connecting to server"))
 			return
 		}
-		t.Logf("Success opening client: %s", ch.EndpointURL())
+		t.Logf("Success connecting to server: %s", ch.EndpointURL())
 		t.Logf("  SecurityPolicyURI: %s", ch.SecurityPolicyURI())
 		t.Logf("  SecurityMode: %s", ch.SecurityMode())
 		err = ch.Close(ctx)
@@ -194,15 +185,15 @@ func TestReadServerStatus(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	res, err := ch.Read(ctx, &ua.ReadRequest{
 		NodesToRead: []ua.ReadValueID{
 			{NodeID: ua.VariableIDServerServerStatus, AttributeID: ua.AttributeIDValue},
@@ -245,10 +236,10 @@ func TestReadBuiltinTypes(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.ReadRequest{
 		NodesToRead: []ua.ReadValueID{
 			{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Scalar.Boolean"), AttributeID: ua.AttributeIDValue},
@@ -317,15 +308,15 @@ func TestReadAttributes(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.ReadRequest{
 		NodesToRead: []ua.ReadValueID{
 			{NodeID: ua.ObjectIDServer, AttributeID: 1},
@@ -369,15 +360,15 @@ func TestWrite(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.WriteRequest{
 		NodesToWrite: []ua.WriteValue{
 			{
@@ -416,10 +407,10 @@ func TestReadIndexRange(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.ReadRequest{
 		NodesToRead: []ua.ReadValueID{
 			{
@@ -453,15 +444,15 @@ func TestWriteIndexRange(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.WriteRequest{
 		NodesToWrite: []ua.WriteValue{
 			{
@@ -517,10 +508,10 @@ func TestBrowse(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.BrowseRequest{
 		NodesToBrowse: []ua.BrowseDescription{
 			{
@@ -564,10 +555,10 @@ func TestSubscribe(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
 		RequestedMaxKeepAliveCount:  30,
@@ -652,10 +643,10 @@ func TestSubscribeEvents(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
 		RequestedMaxKeepAliveCount:  30,
@@ -744,10 +735,10 @@ func TestSubscribeAlarms(t *testing.T) {
 		client.WithInsecureSkipVerify(),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
 		RequestedMaxKeepAliveCount:  30,
@@ -833,15 +824,15 @@ func TestCallMethod(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 
 	req := &ua.CallRequest{
 		MethodsToCall: []ua.CallMethodRequest{{
@@ -879,15 +870,15 @@ func TestTranslate(t *testing.T) {
 	ch, err := client.Dial(
 		ctx,
 		endpointURL,
-		client.WithClientCertificateFile("./pki/client.crt", "./pki/client.key"),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 		client.WithInsecureSkipVerify(),
 		client.WithUserNameIdentity("root", "secret"),
 	)
 	if err != nil {
-		t.Error(errors.Wrap(err, "Error opening client"))
+		t.Error(errors.Wrap(err, "Error connecting to server"))
 		return
 	}
-	t.Logf("Success opening client: %s", ch.EndpointURL())
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
 	req := &ua.TranslateBrowsePathsToNodeIDsRequest{
 		BrowsePaths: []ua.BrowsePath{
 			{

@@ -88,7 +88,6 @@ type serverSecureChannel struct {
 	maxChunkCount     uint32
 	endpointURL       string
 	conn              net.Conn
-	closed            bool
 }
 
 // newServerSecureChannel initializes a new instance of the UaTcpSecureChannel.
@@ -101,11 +100,12 @@ func newServerSecureChannel(srv *Server, conn net.Conn, receiveBufferSize, sendB
 		maxMessageSize:    maxMessageSize,
 		maxChunkCount:     maxChunkCount,
 		trace:             trace,
-		channelID:         srv.getNextSecureChannelID(),
+		channelID:         srv.getNextChannelID(),
 		securityPolicyURI: ua.SecurityPolicyURINone,
 		securityPolicy:    new(ua.SecurityPolicyNone),
 		localCertificate:  srv.localCertificate,
 		localPrivateKey:   srv.localPrivateKey,
+		tokenExpiration:   time.Now().Add(20 * time.Second),
 	}
 	return ch
 }
@@ -201,9 +201,11 @@ func (ch *serverSecureChannel) IsExpired() bool {
 func (ch *serverSecureChannel) Open() error {
 	ch.Lock()
 	defer ch.Unlock()
+
 	// log.Printf("Opening secure channel.\n")
 	buf := *(bytesPool.Get().(*[]byte))
 	defer bytesPool.Put(&buf)
+	ch.conn.SetDeadline(ch.tokenExpiration)
 	_, err := ch.read(buf)
 	if err != nil {
 		return ua.BadDecodingError
@@ -306,7 +308,7 @@ func (ch *serverSecureChannel) Open() error {
 	}
 
 	ch.securityMode = oscr.SecurityMode
-	if ch.securityMode != ua.MessageSecurityModeNone {
+	if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
 	} else {
 		ch.localNonce = []byte{}
@@ -338,7 +340,7 @@ func (ch *serverSecureChannel) Open() error {
 		}
 	}
 
-	if ch.securityMode != ua.MessageSecurityModeNone {
+	if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 		rc := ch.remoteCertificate
 		if rc == nil {
 			return ua.BadSecurityChecksFailed
@@ -347,8 +349,21 @@ func (ch *serverSecureChannel) Open() error {
 		if err != nil {
 			return ua.BadSecurityChecksFailed
 		}
-		valid, err := validateClientCertificate(cert, ch.srv.trustedCertsPath, ch.srv.suppressCertificateExpired, ch.srv.suppressCertificateChainIncomplete)
-		if !valid {
+		err = ua.ValidateCertificate(
+			cert,
+			[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+			"",
+			ch.srv.trustedCertsPath,
+			ch.srv.trustedCRLsPath,
+			ch.srv.issuerCertsPath,
+			ch.srv.issuerCRLsPath,
+			ch.srv.rejectedCertsPath,
+			false,
+			ch.srv.suppressCertificateExpired,
+			ch.srv.suppressCertificateChainIncomplete,
+			ch.srv.suppressCertificateRevocationUnknown,
+		)
+		if err != nil {
 			return err
 		}
 		ch.remotePublicKey = cert.PublicKey.(*rsa.PublicKey)
@@ -399,8 +414,6 @@ func (ch *serverSecureChannel) Close() error {
 	// log.Printf("Closing secure channel.\n")
 	if ch.conn != nil {
 		ch.conn.Close()
-		ch.closed = true
-		return nil
 	}
 	return nil
 }
@@ -421,19 +434,17 @@ func (ch *serverSecureChannel) Abort(reason ua.StatusCode, message string) error
 		enc.WriteUInt32(uint32(16 + len(message)))
 		enc.WriteUInt32(uint32(reason))
 		enc.WriteString(message)
-		_, err := ch.write(writer.Bytes())
-		log.Printf("<- Err { reason: 0x%X, message: %s }\n", uint32(reason), message)
+		ch.conn.SetWriteDeadline(time.Now().Add(3000 * time.Millisecond))
+		ch.write(writer.Bytes())
+		// log.Printf("<- Err { reason: 0x%X, message: %s }\n", uint32(reason), message)
 		ch.conn.Close()
-		ch.closed = true
-		return err
 	}
-	ch.closed = true
 	return nil
 }
 
 // Write the service response.
 func (ch *serverSecureChannel) Write(res ua.ServiceResponse, id uint32) error {
-	if ch.trace || res.Header().ServiceResult == ua.BadNothingToDo {
+	if ch.trace {
 		b, _ := json.MarshalIndent(res, "", " ")
 		log.Printf("%s%s", reflect.TypeOf(res).Elem().Name(), b)
 	}
@@ -512,13 +523,13 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 			paddingSize = 0
 			cipherTextBlockSize = 1
 			plainTextBlockSize = 1
-			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize - paddingHeaderSize - signatureSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
 			} else {
 				bodySize = maxBodySize
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize
 		}
 
 		var stream = ua.NewWriter(ch.sendBuffer)
@@ -531,7 +542,7 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 
 		// asymmetric security header
 		encoder.WriteString(ch.securityPolicyURI)
-		if ch.securityMode != ua.MessageSecurityModeNone {
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 			encoder.WriteByteArray(ch.localCertificate)
 			thumbprint := sha1.Sum(ch.remoteCertificate)
 			encoder.WriteByteArray(thumbprint[:])
@@ -556,7 +567,7 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 		bodyCount -= bodySize
 
 		// padding
-		if ch.securityMode != ua.MessageSecurityModeNone {
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 			paddingByte := byte(paddingSize & 0xFF)
 			encoder.WriteByte(paddingByte)
 			for i := 0; i < paddingSize; i++ {
@@ -574,7 +585,7 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 		}
 
 		// sign
-		if ch.securityMode != ua.MessageSecurityModeNone {
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 			signature, err := ch.securityPolicy.RSASign(ch.localPrivateKey, stream.Bytes())
 			if err != nil {
 				return err
@@ -589,7 +600,7 @@ func (ch *serverSecureChannel) sendOpenSecureChannelResponse(res *ua.OpenSecureC
 		}
 
 		// encrypt
-		if ch.securityMode != ua.MessageSecurityModeNone {
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 			plaintextLen := stream.Len()
 			copy(ch.encryptionBuffer, stream.Bytes()[:plainHeaderSize])
 			plainText := make([]byte, plainTextBlockSize)
@@ -960,13 +971,13 @@ func (ch *serverSecureChannel) sendServiceResponse(response ua.ServiceResponse, 
 			plainHeaderSize = 16
 			paddingHeaderSize = 0
 			paddingSize = 0
-			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize
+			maxBodySize = int(ch.sendBufferSize) - plainHeaderSize - sequenceHeaderSize - paddingHeaderSize - signatureSize
 			if bodyCount < maxBodySize {
 				bodySize = bodyCount
 			} else {
 				bodySize = maxBodySize
 			}
-			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize
+			chunkSize = plainHeaderSize + sequenceHeaderSize + bodySize + paddingSize + paddingHeaderSize + signatureSize
 		}
 
 		var stream = ua.NewWriter(ch.sendBuffer)
@@ -1014,7 +1025,7 @@ func (ch *serverSecureChannel) sendServiceResponse(response ua.ServiceResponse, 
 		}
 
 		// sign
-		if ch.securityMode != ua.MessageSecurityModeNone {
+		if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 			ch.symSignHMAC.Reset()
 			if _, err := ch.symSignHMAC.Write(stream.Bytes()); err != nil {
 				return err
@@ -1112,7 +1123,9 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 				}
 				ch.tokenID = ch.pendingTokenID
 				ch.tokenExpiration = ch.pendingTokenExpiration
-				if ch.securityMode != ua.MessageSecurityModeNone {
+				ch.conn.SetDeadline(ch.tokenExpiration)
+				if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
+
 					// (re)create security keys for verifying, decrypting
 					ch.remoteSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
 					ch.remoteEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
@@ -1135,7 +1148,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 				}
 
 				ch.sendingSemaphore.Lock()
-				if ch.securityMode != ua.MessageSecurityModeNone {
+				if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 
 					// (re)create security keys for signing, encrypting
 					ch.localSigningKey = make([]byte, ch.securityPolicy.SymSignatureKeySize())
@@ -1175,7 +1188,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 			}
 
 			// verify
-			if ch.securityMode != ua.MessageSecurityModeNone {
+			if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 				sigEnd := int(messageLength)
 				sigStart := sigEnd - ch.securityPolicy.SymSignatureSize()
 				ch.symVerifyHMAC.Reset()
@@ -1486,7 +1499,7 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 		return ua.BadSecurityChecksFailed
 	}
 
-	if ch.securityMode != ua.MessageSecurityModeNone {
+	if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
 		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
 	} else {
 		ch.localNonce = []byte{}
@@ -1523,6 +1536,10 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 	}
 	// log.Printf("Renewed security token. %d , lifetime: %d\n", res.SecurityToken.TokenID, res.SecurityToken.RevisedLifetime)
 	return nil
+}
+
+func (ch *serverSecureChannel) handleCloseSecureChannel(requestid uint32, req *ua.CloseSecureChannelRequest) error {
+	return ua.Good
 }
 
 // getNextSequenceNumber gets next SequenceNumber in sequence, skipping zero.
@@ -1631,9 +1648,5 @@ func (ch *serverSecureChannel) write(p []byte) (int, error) {
 	if ch.conn == nil {
 		return 0, ua.BadSecureChannelClosed
 	}
-	n, err := ch.conn.Write(p)
-	if err != nil || n == 0 {
-		ch.closed = true
-	}
-	return n, err
+	return ch.conn.Write(p)
 }

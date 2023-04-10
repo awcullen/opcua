@@ -63,5 +63,6 @@ func ExampleClient_Browse() {
 	// Output:
 	// Browse results of NodeID 'i=85':
 	//  + Server, browseName: 0:Server, nodeClass: Object, nodeId: i=2253
+	//  + Aliases, browseName: 0:Aliases, nodeClass: Object, nodeId: i=23470
 	//  + Demo, browseName: 2:Demo, nodeClass: Object, nodeId: ns=2;s=Demo
 }

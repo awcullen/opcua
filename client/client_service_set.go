@@ -44,13 +44,19 @@ func FindServers(ctx context.Context, request *ua.FindServersRequest) (*ua.FindS
 		nil,
 		defaultConnectTimeout,
 		"",
+		"",
+		"",
+		"",
+		"",
+		false,
 		false,
 		false,
 		false,
 		defaultTimeoutHint,
 		defaultDiagnosticsHint,
 		defaultTokenRequestedLifetime,
-		false)
+		false,
+	)
 
 	err := ch.Open(ctx)
 	if err != nil {
@@ -85,13 +91,19 @@ func GetEndpoints(ctx context.Context, request *ua.GetEndpointsRequest) (*ua.Get
 		nil,
 		defaultConnectTimeout,
 		"",
+		"",
+		"",
+		"",
+		"",
+		false,
 		false,
 		false,
 		false,
 		defaultTimeoutHint,
 		defaultDiagnosticsHint,
 		defaultTokenRequestedLifetime,
-		false)
+		false,
+	)
 
 	err := ch.Open(ctx)
 	if err != nil {
@@ -110,7 +122,7 @@ func GetEndpoints(ctx context.Context, request *ua.GetEndpointsRequest) (*ua.Get
 	return res, nil
 }
 
-/// Create a Session.
+// / Create a Session.
 // See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.6.2/
 func (ch *Client) createSession(ctx context.Context, request *ua.CreateSessionRequest) (*ua.CreateSessionResponse, error) {
 	response, err := ch.request(ctx, request)

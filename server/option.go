@@ -7,14 +7,6 @@ import "github.com/awcullen/opcua/ua"
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
 
-// WithSessionTimeout sets the number of milliseconds that a session may be unused before being closed by the server. (default: 2 min)
-func WithSessionTimeout(value float64) Option {
-	return func(srv *Server) error {
-		srv.sessionTimeout = value
-		return nil
-	}
-}
-
 // WithMaxSessionCount sets the number of sessions that may be active. (default: no limit)
 func WithMaxSessionCount(value uint32) Option {
 	return func(srv *Server) error {
@@ -31,7 +23,7 @@ func WithMaxSubscriptionCount(value uint32) Option {
 	}
 }
 
-// WithServerCapabilities sets the number of subscription that may be active. (default: no limit)
+// WithServerCapabilities sets the ServerCapabilities.
 func WithServerCapabilities(value *ua.ServerCapabilities) Option {
 	return func(srv *Server) error {
 		srv.serverCapabilities = value
@@ -47,11 +39,42 @@ func WithBuildInfo(value ua.BuildInfo) Option {
 	}
 }
 
+// WithTrustedCertificatesPaths sets the file path of the trusted certificates and revocation lists.
+// Path may be to a file, comma-separated list of files, or directory.
+func WithTrustedCertificatesPaths(certPath, crlPath string) Option {
+	return func(srv *Server) error {
+		srv.trustedCertsPath = certPath
+		srv.trustedCRLsPath = crlPath
+		return nil
+	}
+}
+
+// WithIssuerCertificatesPaths sets the file path of the issuer certificates and revocation lists.
+// Issuer certificates are needed for validation, but are not trusted.
+// Path may be to a file, comma-separated list of files, or directory.
+func WithIssuerCertificatesPaths(certPath, crlPath string) Option {
+	return func(srv *Server) error {
+		srv.issuerCertsPath = certPath
+		srv.issuerCRLsPath = crlPath
+		return nil
+	}
+}
+
+// WithRejectedCertificatesPath sets the file path where rejected certificates are stored.
+// Path must be to a directory.
+func WithRejectedCertificatesPath(path string) Option {
+	return func(srv *Server) error {
+		srv.rejectedCertsPath = path
+		return nil
+	}
+}
+
 // WithInsecureSkipVerify skips verification of client certificate. Skips checking HostName, Expiration, and Authority.
 func WithInsecureSkipVerify() Option {
 	return func(srv *Server) error {
 		srv.suppressCertificateExpired = true
 		srv.suppressCertificateChainIncomplete = true
+		srv.suppressCertificateRevocationUnknown = true
 		return nil
 	}
 }

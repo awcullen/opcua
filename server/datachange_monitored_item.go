@@ -3,7 +3,7 @@
 package server
 
 import (
-	"context"
+	"bytes"
 	"math"
 	"reflect"
 	"sync/atomic"
@@ -36,13 +36,12 @@ type DataChangeMonitoredItem struct {
 	prequeue            deque.Deque[ua.DataValue]
 	ts                  time.Time
 	ti                  time.Duration
-	cachedCtx           context.Context
 	triggeredItems      []MonitoredItem
 	triggered           bool
 }
 
 // NewDataChangeMonitoredItem constructs a new DataChangeMonitoredItem.
-func NewDataChangeMonitoredItem(ctx context.Context, sub *Subscription, node Node, itemToMonitor ua.ReadValueID, monitoringMode ua.MonitoringMode, parameters ua.MonitoringParameters, timestampsToReturn ua.TimestampsToReturn, minSamplingInterval float64) *DataChangeMonitoredItem {
+func NewDataChangeMonitoredItem(sub *Subscription, node Node, itemToMonitor ua.ReadValueID, monitoringMode ua.MonitoringMode, parameters ua.MonitoringParameters, timestampsToReturn ua.TimestampsToReturn, minSamplingInterval float64) *DataChangeMonitoredItem {
 	mi := &DataChangeMonitoredItem{
 		sub:                 sub,
 		srv:                 sub.manager.server,
@@ -63,7 +62,7 @@ func NewDataChangeMonitoredItem(ctx context.Context, sub *Subscription, node Nod
 	mi.setFilter(parameters.Filter)
 
 	mi.Lock()
-	mi.startMonitoring(ctx)
+	mi.startMonitoring()
 	mi.Unlock()
 	return mi
 }
@@ -126,7 +125,7 @@ func (mi *DataChangeMonitoredItem) SetTriggered(val bool) {
 }
 
 // Modify modifies the MonitoredItem.
-func (mi *DataChangeMonitoredItem) Modify(ctx context.Context, req ua.MonitoredItemModifyRequest) ua.MonitoredItemModifyResult {
+func (mi *DataChangeMonitoredItem) Modify(req ua.MonitoredItemModifyRequest) ua.MonitoredItemModifyResult {
 	mi.Lock()
 	defer mi.Unlock()
 	mi.stopMonitoring()
@@ -135,7 +134,7 @@ func (mi *DataChangeMonitoredItem) Modify(ctx context.Context, req ua.MonitoredI
 	mi.setQueueSize(req.RequestedParameters.QueueSize)
 	mi.setSamplingInterval(req.RequestedParameters.SamplingInterval)
 	mi.setFilter(req.RequestedParameters.Filter)
-	mi.startMonitoring(ctx)
+	mi.startMonitoring()
 	return ua.MonitoredItemModifyResult{RevisedSamplingInterval: mi.samplingInterval, RevisedQueueSize: mi.queueSize}
 }
 
@@ -153,7 +152,7 @@ func (mi *DataChangeMonitoredItem) Delete() {
 }
 
 // SetMonitoringMode sets the MonitoringMode of the MonitoredItem.
-func (mi *DataChangeMonitoredItem) SetMonitoringMode(ctx context.Context, mode ua.MonitoringMode) {
+func (mi *DataChangeMonitoredItem) SetMonitoringMode(mode ua.MonitoringMode) {
 	mi.Lock()
 	defer mi.Unlock()
 	if mi.monitoringMode == mode {
@@ -168,7 +167,7 @@ func (mi *DataChangeMonitoredItem) SetMonitoringMode(ctx context.Context, mode u
 	} else {
 		mi.sub.disabledMonitoredItemCount--
 	}
-	mi.startMonitoring(ctx)
+	mi.startMonitoring()
 }
 
 func (mi *DataChangeMonitoredItem) setQueueSize(queueSize uint32) {
@@ -245,13 +244,12 @@ func (mi *DataChangeMonitoredItem) setFilter(filter any) {
 	}
 }
 
-func (mi *DataChangeMonitoredItem) startMonitoring(ctx context.Context) {
-	mi.cachedCtx = ctx
+func (mi *DataChangeMonitoredItem) startMonitoring() {
 	mi.ts = time.Now()
 	if mi.monitoringMode == ua.MonitoringModeDisabled {
 		return
 	}
-	v := mi.srv.readValue(ctx, mi.itemToMonitor)
+	v := mi.srv.readValue(mi.sub.session, mi.itemToMonitor)
 	mi.prequeue.PushBack(v)
 	mi.Unlock()
 	mi.srv.Scheduler().GetPollGroup(time.Duration(mi.samplingInterval) * time.Millisecond).Subscribe(mi)
@@ -262,14 +260,13 @@ func (mi *DataChangeMonitoredItem) stopMonitoring() {
 	mi.Unlock()
 	mi.srv.Scheduler().GetPollGroup(time.Duration(mi.samplingInterval) * time.Millisecond).Unsubscribe(mi)
 	mi.Lock()
-	mi.cachedCtx = nil
 }
 
 // Poll reads the value of the itemToMonitor.
 func (mi *DataChangeMonitoredItem) Poll() {
 	mi.Lock()
 	if n := mi.node; n != nil {
-		v := mi.srv.readValue(mi.cachedCtx, mi.itemToMonitor)
+		v := mi.srv.readValue(mi.sub.session, mi.itemToMonitor)
 		mi.prequeue.PushBack(v)
 	}
 	mi.Unlock()
@@ -405,7 +402,7 @@ func (mi *DataChangeMonitoredItem) notificationsAvailable(tn time.Time, late boo
 	}
 	if resend && mi.monitoringMode == ua.MonitoringModeReporting {
 		if mi.queue.Len() == 0 {
-			v := mi.srv.readValue(mi.cachedCtx, mi.itemToMonitor)
+			v := mi.srv.readValue(mi.sub.session, mi.itemToMonitor)
 			mi.enqueue(withTimestamps(v, mi.timestampsToReturn))
 			mi.previousQueuedValue = v
 		}
@@ -450,139 +447,48 @@ func (mi *DataChangeMonitoredItem) isDataChange(current, previous ua.DataValue) 
 }
 
 func equalDeadbandAbsolute(current, previous ua.Variant, deadband float64) bool {
-	switch c := current.(type) {
-	case nil:
-		return previous == nil
-	case int8:
-		if p, ok := previous.(int8); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case uint8:
-		if p, ok := previous.(uint8); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case int16:
-		if p, ok := previous.(int16); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case uint16:
-		if p, ok := previous.(uint16); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case int32:
-		if p, ok := previous.(int32); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case uint32:
-		if p, ok := previous.(uint32); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case int64:
-		if p, ok := previous.(int64); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case uint64:
-		if p, ok := previous.(uint64); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case float32:
-		if p, ok := previous.(float32); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case float64:
-		if p, ok := previous.(float64); ok {
-			return math.Abs(float64(c)-float64(p)) <= deadband
-		}
-	case []int8:
-		if p, ok := previous.([]int8); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
+	if current == nil || previous == nil {
+		return current == previous
+	}
+	vc := reflect.ValueOf(current)
+	vp := reflect.ValueOf(previous)
+	if vc.Type() != vp.Type() {
+		return false
+	}
+	switch vc.Kind() {
+	case reflect.Array:
+		for i := 0; i < vc.Len(); i++ {
+			if !equalDeadbandAbsolute(vc.Index(i), vp.Index(i), deadband) {
+				return false
 			}
+		}
+		return true
+	case reflect.Slice:
+		if vc.IsNil() != vp.IsNil() {
+			return false
+		}
+		if vc.Len() != vp.Len() {
+			return false
+		}
+		if vc.UnsafePointer() == vp.UnsafePointer() {
 			return true
 		}
-	case []uint8:
-		if p, ok := previous.([]uint8); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
-			}
-			return true
+		// special case for []byte, which is common.
+		if vc.Type().Elem().Kind() == reflect.Uint8 {
+			return bytes.Equal(vc.Bytes(), vp.Bytes())
 		}
-	case []int16:
-		if p, ok := previous.([]int16); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
+		for i := 0; i < vc.Len(); i++ {
+			if !equalDeadbandAbsolute(vc.Index(i), vp.Index(i), deadband) {
+				return false
 			}
-			return true
 		}
-	case []uint16:
-		if p, ok := previous.([]uint16); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
-			}
-			return true
-		}
-	case []int32:
-		if p, ok := previous.([]int32); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
-			}
-			return true
-		}
-	case []uint32:
-		if p, ok := previous.([]uint32); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
-			}
-			return true
-		}
-	case []int64:
-		if p, ok := previous.([]int64); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
-			}
-			return true
-		}
-	case []uint64:
-		if p, ok := previous.([]uint64); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
-			}
-			return true
-		}
-	case []float32:
-		if p, ok := previous.([]float32); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
-			}
-			return true
-		}
-	case []float64:
-		if p, ok := previous.([]float64); ok {
-			for i := 0; i < len(c); i++ {
-				if math.Abs(float64(c[i])-float64(p[i])) > deadband {
-					return false
-				}
-			}
-			return true
-		}
+		return true
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return math.Abs(float64(vc.Int()-vp.Int())) <= deadband
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return math.Abs(float64(vc.Uint()-vp.Uint())) <= deadband
+	case reflect.Float32, reflect.Float64:
+		return math.Abs(vc.Float()-vp.Float()) <= deadband
 	}
 	return false
 }

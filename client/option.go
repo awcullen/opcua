@@ -12,10 +12,11 @@ import (
 // Option is a functional option to be applied to a client during initialization.
 type Option func(*Client) error
 
-// WithSecurityPolicyURI selects endpoint with given security policy URI. (default: "" selects most secure endpoint)
-func WithSecurityPolicyURI(uri string) Option {
+// WithSecurityPolicyURI selects endpoint with given security policy URI and MessageSecurityMode. (default: "" selects most secure endpoint)
+func WithSecurityPolicyURI(uri string, securityMode ua.MessageSecurityMode) Option {
 	return func(c *Client) error {
 		c.securityPolicyURI = uri
+		c.securityMode = securityMode
 		return nil
 	}
 }
@@ -29,17 +30,30 @@ func WithUserNameIdentity(userName, password string) Option {
 }
 
 // WithX509Identity sets the user identity to an X509Identity created from a certificate and private key. (default: AnonymousIdentity)
-func WithX509Identity(certificate ua.ByteString, privateKey *rsa.PrivateKey) Option {
+func WithX509Identity(certificate []byte, privateKey *rsa.PrivateKey) Option {
 	return func(c *Client) error {
-		c.userIdentity = ua.X509Identity{Certificate: certificate, Key: privateKey}
+		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(certificate), Key: privateKey}
 		return nil
 	}
 }
 
-// WithIssuedIdentity sets the user identity to an IssuedIdentity created from a token. (default: AnonymousIdentity)
-func WithIssuedIdentity(tokenData ua.ByteString) Option {
+// WithX509IdentityFile sets the user identity to an X509Identity created from the file paths of the certificate and private key. (default: AnonymousIdentity)
+// Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
+func WithX509IdentityFile(certPath, keyPath string) Option {
 	return func(c *Client) error {
-		c.userIdentity = ua.IssuedIdentity{TokenData: tokenData}
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			return err
+		}
+		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(cert.Certificate[0]), Key: cert.PrivateKey.(*rsa.PrivateKey)}
+		return nil
+	}
+}
+
+// WithIssuedIdentity sets the user identity to an IssuedIdentity created from token data. (default: AnonymousIdentity)
+func WithIssuedIdentity(tokenData []byte) Option {
+	return func(c *Client) error {
+		c.userIdentity = ua.IssuedIdentity{TokenData: ua.ByteString(tokenData)}
 		return nil
 	}
 }
@@ -79,6 +93,7 @@ func WithClientCertificate(cert []byte, privateKey *rsa.PrivateKey) Option {
 
 // WithClientCertificateFile sets the file paths of the client certificate and private key.
 // Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
+// DEPRECIATED. Use WithClientCertificatePaths().
 func WithClientCertificateFile(certPath, keyPath string) Option {
 	return func(c *Client) error {
 		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
@@ -91,11 +106,56 @@ func WithClientCertificateFile(certPath, keyPath string) Option {
 	}
 }
 
+// WithClientCertificatePaths sets the paths of the client certificate and private key.
+// Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
+func WithClientCertificatePaths(certPath, keyPath string) Option {
+	return func(c *Client) error {
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			return err
+		}
+		c.localCertificate = cert.Certificate[0]
+		c.localPrivateKey, _ = cert.PrivateKey.(*rsa.PrivateKey)
+		return nil
+	}
+}
+
 // WithTrustedCertificatesFile sets the file path of the trusted server certificates or certificate authorities.
-// The files must contain PEM encoded data.
+// The file must contain PEM encoded data.
+// DEPRECIATED. Use WithTrustedCertificatesPath().
 func WithTrustedCertificatesFile(path string) Option {
 	return func(c *Client) error {
-		c.trustedCertsFile = path
+		c.trustedCertsPath = path
+		return nil
+	}
+}
+
+// WithTrustedCertificatesPaths sets the file path of the trusted certificates and revocation lists.
+// Path may be to a file, comma-separated list of files, or directory.
+func WithTrustedCertificatesPaths(certPath, crlPath string) Option {
+	return func(c *Client) error {
+		c.trustedCertsPath = certPath
+		c.trustedCRLsPath = crlPath
+		return nil
+	}
+}
+
+// WithIssuerCertificatesPath sets the file path of the issuer certificates and revocation lists.
+// Issuer certificates are needed for validation, but are not trusted.
+// Path may be to a file, comma-separated list of files, or directory.
+func WithIssuerCertificatesPaths(certPath, crlPath string) Option {
+	return func(c *Client) error {
+		c.issuerCertsPath = certPath
+		c.issuerCRLsPath = crlPath
+		return nil
+	}
+}
+
+// WithRejectedCertificatesPath sets the file path where rejected certificates are stored.
+// Path must be to a directory.
+func WithRejectedCertificatesPath(path string) Option {
+	return func(c *Client) error {
+		c.rejectedCertsPath = path
 		return nil
 	}
 }
@@ -106,6 +166,7 @@ func WithInsecureSkipVerify() Option {
 		c.suppressHostNameInvalid = true
 		c.suppressCertificateExpired = true
 		c.suppressCertificateChainIncomplete = true
+		c.suppressCertificateRevocationUnknown = true
 		return nil
 	}
 }

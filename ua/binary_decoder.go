@@ -130,7 +130,7 @@ func getDecoder(typ reflect.Type) (decoderFunc, error) {
 	case reflect.String:
 		return getStringDecoder()
 	}
-	return nil, fmt.Errorf("unsupported type: %s\n", typ)
+	return nil, fmt.Errorf("unsupported type: %s", typ)
 }
 
 func getStructDecoder(typ reflect.Type) (decoderFunc, error) {
@@ -518,6 +518,8 @@ func (dec *BinaryDecoder) ReadXMLElement(value *XMLElement) error {
 	return nil
 }
 
+var nilGuid = uuid.UUID{}
+
 // ReadNodeID reads a NodeID.
 func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 	var b byte
@@ -570,6 +572,10 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 		if err := dec.ReadString(&id); err != nil {
 			return BadDecodingError
 		}
+		if ns == 0 && id == "" {
+			*value = nil
+			return nil
+		}
 		*value = NewNodeIDString(ns, id)
 		return nil
 
@@ -582,6 +588,10 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 		if err := dec.ReadGUID(&id); err != nil {
 			return BadDecodingError
 		}
+		if ns == 0 && id == nilGuid {
+			*value = nil
+			return nil
+		}
 		*value = NewNodeIDGUID(ns, id)
 		return nil
 
@@ -593,6 +603,10 @@ func (dec *BinaryDecoder) ReadNodeID(value *NodeID) error {
 		}
 		if err := dec.ReadByteString(&id); err != nil {
 			return BadDecodingError
+		}
+		if ns == 0 && id == "" {
+			*value = nil
+			return nil
 		}
 		*value = NewNodeIDOpaque(ns, id)
 		return nil
