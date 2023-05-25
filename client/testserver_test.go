@@ -231,7 +231,6 @@ func NewTestServer() (*server.Server, error) {
 		ua.AccessLevelsCurrentRead|ua.AccessLevelsCurrentWrite,
 		250.0,
 		false,
-		nil,
 	)
 
 	// add new nodes to namespace

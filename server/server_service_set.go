@@ -2577,6 +2577,7 @@ func (srv *Server) handleHistoryRead(ch *serverSecureChannel, requestid uint32, 
 
 	switch details := req.HistoryReadDetails.(type) {
 	case ua.ReadEventDetails:
+		
 		results, status := h.ReadEvent(ctx, req.NodesToRead, details, req.TimestampsToReturn, req.ReleaseContinuationPoints)
 		err := ch.Write(
 			&ua.HistoryReadResponse{

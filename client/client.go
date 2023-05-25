@@ -198,6 +198,11 @@ func (ch *Client) SessionID() ua.NodeID {
 	return ch.sessionID
 }
 
+// SessionTimeout gets the number of milliseconds the current session will remain open without activity.
+func (ch *Client) SessionTimeout() float64 {
+	return ch.sessionTimeout
+}
+
 // Request sends a service request to the server and returns the response.
 func (ch *Client) request(ctx context.Context, req ua.ServiceRequest) (ua.ServiceResponse, error) {
 	return ch.channel.Request(ctx, req)
@@ -220,7 +225,7 @@ func (ch *Client) open(ctx context.Context) error {
 		ClientNonce:             ua.ByteString(localNonce),
 		ClientCertificate:       ua.ByteString(localCertificate),
 		RequestedSessionTimeout: ch.sessionTimeout,
-		MaxResponseMessageSize:  defaultMaxMessageSize,
+		MaxResponseMessageSize:  defaultMaxResponseMessageSize,
 	}
 
 	createSessionResponse, err := ch.createSession(ctx, createSessionRequest)
@@ -228,6 +233,7 @@ func (ch *Client) open(ctx context.Context) error {
 		return err
 	}
 	ch.sessionID = createSessionResponse.SessionID
+	ch.sessionTimeout = createSessionResponse.RevisedSessionTimeout
 	ch.channel.SetAuthenticationToken(createSessionResponse.AuthenticationToken)
 	remoteNonce = []byte(createSessionResponse.ServerNonce)
 

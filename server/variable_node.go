@@ -25,14 +25,13 @@ type VariableNode struct {
 	accessLevel             byte
 	minimumSamplingInterval float64
 	historizing             bool
-	historian               HistoryReadWriter
 	readValueHandler        func(*Session, ua.ReadValueID) ua.DataValue
 	writeValueHandler       func(*Session, ua.WriteValue) (ua.DataValue, ua.StatusCode)
 }
 
 var _ Node = (*VariableNode)(nil)
 
-func NewVariableNode(server *Server, nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, value ua.DataValue, dataType ua.NodeID, valueRank int32, arrayDimensions []uint32, accessLevel byte, minimumSamplingInterval float64, historizing bool, historian HistoryReadWriter) *VariableNode {
+func NewVariableNode(server *Server, nodeID ua.NodeID, browseName ua.QualifiedName, displayName ua.LocalizedText, description ua.LocalizedText, rolePermissions []ua.RolePermissionType, references []ua.Reference, value ua.DataValue, dataType ua.NodeID, valueRank int32, arrayDimensions []uint32, accessLevel byte, minimumSamplingInterval float64, historizing bool) *VariableNode {
 	return &VariableNode{
 		server:                  server,
 		nodeId:                  nodeID,
@@ -50,7 +49,6 @@ func NewVariableNode(server *Server, nodeID ua.NodeID, browseName ua.QualifiedNa
 		accessLevel:             accessLevel,
 		minimumSamplingInterval: minimumSamplingInterval,
 		historizing:             historizing,
-		historian:               historian,
 	}
 }
 
@@ -131,8 +129,8 @@ func (n *VariableNode) SetValue(value ua.DataValue) {
 	n.Lock()
 	defer n.Unlock()
 	n.value = value
-	if n.historizing {
-		n.historian.WriteValue(context.Background(), n.nodeId, value)
+	if n.historizing && n.server.historian != nil {
+		n.server.historian.WriteValue(context.Background(), n.nodeId, value)
 	}
 }
 

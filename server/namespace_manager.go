@@ -654,7 +654,6 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 				toUint8(n.AccessLevel, 1),
 				n.MinimumSamplingInterval,
 				n.Historizing,
-				m.server.historian,
 			)
 		case "UAMethod":
 			nodes[i] = NewMethodNode(
