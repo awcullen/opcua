@@ -39,7 +39,21 @@ func WithX509Identity(certificate []byte, privateKey *rsa.PrivateKey) Option {
 
 // WithX509IdentityFile sets the user identity to an X509Identity created from the file paths of the certificate and private key. (default: AnonymousIdentity)
 // Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
+// DEPRECIATED. Use WithX509IdentityPaths().
 func WithX509IdentityFile(certPath, keyPath string) Option {
+	return func(c *Client) error {
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			return err
+		}
+		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(cert.Certificate[0]), Key: cert.PrivateKey.(*rsa.PrivateKey)}
+		return nil
+	}
+}
+
+// WithX509IdentityPaths sets the user identity to an X509Identity created from the file paths of the certificate and private key. (default: AnonymousIdentity)
+// Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
+func WithX509IdentityPaths(certPath, keyPath string) Option {
 	return func(c *Client) error {
 		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {

@@ -161,7 +161,7 @@ func TestOpenClientWithX509Identity(t *testing.T) {
 			client.WithSecurityPolicyURI(e.SecurityPolicyURI, e.SecurityMode),
 			client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 			client.WithInsecureSkipVerify(),
-			client.WithX509IdentityFile("./pki/client.crt", "./pki/client.key"),
+			client.WithX509IdentityPaths("./pki/client.crt", "./pki/client.key"),
 		)
 		if err != nil {
 			t.Error(errors.Wrap(err, "Error connecting to server"))
