@@ -1631,7 +1631,10 @@ func (ch *serverSecureChannel) read(p []byte) (int, error) {
 		num += n
 	}
 
-	count = int(binary.LittleEndian.Uint32(p[4:8]))
+	if count = int(binary.LittleEndian.Uint32(p[4:8])); count > cap(p) {
+		return num, ua.BadDecodingError
+	}
+
 	for num < count {
 		n, err = ch.conn.Read(p[num:count])
 		if err != nil || n == 0 {
