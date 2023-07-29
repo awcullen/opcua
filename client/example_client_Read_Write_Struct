@@ -1,0 +1,93 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/awcullen/opcua/client"
+	"github.com/awcullen/opcua/ua"
+	"reflect"
+	"time"
+)
+
+// UDT_SemVer represents a semantic versioning structure
+// Please remark that the variables should be of the same type as the ones on the OPC-UA server
+type UDT_SemVer struct {
+	Major uint16
+	Minor uint16
+	Patch uint16
+}
+
+func init() {
+	// Register binary encoding ID for UDT_SemVer, please remark that for Siemens PLC's one might need to add TE_ to the expanded node id identification string,
+  // as is shown below
+	ua.RegisterBinaryEncodingID(reflect.TypeOf(UDT_SemVer{}), ua.ParseExpandedNodeID(`nsu=http://www.siemens.com/simatic-s7-opcua;s=TE_"UDT_SemVer"`))
+}
+
+// Main function demonstrates reading and writing a variable with a custom structure.
+func main() {
+	ctx := context.Background()
+
+	// Open a connection to OPC UA server on the local network.
+	ch, err := client.Dial(
+		ctx,
+		"opc.tcp://192.168.255.34:4840",
+		client.WithInsecureSkipVerify(), // Skips verification of server certificate
+	)
+	if err != nil {
+		fmt.Printf("Error opening client connection: %s\n", err.Error())
+		return
+	}
+	defer ch.Close(ctx)
+
+	// Prepare read request for the specific node
+	req := &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
+			{
+				NodeID:      ua.ParseNodeID(`ns=3;s="IdentificationData"."ElectricalVersion"`),
+				AttributeID: ua.AttributeIDValue,
+			},
+		},
+	}
+
+	// Send read request to the server and receive response or error
+	res, err := ch.Read(ctx, req)
+	if err != nil {
+		fmt.Printf("Error reading data: %s\n", err.Error())
+		ch.Abort(ctx)
+		return
+	}
+
+	// Print the result
+	fmt.Println(res.Results[0].Value)
+
+	// Example write request to update version structure
+	wrstruct := UDT_SemVer{
+		Major: 2032,
+		Minor: 2807,
+		Patch: 2023,
+	}
+	req2 := &ua.WriteRequest{
+		NodesToWrite: []ua.WriteValue{
+			{
+				NodeID:      ua.ParseNodeID(`ns=3;s="IdentificationData"."ElectricalVersion"`),
+				AttributeID: ua.AttributeIDValue,
+				Value:       ua.NewDataValue(wrstruct, 0, time.Time{}, 0, time.Time{}, 0),
+			},
+		},
+	}
+	res2, err2 := ch.Write(ctx, req2)
+	if err2 != nil {
+		fmt.Printf("Error writing data: %s\n", err2.Error())
+		ch.Abort(ctx)
+		return
+	}
+	fmt.Println(res2)
+
+	// Close the connection
+	err = ch.Close(ctx)
+	if err != nil {
+		fmt.Printf("Error closing connection: %s\n", err.Error())
+		ch.Abort(ctx)
+		return
+	}
+}
