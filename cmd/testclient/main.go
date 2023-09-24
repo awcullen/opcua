@@ -45,7 +45,7 @@ func main() {
 		log.Println("Press Ctrl-C to exit...")
 		waitForSignal()
 
-		log.Println("Stopping client...")
+		log.Println("Closing client abruptly...")
 		cancel()
 	}()
 

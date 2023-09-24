@@ -198,6 +198,11 @@ func (ch *Client) SessionID() ua.NodeID {
 	return ch.sessionID
 }
 
+// IsClosing returns true when the client is closing.
+func (ch *Client) IsClosing() bool {
+	return ch.channel.IsClosing()
+}
+
 // Request sends a service request to the server and returns the response.
 func (ch *Client) request(ctx context.Context, req ua.ServiceRequest) (ua.ServiceResponse, error) {
 	return ch.channel.Request(ctx, req)

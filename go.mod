@@ -1,14 +1,14 @@
 module github.com/awcullen/opcua
 
-go 1.19
+go 1.20
 
 require (
 	github.com/djherbis/buffer v1.2.0
 	github.com/gammazero/deque v0.2.1
 	github.com/gammazero/workerpool v1.1.3
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/pkg/errors v0.9.1
-	golang.org/x/crypto v0.4.0
+	golang.org/x/crypto v0.13.0
 	gotest.tools v2.2.0+incompatible
 )
 

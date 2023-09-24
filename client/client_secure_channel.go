@@ -267,7 +267,7 @@ func (ch *clientSecureChannel) Request(ctx context.Context, req ua.ServiceReques
 		return nil, ua.BadRequestTimeout
 	case <-ch.closed:
 		cancel()
-		return nil, ua.BadSessionClosed
+		return nil, ua.BadSecureChannelClosed
 	}
 }
 
@@ -496,6 +496,13 @@ func (ch *clientSecureChannel) Abort(ctx context.Context) error {
 		ch.conn.Close()
 	}
 	return nil
+}
+
+// IsClosing returns true when the channel is closing.
+func (ch *clientSecureChannel) IsClosing() bool {
+	ch.Lock()
+	defer ch.Unlock()
+	return ch.closing
 }
 
 // sendRequest sends the service request on transport channel.
