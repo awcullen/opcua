@@ -56,10 +56,10 @@ type serverSecureChannel struct {
 	discoveryOnly               bool
 	sendingSemaphore            sync.Mutex
 	receivingSemaphore          sync.Mutex
-	responseCh                  chan struct {
-		ua.ServiceResponse
-		uint32
-	}
+	// responseCh                  chan struct {
+	// 	ua.ServiceResponse
+	// 	uint32
+	// }
 	lastSequenceNumber         uint32
 	pendingTokenID             uint32
 	pendingTokenExpiration     time.Time
@@ -292,10 +292,10 @@ func (ch *serverSecureChannel) Open() error {
 	ch.sendBuffer = make([]byte, ch.sendBufferSize)
 	ch.receiveBuffer = make([]byte, ch.receiveBufferSize)
 	ch.encryptionBuffer = make([]byte, ch.sendBufferSize)
-	ch.responseCh = make(chan struct {
-		ua.ServiceResponse
-		uint32
-	}, 32)
+	// ch.responseCh = make(chan struct {
+	// 	ua.ServiceResponse
+	// 	uint32
+	// }, 32)
 
 	// read first request, which must be an OpenSecureChannelRequest
 	req, rid, err := ch.readRequest()

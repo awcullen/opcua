@@ -21,7 +21,7 @@ import (
 const (
 	// documents the version of binary protocol that this library supports.
 	protocolVersion uint32 = 0
-	// the default size of the send and recieve buffers.
+	// the default size of the send and receive buffers.
 	defaultBufferSize uint32 = 64 * 1024
 	// the limit on the size of messages that may be accepted.
 	defaultMaxMessageSize uint32 = 16 * 1024 * 1024
@@ -75,10 +75,7 @@ type Server struct {
 	trace                                bool
 	localCertificate                     []byte
 	localPrivateKey                      *rsa.PrivateKey
-	listeners                            []net.Listener
-	closed                               chan struct{}
 	closing                              chan struct{}
-	stateSemaphore                       chan struct{}
 	state                                ua.ServerState
 	secondsTillShutdown                  uint32
 	shutdownReason                       ua.LocalizedText
@@ -124,10 +121,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		maxWorkerThreads:                   defaultMaxWorkerThreads,
 		serverDiagnostics:                  true,
 		trace:                              false,
-		closed:                             make(chan struct{}),
 		closing:                            make(chan struct{}),
-		stateSemaphore:                     make(chan struct{}, 1),
-		listeners:                          make([]net.Listener, 0, 3),
 		serverUris:                         []string{localDescription.ApplicationURI},
 		state:                              ua.ServerStateUnknown,
 		startTime:                          time.Now(),
@@ -208,12 +202,6 @@ func (srv *Server) State() ua.ServerState {
 	srv.RLock()
 	defer srv.RUnlock()
 	return srv.state
-}
-
-func (srv *Server) setState(value ua.ServerState) {
-	srv.Lock()
-	defer srv.Unlock()
-	srv.state = value
 }
 
 // NamespaceUris gets the namespace uris.
@@ -302,43 +290,57 @@ func (srv *Server) ServerCapabilities() *ua.ServerCapabilities {
 
 // ListenAndServe listens on the EndpointURL for incoming connections and then
 // handles service requests.
-// ListenAndServe always returns a non-nil error. After Shutdown or Close,
+// ListenAndServe always returns a non-nil error. After server Close,
 // the returned error is BadServerHalted.
 func (srv *Server) ListenAndServe() error {
-	srv.stateSemaphore <- struct{}{}
+	srv.Lock()
 	if srv.state != ua.ServerStateUnknown {
-		<-srv.stateSemaphore
+		srv.Unlock()
 		return ua.BadInternalError
 	}
+	srv.state = ua.ServerStateRunning
+	srv.Unlock()
+
 	baseURL, err := url.Parse(srv.endpointURL)
 	if err != nil {
 		// log.Printf("Error opening secure channel listener. %s\n", err.Error())
-		<-srv.stateSemaphore
 		return ua.BadTCPEndpointURLInvalid
 	}
-	l, err := net.Listen("tcp", ":"+baseURL.Port())
+
+	ln, err := net.Listen("tcp", ":"+baseURL.Port())
 	if err != nil {
 		// log.Printf("Error opening secure channel listener. %s\n", err.Error())
-		<-srv.stateSemaphore
 		return ua.BadResourceUnavailable
 	}
-	srv.listeners = append(srv.listeners, l)
-	srv.setState(ua.ServerStateRunning)
-	<-srv.stateSemaphore
 
-	return srv.serve(l)
+	go func() {
+		<-srv.closing
+		ln.Close()
+	}()
+
+	var wg sync.WaitGroup
+	err = srv.serve(ln, &wg)
+
+	// wait until channels closed
+	wg.Wait()
+
+	// stop workers.
+	srv.workerpool.StopWait()
+
+	return err
 }
 
 // Close server.
 func (srv *Server) Close() error {
-	srv.stateSemaphore <- struct{}{}
+	srv.Lock()
 	if srv.state != ua.ServerStateRunning {
-		<-srv.stateSemaphore
+		srv.Unlock()
 		return ua.BadInternalError
 	}
+	srv.state = ua.ServerStateShutdown
+	srv.Unlock()
 
-	// allow for clients to stop gracefully
-	srv.setState(ua.ServerStateShutdown)
+	// allow for existing clients to exit gracefully
 	srv.shutdownReason = ua.NewLocalizedText("Closing", "")
 	for i := 3; i > 0; i-- {
 		srv.secondsTillShutdown = uint32(i)
@@ -346,24 +348,8 @@ func (srv *Server) Close() error {
 	}
 	srv.secondsTillShutdown = uint32(0)
 
-	// close subscriptions
+	// begin closing channels
 	close(srv.closing)
-
-	// close listeners
-	for _, l := range srv.listeners {
-		err := l.Close()
-		if err != nil {
-			log.Printf("Error closing secure channel listener: %s\n", err.Error())
-		}
-	}
-
-	// stop workers.
-	srv.workerpool.StopWait()
-
-	// close channels
-	close(srv.closed)
-
-	<-srv.stateSemaphore
 	return nil
 }
 
@@ -372,51 +358,65 @@ func (srv *Server) GetRoles(userIdentity any, applicationURI string, endpointURL
 	return srv.rolesProvider.GetRoles(userIdentity, applicationURI, endpointURL)
 }
 
-func (srv *Server) serve(l net.Listener) error {
+func (srv *Server) serve(ln net.Listener, wg *sync.WaitGroup) error {
 	var delay time.Duration
 	for {
-		conn, err := l.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
-			select {
-			case <-srv.closing:
+			if srv.State() != ua.ServerStateRunning {
 				return ua.BadServerHalted
-			default:
-				if ne, ok := err.(net.Error); ok && ne.Timeout() {
-					if delay == 0 {
-						delay = 5 * time.Millisecond
-					} else {
-						delay *= 2
-					}
-					if max := 1 * time.Second; delay > max {
-						delay = max
-					}
-					time.Sleep(delay)
-					continue
-				}
-				return ua.BadTCPInternalError
 			}
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				if delay == 0 {
+					delay = 5 * time.Millisecond
+				} else {
+					delay *= 2
+				}
+				if max := 1 * time.Second; delay > max {
+					delay = max
+				}
+				time.Sleep(delay)
+				continue
+			}
+			return ua.BadTCPInternalError
+
 		}
 		delay = 0
-		go func(conn net.Conn) {
-			defer conn.Close()
-			ch := newServerSecureChannel(srv, conn, srv.receiveBufferSize, srv.sendBufferSize, srv.maxMessageSize, srv.maxChunkCount, srv.trace)
-			err := ch.Open()
-			if err != nil {
-				// log.Printf("Error opening secure channel. %s\n", err)
-				if c, ok := err.(ua.StatusCode); ok {
-					ch.Abort(c, "")
-				}
-				return
-			}
-			// log.Printf("Success opening secure channel '%d'.\n", ch.channelID)
-			err = srv.requestWorker(ch)
-			if err != nil {
-				// log.Printf("Error handling service request for channel id '%d'. %s\n", ch.channelID, err)
-				return
-			}
-			// log.Printf("Success closing secure channel '%d'.\n", ch.channelID)
-		}(conn)
+		wg.Add(1)
+		go srv.handleConnection(conn, wg)
 	}
+}
+
+// handleConnection wraps conn in ServerSecureChannel and handles service requests.
+func (srv *Server) handleConnection(conn net.Conn, wg *sync.WaitGroup) {
+	defer conn.Close()
+	defer wg.Done()
+	ch := newServerSecureChannel(srv, conn, srv.receiveBufferSize, srv.sendBufferSize, srv.maxMessageSize, srv.maxChunkCount, srv.trace)
+	err := ch.Open()
+	if err != nil {
+		// log.Printf("Error opening secure channel. %s\n", err)
+		if c, ok := err.(ua.StatusCode); ok {
+			ch.Abort(c, "")
+		}
+		return
+	}
+	// log.Printf("Success opening secure channel '%d'.\n", ch.channelID)
+	closing := make(chan struct{})
+	defer close(closing)
+	// setup the cancellation to abort reads in process
+	go func() {
+		select {
+		case <-srv.closing:
+			ch.Close()
+		case <-closing:
+		}
+	}()
+	err = srv.requestWorker(ch)
+	if err != nil {
+		// log.Printf("Error handling service request for channel id '%d'. %s\n", ch.channelID, err)
+		return
+	}
+	// log.Printf("Success closing secure channel '%d'.\n", ch.channelID)
 }
 
 // requestWorker receives service requests from channel and processes them.
