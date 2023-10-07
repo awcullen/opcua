@@ -8,7 +8,7 @@ To create your OPC UA server, call server.New(). Specify the server's descriptio
 
 Create a namespace, and add nodes of types Object, Variable, Method and DataType.
 
-Run the server by calling ListenAndServer().
+Run the server by calling ListenAndServe().
 
 To stop the server, call Close().
 
