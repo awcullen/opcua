@@ -36,19 +36,19 @@ const (
 	defaultTimeoutHint uint32 = 15000
 	// defaultDiagnosticsHint is the default diagnostic hint that is sent in a request. (None)
 	defaultDiagnosticsHint uint32 = 0x00000000
-	// defaultTokenRequestedLifetime is the number of milliseconds before a security token is expired. (60 min)
+	// defaultTokenRequestedLifetime is the default number of milliseconds before a security token is expired. (60 min)
 	defaultTokenRequestedLifetime uint32 = 3600000
-	// defaultConnectTimeout sets the number of milliseconds to wait for a connection response.
+	// defaultConnectTimeout is the default number of milliseconds to wait for a connection response.
 	defaultConnectTimeout int64 = 5000
-	// the default number of milliseconds that a session may be unused before being closed by the server. (2 min)
+	// defaultSessionTimeout the default number of milliseconds that the session will remain open without activity. (2 min)
 	defaultSessionTimeout float64 = 120 * 1000
-	// documents the version of binary protocol that this library supports.
+	// protocolVersion documents the version of binary protocol that this library supports.
 	protocolVersion uint32 = 0
-	// the default size of the send and recieve buffers.
+	// defaultBufferSize is the default size of the send and recieve buffers.
 	defaultBufferSize uint32 = 64 * 1024
-	// the limit on the size of messages that may be accepted.
+	// defaultMaxMessageSize is the default limit on the size of messages that may be accepted.
 	defaultMaxMessageSize uint32 = 16 * 1024 * 1024
-	// defaultMaxChunkCount sets the limit on the number of message chunks that may be accepted.
+	// defaultMaxChunkCount is the default limit on the number of message chunks that may be accepted.
 	defaultMaxChunkCount uint32 = 4 * 1024
 	// sequenceHeaderSize is the size of the sequence header
 	sequenceHeaderSize int = 8
