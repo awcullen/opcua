@@ -45,7 +45,7 @@ func main() {
 		log.Println("Press Ctrl-C to exit...")
 		waitForSignal()
 
-		log.Println("Closing client abruptly...")
+		log.Println("Closing client...")
 		cancel()
 	}()
 
@@ -54,11 +54,18 @@ func main() {
 		_, err := ch.Read(ctx, req)
 		if err != nil {
 			fmt.Printf("Error reading ServerStatus. %s\n", err.Error())
-			ch.Abort(ctx)
-			return
+			break
 		}
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
+
+	ctx = context.Background()
+	err = ch.Close(ctx)
+	if err != nil {
+		ch.Abort(ctx)
+		return
+	}
+	log.Println("Client closed.")
 
 }
 
