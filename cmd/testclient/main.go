@@ -19,7 +19,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// open a connection to testserver running locally. Testserver is started if not already running.
+	// open a connection to testserver running locally.
 	ch, err := client.Dial(
 		ctx,
 		"opc.tcp://localhost:46010",
