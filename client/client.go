@@ -36,6 +36,9 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		diagnosticsHint:   defaultDiagnosticsHint,
 		tokenLifetime:     defaultTokenRequestedLifetime,
 		connectTimeout:    defaultConnectTimeout,
+		maxBufferSize:     defaultMaxBufferSize,
+		maxMessageSize:    defaultMaxMessageSize,
+		maxChunkCount:     defaultMaxChunkCount,
 		trace:             false,
 	}
 
@@ -131,6 +134,9 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		cli.timeoutHint,
 		cli.diagnosticsHint,
 		cli.tokenLifetime,
+		cli.maxBufferSize,
+		cli.maxMessageSize,
+		cli.maxChunkCount,
 		cli.trace)
 
 	// open session and read the namespace table
@@ -176,6 +182,9 @@ type Client struct {
 	suppressCertificateChainIncomplete   bool
 	suppressCertificateRevocationUnknown bool
 	connectTimeout                       int64
+	maxBufferSize                        uint32
+	maxMessageSize                       uint32
+	maxChunkCount                        uint32
 	trace                                bool
 }
 
@@ -364,8 +373,8 @@ func (ch *Client) open(ctx context.Context) error {
 			if publickey == nil {
 				return ua.BadIdentityTokenRejected
 			}
-			plainBuf := buffer.NewPartitionAt(bufferPool)
-			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			plainBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
+			cipherBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
 			binary.Write(plainBuf, binary.LittleEndian, uint32(len(ui.TokenData)+len(remoteNonce)))
 			plainBuf.Write([]byte(ui.TokenData))
 			plainBuf.Write(remoteNonce)
@@ -395,8 +404,8 @@ func (ch *Client) open(ctx context.Context) error {
 			if publickey == nil {
 				return ua.BadIdentityTokenRejected
 			}
-			plainBuf := buffer.NewPartitionAt(bufferPool)
-			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			plainBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
+			cipherBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
 			binary.Write(plainBuf, binary.LittleEndian, uint32(len(ui.TokenData)+len(remoteNonce)))
 			plainBuf.Write([]byte(ui.TokenData))
 			plainBuf.Write(remoteNonce)
@@ -426,8 +435,8 @@ func (ch *Client) open(ctx context.Context) error {
 			if publickey == nil {
 				return ua.BadIdentityTokenRejected
 			}
-			plainBuf := buffer.NewPartitionAt(bufferPool)
-			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			plainBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
+			cipherBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
 			binary.Write(plainBuf, binary.LittleEndian, uint32(len(ui.TokenData)+len(remoteNonce)))
 			plainBuf.Write([]byte(ui.TokenData))
 			plainBuf.Write(remoteNonce)
@@ -565,8 +574,8 @@ func (ch *Client) open(ctx context.Context) error {
 			if publickey == nil {
 				return ua.BadIdentityTokenRejected
 			}
-			plainBuf := buffer.NewPartitionAt(bufferPool)
-			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			plainBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
+			cipherBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
 			binary.Write(plainBuf, binary.LittleEndian, uint32(len(passwordBytes)+len(remoteNonce)))
 			plainBuf.Write(passwordBytes)
 			plainBuf.Write(remoteNonce)
@@ -598,8 +607,8 @@ func (ch *Client) open(ctx context.Context) error {
 			if publickey == nil {
 				return ua.BadIdentityTokenRejected
 			}
-			plainBuf := buffer.NewPartitionAt(bufferPool)
-			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			plainBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
+			cipherBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
 			binary.Write(plainBuf, binary.LittleEndian, uint32(len(passwordBytes)+len(remoteNonce)))
 			plainBuf.Write(passwordBytes)
 			plainBuf.Write(remoteNonce)
@@ -631,8 +640,8 @@ func (ch *Client) open(ctx context.Context) error {
 			if publickey == nil {
 				return ua.BadIdentityTokenRejected
 			}
-			plainBuf := buffer.NewPartitionAt(bufferPool)
-			cipherBuf := buffer.NewPartitionAt(bufferPool)
+			plainBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
+			cipherBuf := buffer.NewPartitionAt(ch.channel.bufferPool)
 			binary.Write(plainBuf, binary.LittleEndian, uint32(len(passwordBytes)+len(remoteNonce)))
 			plainBuf.Write(passwordBytes)
 			plainBuf.Write(remoteNonce)

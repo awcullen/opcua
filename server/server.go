@@ -19,14 +19,6 @@ import (
 )
 
 const (
-	// documents the version of binary protocol that this library supports.
-	protocolVersion uint32 = 0
-	// the default size of the send and receive buffers.
-	defaultBufferSize uint32 = 64 * 1024
-	// the limit on the size of messages that may be accepted.
-	defaultMaxMessageSize uint32 = 16 * 1024 * 1024
-	// defaultMaxChunkCount sets the limit on the number of message chunks that may be accepted.
-	defaultMaxChunkCount uint32 = 4 * 1024
 	// the minimum number of milliseconds that a session may be unused before being closed by the server. (2 min)
 	minSessionTimeout float64 = 10 * 1000
 	// the maximum number of milliseconds that a session may be unused before being closed by the server. (60 min)
@@ -66,8 +58,7 @@ type Server struct {
 	suppressCertificateExpired           bool
 	suppressCertificateChainIncomplete   bool
 	suppressCertificateRevocationUnknown bool
-	receiveBufferSize                    uint32
-	sendBufferSize                       uint32
+	maxBufferSize                        uint32
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
 	maxWorkerThreads                     int
@@ -114,8 +105,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		buildInfo:                          ua.BuildInfo{},
 		suppressCertificateExpired:         false,
 		suppressCertificateChainIncomplete: false,
-		receiveBufferSize:                  defaultBufferSize,
-		sendBufferSize:                     defaultBufferSize,
+		maxBufferSize:                      defaultMaxBufferSize,
 		maxMessageSize:                     defaultMaxMessageSize,
 		maxChunkCount:                      defaultMaxChunkCount,
 		maxWorkerThreads:                   defaultMaxWorkerThreads,
@@ -391,7 +381,7 @@ func (srv *Server) serve(ln net.Listener, wg *sync.WaitGroup) error {
 func (srv *Server) handleConnection(conn net.Conn, wg *sync.WaitGroup) {
 	defer conn.Close()
 	defer wg.Done()
-	ch := newServerSecureChannel(srv, conn, srv.receiveBufferSize, srv.sendBufferSize, srv.maxMessageSize, srv.maxChunkCount, srv.trace)
+	ch := newServerSecureChannel(srv, conn, srv.trace)
 	err := ch.Open()
 	if err != nil {
 		// log.Printf("Error opening secure channel. %s\n", err)

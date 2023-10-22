@@ -79,11 +79,10 @@ func WithInsecureSkipVerify() Option {
 	}
 }
 
-// WithTransportLimits ...
-func WithTransportLimits(receiveBufferSize, sendBufferSize, maxMessageSize, maxChunkCount uint32) Option {
+// WithTransportLimits sets the limits on the size of the buffers and messages. (default: 64Kb, 64Mb, 4096)
+func WithTransportLimits(maxBufferSize, maxMessageSize, maxChunkCount uint32) Option {
 	return func(srv *Server) error {
-		srv.receiveBufferSize = receiveBufferSize
-		srv.sendBufferSize = sendBufferSize
+		srv.maxBufferSize = maxBufferSize
 		srv.maxMessageSize = maxMessageSize
 		srv.maxChunkCount = maxChunkCount
 		return nil

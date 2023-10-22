@@ -224,3 +224,13 @@ func WithTrace() Option {
 		return nil
 	}
 }
+
+// WithTransportLimits sets the limits on the size of the buffers and messages. (default: 64Kb, 64Mb, 4096)
+func WithTransportLimits(maxBufferSize, maxMessageSize, maxChunkCount uint32) Option {
+	return func(c *Client) error {
+		c.maxBufferSize = maxBufferSize
+		c.maxMessageSize = maxMessageSize
+		c.maxChunkCount = maxChunkCount
+		return nil
+	}
+}

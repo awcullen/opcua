@@ -55,6 +55,9 @@ func FindServers(ctx context.Context, request *ua.FindServersRequest) (*ua.FindS
 		defaultTimeoutHint,
 		defaultDiagnosticsHint,
 		defaultTokenRequestedLifetime,
+		defaultMaxBufferSize,
+		defaultMaxMessageSize,
+		defaultMaxChunkCount,
 		false,
 	)
 
@@ -102,6 +105,9 @@ func GetEndpoints(ctx context.Context, request *ua.GetEndpointsRequest) (*ua.Get
 		defaultTimeoutHint,
 		defaultDiagnosticsHint,
 		defaultTokenRequestedLifetime,
+		defaultMaxBufferSize,
+		defaultMaxMessageSize,
+		defaultMaxChunkCount,
 		false,
 	)
 
