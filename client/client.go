@@ -163,7 +163,6 @@ type Client struct {
 	sessionName                          string
 	applicationName                      string
 	sessionTimeout                       float64
-	maxRequestMessageSize                uint32
 	clientSignature                      ua.SignatureData
 	identityToken                        any
 	identityTokenSignature               ua.SignatureData
@@ -215,7 +214,7 @@ func (ch *Client) SessionTimeout() float64 {
 
 // MaxRequestMessageSize gets the maximum size for the body of any request message. Zero equals no limit.
 func (ch *Client) MaxRequestMessageSize() uint32 {
-	return ch.maxRequestMessageSize
+	return ch.channel.maxRequestMessageSize
 }
 
 // IsClosing returns true when the client is closing.
@@ -256,7 +255,7 @@ func (ch *Client) open(ctx context.Context) error {
 	ch.channel.SetAuthenticationToken(createSessionResponse.AuthenticationToken)
 	remoteNonce = []byte(createSessionResponse.ServerNonce)
 	ch.sessionTimeout = createSessionResponse.RevisedSessionTimeout
-	ch.maxRequestMessageSize = createSessionResponse.MaxRequestMessageSize
+	ch.channel.maxRequestMessageSize = createSessionResponse.MaxRequestMessageSize
 
 	// verify the server's certificate is the same as the certificate from the selected endpoint.
 	if !bytes.Equal(ch.serverCertificate, []byte(createSessionResponse.ServerCertificate)) {

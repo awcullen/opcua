@@ -298,7 +298,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			ServerEndpoints:            srv.Endpoints(),
 			ServerSoftwareCertificates: nil,
 			ServerSignature:            serverSignature,
-			MaxRequestMessageSize:      0,
+			MaxRequestMessageSize:      srv.maxMessageSize,
 		},
 		requestid,
 	)
