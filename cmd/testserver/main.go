@@ -147,7 +147,7 @@ func main() {
 		//server.WithInsecureSkipVerify(),
 		server.WithTrustedCertificatesPaths("./pki/ApplicationInstance_PKI/trusted/certs", "./pki/ApplicationInstance_PKI/trusted/crl"),
 		server.WithIssuerCertificatesPaths("./pki/ApplicationInstance_PKI/issuers/certs", "./pki/ApplicationInstance_PKI/issuers/crl"),
-		// server.WithRejectedCertificatesPath("./pki/ApplicationInstance_PKI/rejected"),
+		server.WithRejectedCertificatesPath("./pki/ApplicationInstance_PKI/rejected"),
 		server.WithServerDiagnostics(true),
 		server.WithMaxSessionCount(10),
 		server.WithMaxSubscriptionCount(100),
@@ -417,8 +417,8 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageContentCommitment | x509.KeyUsageKeyEncipherment | x509.KeyUsageDataEncipherment | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
-		DNSNames:              []string{host},
-		IPAddresses:           []net.IP{localAddr.IP},
+		DNSNames:              []string{host, "localhost"},
+		IPAddresses:           []net.IP{localAddr.IP, []byte{127, 0, 0, 1}},
 		URIs:                  []*url.URL{applicationURI},
 	}
 

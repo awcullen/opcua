@@ -12,7 +12,6 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"math"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -95,40 +94,6 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		srv.serverDiagnosticsSummary.SecurityRejectedRequestsCount++
 		srv.serverDiagnosticsSummary.RejectedRequestsCount++
 		ch.Abort(ua.BadSecurityPolicyRejected, "")
-		return nil
-	}
-	// check endpointurl hostname matches one of the certificate hostnames
-	valid := false
-	if crt, err := x509.ParseCertificate(srv.LocalCertificate()); err == nil {
-		if remoteURL, err := url.Parse(req.EndpointURL); err == nil {
-			hostname := remoteURL.Host
-			i := strings.Index(hostname, ":")
-			if i != -1 {
-				hostname = hostname[:i]
-			}
-			if err := crt.VerifyHostname(hostname); err == nil {
-				valid = true
-			}
-		}
-	}
-	if !valid {
-		srv.serverDiagnosticsSummary.SecurityRejectedSessionCount++
-		srv.serverDiagnosticsSummary.RejectedSessionCount++
-		srv.serverDiagnosticsSummary.SecurityRejectedRequestsCount++
-		srv.serverDiagnosticsSummary.RejectedRequestsCount++
-		err := ch.Write(
-			&ua.ServiceFault{
-				ResponseHeader: ua.ResponseHeader{
-					Timestamp:     time.Now(),
-					RequestHandle: req.RequestHandle,
-					ServiceResult: ua.BadCertificateHostNameInvalid,
-				},
-			},
-			requestid,
-		)
-		if err != nil {
-			return err
-		}
 		return nil
 	}
 	// check nonce

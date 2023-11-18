@@ -28,6 +28,7 @@ var (
 func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, err error) {
 
 	cli := &Client{
+		endpointURL:       endpointURL,
 		userIdentity:      ua.AnonymousIdentity{},
 		applicationName:   "application",
 		sessionTimeout:    defaultSessionTimeout,
@@ -94,11 +95,12 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 	if selectedEndpoint == nil {
 		return nil, ua.BadSecurityModeRejected
 	}
-	cli.endpointURL = selectedEndpoint.EndpointURL
+
 	cli.securityPolicyURI = selectedEndpoint.SecurityPolicyURI
 	cli.securityMode = selectedEndpoint.SecurityMode
 	cli.serverCertificate = []byte(selectedEndpoint.ServerCertificate)
 	cli.userTokenPolicies = selectedEndpoint.UserIdentityTokens
+
 	cli.localDescription = ua.ApplicationDescription{
 		ApplicationName: ua.LocalizedText{Text: cli.applicationName},
 		ApplicationType: ua.ApplicationTypeClient,

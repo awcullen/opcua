@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	endpointURL = "opc.tcp://127.0.0.1:46010" // our testserver
+	endpointURL = fmt.Sprintf("opc.tcp://%s:%d", host, port) // our testserver
 )
 
 // TestMain is run at the start of client testing. If an opcua server is not already running,
@@ -960,8 +960,8 @@ func createNewCertificate(appName, certFile, keyFile string) error {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageContentCommitment | x509.KeyUsageKeyEncipherment | x509.KeyUsageDataEncipherment | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
-		DNSNames:              []string{host},
-		IPAddresses:           []net.IP{localAddr.IP},
+		DNSNames:              []string{host, "localhost"},
+		IPAddresses:           []net.IP{localAddr.IP, []byte{127, 0, 0, 1}},
 		URIs:                  []*url.URL{applicationURI},
 	}
 
