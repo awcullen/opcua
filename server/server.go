@@ -47,8 +47,6 @@ type Server struct {
 	maxSubscriptionCount                 uint32
 	serverCapabilities                   *ua.ServerCapabilities
 	buildInfo                            ua.BuildInfo
-	certPath                             string
-	keyPath                              string
 	trustedCertsPath                     string
 	trustedCRLsPath                      string
 	issuerCertsPath                      string
@@ -94,10 +92,27 @@ type Server struct {
 // The files must contain PEM encoded data.
 // The endpointURL is in the form opc.tcp://[host]:[port]
 func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpointURL string, options ...Option) (*Server, error) {
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		log.Printf("Error loading x509 key pair. %s\n", err)
+		return nil, err
+	}
+	return newServer(localDescription, cert, endpointURL, options...)
+}
+
+// NewWithCertificate initializes a new instance of the Server.
+// Specify the ApplicationDescription as defined in https://reference.opcfoundation.org/v104/Core/docs/Part4/7.1/
+// The private key of the tls.Certificate must be RSA
+// The endpointURL is in the form opc.tcp://[host]:[port]
+func NewWithCertificate(localDescription ua.ApplicationDescription, cert tls.Certificate, endpointURL string, options ...Option) (*Server, error) {
+	return newServer(localDescription, cert, endpointURL, options...)
+}
+
+func newServer(localDescription ua.ApplicationDescription, cert tls.Certificate, endpointURL string, options ...Option) (*Server, error) {
 	srv := &Server{
 		localDescription:                   localDescription,
-		certPath:                           certPath,
-		keyPath:                            keyPath,
+		localCertificate:                   cert.Certificate[0],
+		localPrivateKey:                    cert.PrivateKey.(*rsa.PrivateKey),
 		endpointURL:                        endpointURL,
 		maxSessionCount:                    defaultMaxSessionCount,
 		maxSubscriptionCount:               defaultMaxSubscriptionCount,
@@ -133,14 +148,6 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 	srv.subscriptionManager = NewSubscriptionManager(srv)
 	srv.namespaceManager = NewNamespaceManager(srv)
 	srv.scheduler = NewScheduler(srv)
-
-	cert, err := tls.LoadX509KeyPair(srv.certPath, srv.keyPath)
-	if err != nil {
-		log.Printf("Error loading x509 key pair. %s\n", err)
-		return nil, err
-	}
-	srv.localCertificate = cert.Certificate[0]
-	srv.localPrivateKey, _ = cert.PrivateKey.(*rsa.PrivateKey)
 
 	if err := srv.initializeNamespace(); err != nil {
 		log.Printf("Error initializing namespace. %s\n", err)
