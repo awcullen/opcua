@@ -3,6 +3,7 @@
 package server_test
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	_ "embed"
 	"fmt"
@@ -21,20 +22,67 @@ var (
 	testnodeset []byte
 )
 
+func NewTestServerWithCertificate(cert tls.Certificate) (*server.Server, error) {
+	srv, err := server.NewWithCertificate(
+		ua.ApplicationDescription{
+			ApplicationURI: fmt.Sprintf("urn:%s:testserver", host),
+			ProductURI:     "http://github.com/awcullen/opcua",
+			ApplicationName: ua.LocalizedText{
+				Text:   fmt.Sprintf("testserver@%s", host),
+				Locale: "en",
+			},
+			ApplicationType:     ua.ApplicationTypeServer,
+			GatewayServerURI:    "",
+			DiscoveryProfileURI: "",
+			DiscoveryURLs:       []string{fmt.Sprintf("opc.tcp://%s:%d", host, port)},
+		},
+		cert,
+		fmt.Sprintf("opc.tcp://%s:%d", host, port),
+		server.WithBuildInfo(
+			ua.BuildInfo{
+				ProductURI:       "http://github.com/awcullen/opcua",
+				ManufacturerName: "awcullen",
+				ProductName:      "testserver",
+				SoftwareVersion:  SoftwareVersion,
+			}),
+		server.WithAuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
+			// log.Printf("Login anonymous identity from %s\n", applicationURI)
+			return nil
+		}),
+		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
+			valid := false
+			for _, user := range testUserIds() {
+				if user.UserName == userIdentity.UserName {
+					if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(userIdentity.Password)); err == nil {
+						valid = true
+						break
+					}
+				}
+			}
+			if !valid {
+				return ua.BadUserAccessDenied
+			}
+			// log.Printf("Login %s from %s\n", userIdentity.UserName, applicationURI)
+			return nil
+		}),
+		server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
+			_, err := x509.ParseCertificate([]byte(userIdentity.Certificate))
+			if err != nil {
+				return ua.BadUserAccessDenied
+			}
+			// log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
+			return nil
+		}),
+		server.WithSecurityPolicyNone(true),
+		server.WithInsecureSkipVerify(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return newTestServer(srv)
+}
+
 func NewTestServer() (*server.Server, error) {
-
-	// userids for testing
-	userids := []ua.UserNameIdentity{
-		{UserName: "root", Password: "secret"},
-		{UserName: "user1", Password: "password"},
-		{UserName: "user2", Password: "password1"},
-	}
-	for i := range userids {
-		hash, _ := bcrypt.GenerateFromPassword([]byte(userids[i].Password), 8)
-		userids[i].Password = string(hash)
-	}
-
-	// create server
 	srv, err := server.New(
 		ua.ApplicationDescription{
 			ApplicationURI: fmt.Sprintf("urn:%s:testserver", host),
@@ -64,7 +112,7 @@ func NewTestServer() (*server.Server, error) {
 		}),
 		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
 			valid := false
-			for _, user := range userids {
+			for _, user := range testUserIds() {
 				if user.UserName == userIdentity.UserName {
 					if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(userIdentity.Password)); err == nil {
 						valid = true
@@ -92,7 +140,24 @@ func NewTestServer() (*server.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	return newTestServer(srv)
+}
 
+func testUserIds()[]ua.UserNameIdentity {
+	// userids for testing
+	userids := []ua.UserNameIdentity{
+		{UserName: "root", Password: "secret"},
+		{UserName: "user1", Password: "password"},
+		{UserName: "user2", Password: "password1"},
+	}
+	for i := range userids {
+		hash, _ := bcrypt.GenerateFromPassword([]byte(userids[i].Password), 8)
+		userids[i].Password = string(hash)
+	}
+	return userids
+}
+
+func newTestServer(srv *server.Server) (*server.Server, error) {
 	// load nodeset
 	nm := srv.NamespaceManager()
 	if err := nm.LoadNodeSetFromBuffer([]byte(testnodeset)); err != nil {
