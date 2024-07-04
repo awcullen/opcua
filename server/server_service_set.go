@@ -104,8 +104,8 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 		// check client application uri matches one of the client certificate's san.
 		valid := false
 		if appuri := req.ClientDescription.ApplicationURI; appuri != "" {
-			if crt, err := x509.ParseCertificate([]byte(req.ClientCertificate)); err == nil {
-				for _, crturi := range crt.URIs {
+			if crts, err := x509.ParseCertificates([]byte(req.ClientCertificate)); err == nil && len(crts) > 0 {
+				for _, crturi := range crts[0].URIs {
 					if crturi.String() == appuri {
 						valid = true
 						break
@@ -417,8 +417,8 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 		if secPolicyURI == "" {
 			secPolicyURI = ch.SecurityPolicyURI()
 		}
-		userCert, err := x509.ParseCertificate([]byte(userIdentityToken.CertificateData))
-		if err != nil {
+		userCerts, err := x509.ParseCertificates([]byte(userIdentityToken.CertificateData))
+		if err != nil || len(userCerts) == 0 {
 			srv.serverDiagnosticsSummary.SecurityRejectedSessionCount++
 			srv.serverDiagnosticsSummary.RejectedSessionCount++
 			srv.serverDiagnosticsSummary.SecurityRejectedRequestsCount++
@@ -438,7 +438,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			}
 			return nil
 		}
-		userKey, ok := userCert.PublicKey.(*rsa.PublicKey)
+		userKey, ok := userCerts[0].PublicKey.(*rsa.PublicKey)
 		if !ok {
 			srv.serverDiagnosticsSummary.SecurityRejectedSessionCount++
 			srv.serverDiagnosticsSummary.RejectedSessionCount++

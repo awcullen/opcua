@@ -156,7 +156,7 @@ func getEncoder(typ reflect.Type) (encoderFunc, error) {
 	case reflect.String:
 		return getStringEncoder()
 	}
-	return nil, fmt.Errorf("unsupported type: %s\n", typ)
+	return nil, fmt.Errorf("unsupported type: %s", typ)
 }
 
 func getStructEncoder(typ reflect.Type) (encoderFunc, error) {

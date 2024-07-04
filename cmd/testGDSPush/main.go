@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"github.com/awcullen/opcua/client"
 	"github.com/awcullen/opcua/ua"
-	"os"
 )
 
 func main() {
@@ -15,12 +16,24 @@ func main() {
 	}
 
 	ch := InitClient()
-	UpdatePLCCertificate(ch)
-	OpenWriteCloseAndUpdate(ch)
+	if ch == nil {
+		fmt.Printf("Error initClient.\n")
+		return
+	}
 
-	fmt.Printf("Please press 'Apply Changes' in UaExpert to finish provisioning.\n")
+	err = UpdatePLCCertificate(ch)
+	if err != nil {
+		print(err)
+		CloseClient(ch)
+		return
+	}
 
-	ApplyChanges(ch)
+	err = UpdateTrustList(ch)
+	if err != nil {
+		print(err)
+		CloseClient(ch)
+		return
+	}
 
 	CloseClient(ch)
 }
@@ -31,19 +44,30 @@ func ensurePKI() (err error) {
 	// make ./pki if it does not
 	if os.IsNotExist(err) {
 		err = os.Mkdir("./pki", 0755)
+		if err != nil {
+			return err
+		}
+		err = createCACertificate("Project CA", "Project Org", "./pki/ca.crt", "./pki/ca.key", "./pki/ca.crl")
+		if err != nil {
+			return err
+		}
+		err = createClientCertificate("client", "./pki/client.crt", "./pki/client.key")
+		if err != nil {
+			return err
+		}
 	}
-	err = createNewCertificate("client", "./pki/client.crt", "./pki/client.key", "./pki/client.crl")
-	return err
+	return nil
 }
 
 func InitClient() *client.Client {
 	ctx := context.Background()
 	ch, err := client.Dial(
-		ctx, "opc.tcp://192.168.0.1:4840",
-		client.WithUserNameIdentity("root", "Secret.1"), // Must be 8 characters
+		ctx, "opc.tcp://andrew-x1:48010",
+		client.WithUserNameIdentity("root", "secret"),
 		client.WithSecurityPolicyURI(ua.SecurityPolicyURIBasic256Sha256, ua.MessageSecurityModeSignAndEncrypt),
 		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
-		client.WithInsecureSkipVerify(),
+		client.WithTrustedCertificatesPaths("./pki/ca.crt", "./pki/ca.crl"),
+		client.WithRejectedCertificatesPath("./pki/rejected"),
 	)
 	if err != nil {
 		fmt.Printf("Error opening client connection. %s\n", err.Error())
@@ -52,20 +76,58 @@ func InitClient() *client.Client {
 	return ch
 }
 
-func UpdatePLCCertificate(ch *client.Client) {
-	csr := CreateSigningRequest(ch)
+func UpdatePLCCertificate(ch *client.Client) error {
+	csr, err := CreateSigningRequest(ch)
+	if err != nil {
+		fmt.Printf("Error CreateSigningRequest. %s\n", err.Error())
+		return err
+	}
+	signed := CreateCertificateFromRequest(csr)
 
-	signed := AutomaticSigning(csr)
-
-	UpdateCertificateRequest(ch, signed)
+	// flag is true if ApplyChanges required
+	flag, err := UpdateCertificate(ch, signed)
+	if err != nil {
+		fmt.Printf("Error UpdateCertificate. %s\n", err.Error())
+		return err
+	}
+	if flag {
+		err = ApplyChanges(ch)
+		if err != nil {
+			print(err)
+		}
+	} else {
+		fmt.Printf("ApplyChanges not required.\n")
+	}
+	return nil
 }
 
-func OpenWriteCloseAndUpdate(ch *client.Client) {
-	fileHandle := OpenRequest(ch)
+func UpdateTrustList(ch *client.Client) error {
+	fileHandle, err := OpenTrustList(ch)
+	if err != nil {
+		fmt.Printf("Error OpenTrustList. %s\n", err.Error())
+		return err
+	}
 
-	WriteRequest(ch, fileHandle)
-
-	CloseAndUpdateRequest(ch, fileHandle)
+	err = WriteTrustList(ch, fileHandle)
+	if err != nil {
+		fmt.Printf("Error WriteTrustList. %s\n", err.Error())
+		return err
+	}
+	// flag is true if ApplyChanges required
+	flag, err := CloseAndUpdateTrustList(ch, fileHandle)
+	if err != nil {
+		fmt.Printf("Error CloseAndUpdateTrustList. %s\n", err.Error())
+		return err
+	}
+	if flag {
+		err = ApplyChanges(ch)
+		if err != nil {
+			print(err)
+		}
+	} else {
+		fmt.Printf("ApplyChanges not required.\n")
+	}
+	return nil
 }
 
 func CloseClient(ch *client.Client) {

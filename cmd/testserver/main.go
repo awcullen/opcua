@@ -119,12 +119,12 @@ func main() {
 			return nil
 		}),
 		server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
-			cert, err := x509.ParseCertificate([]byte(userIdentity.Certificate))
+			certs, err := x509.ParseCertificates([]byte(userIdentity.Certificate))
 			if err != nil {
 				return ua.BadIdentityTokenRejected
 			}
 			err = ua.ValidateCertificate(
-				cert,
+				certs,
 				[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 				"",
 				"./pki/X509UserIdentity_PKI/trusted/certs",
@@ -140,7 +140,7 @@ func main() {
 			if err != nil {
 				return ua.BadIdentityTokenRejected
 			}
-			log.Printf("Login %s from %s\n", cert.Subject.CommonName, applicationURI)
+			log.Printf("Login %s from %s\n", certs[0].Subject.CommonName, applicationURI)
 			return nil
 		}),
 		server.WithSecurityPolicyNone(true),

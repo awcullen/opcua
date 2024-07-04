@@ -88,6 +88,7 @@ type clientSecureChannel struct {
 	remotePublicKey            *rsa.PublicKey
 	localPrivateKeySize        int
 	remotePublicKeySize        int
+	remoteThumbprint           [20]byte
 	localNonce                 []byte
 	remoteNonce                []byte
 	channelID                  uint32
@@ -185,8 +186,9 @@ func newClientSecureChannel(
 		bufferPool:                           buffer.NewMemPoolAt(int64(maxBufferSize)),
 		trace:                                trace,
 	}
-	if cert, err := x509.ParseCertificate(ch.remoteCertificate); err == nil {
-		ch.remotePublicKey = cert.PublicKey.(*rsa.PublicKey)
+	if certs, err := x509.ParseCertificates(ch.remoteCertificate); err == nil && len(certs) > 0 {
+		ch.remotePublicKey = certs[0].PublicKey.(*rsa.PublicKey)
+		ch.remoteThumbprint = sha1.Sum(certs[0].Raw)
 	}
 	return ch
 }
@@ -275,12 +277,12 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 	}
 
 	if len(ch.remoteCertificate) > 0 {
-		cert, err := x509.ParseCertificate(ch.remoteCertificate)
-		if err != nil {
+		certs, err := x509.ParseCertificates(ch.remoteCertificate)
+		if err != nil || len(certs) == 0 {
 			return ua.BadSecurityChecksFailed
 		}
 		err = ua.ValidateCertificate(
-			cert,
+			certs,
 			[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 			remoteURL.Hostname(),
 			ch.trustedCertsPath,
@@ -321,7 +323,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 	}
 
 	// if ch.trace {
-	//  log.Printf("Hello{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d,\"EndpointURL\":\"%s\"}\n", protocolVersion, ch.receiveBufferSize, ch.sendBufferSize, ch.maxResMessageSize, ch.maxResChunkCount, ch.endpointURL)
+	//   log.Printf("Hello{\"Version\":%d,\"ReceiveBufferSize\":%d,\"SendBufferSize\":%d,\"MaxMessageSize\":%d,\"MaxChunkCount\":%d,\"EndpointURL\":\"%s\"}\n", protocolVersion, ch.receiveBufferSize, ch.sendBufferSize, ch.maxResponseMessageSize, ch.maxResponseChunkCount, ch.endpointURL)
 	// }
 
 	_, err = ch.Read(buf)
@@ -635,8 +637,7 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 		switch ch.securityMode {
 		case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 			encoder.WriteByteArray(ch.localCertificate)
-			thumbprint := sha1.Sum(ch.remoteCertificate)
-			encoder.WriteByteArray(thumbprint[:])
+			encoder.WriteByteArray(ch.remoteThumbprint[:])
 		default:
 			encoder.WriteByteArray(nil)
 			encoder.WriteByteArray(nil)

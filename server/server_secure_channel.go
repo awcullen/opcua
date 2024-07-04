@@ -319,12 +319,12 @@ func (ch *serverSecureChannel) Open() error {
 		if rc == nil {
 			return ua.BadSecurityChecksFailed
 		}
-		cert, err := x509.ParseCertificate(ch.remoteCertificate)
+		certs, err := x509.ParseCertificates(ch.remoteCertificate)
 		if err != nil {
 			return ua.BadSecurityChecksFailed
 		}
 		err = ua.ValidateCertificate(
-			cert,
+			certs,
 			[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 			"",
 			ch.srv.trustedCertsPath,
@@ -340,6 +340,7 @@ func (ch *serverSecureChannel) Open() error {
 		if err != nil {
 			return err
 		}
+		cert := certs[0]
 		ch.remotePublicKey = cert.PublicKey.(*rsa.PublicKey)
 		if len(cert.URIs) > 0 {
 			ch.remoteApplicationURI = cert.URIs[0].String()
@@ -1267,8 +1268,8 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 					return nil, 0, ua.BadSecurityChecksFailed
 				}
 
-				if crt, err := x509.ParseCertificate(ch.remoteCertificate); err == nil {
-					ch.remotePublicKey = crt.PublicKey.(*rsa.PublicKey)
+				if crts, err := x509.ParseCertificates(ch.remoteCertificate); err == nil && len(crts) > 0 {
+					ch.remotePublicKey = crts[0].PublicKey.(*rsa.PublicKey)
 				}
 
 				if ch.remotePublicKey == nil {

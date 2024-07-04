@@ -109,9 +109,10 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 
 	if len(cli.localCertificate) > 0 {
 		// if cert has URI then update local description
-		crt, _ := x509.ParseCertificate(cli.localCertificate)
-		if len(crt.URIs) > 0 {
-			cli.localDescription.ApplicationURI = crt.URIs[0].String()
+		if crts, err := x509.ParseCertificates(cli.localCertificate); err == nil && len(crts) > 0 {
+			if len(crts[0].URIs) > 0 {
+				cli.localDescription.ApplicationURI = crts[0].URIs[0].String()
+			}
 		}
 	}
 

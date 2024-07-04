@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/tls"
 	_ "embed"
@@ -139,7 +140,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		log.Printf("Error loading x509 key pair. %s\n", err)
 		return nil, err
 	}
-	srv.localCertificate = cert.Certificate[0]
+	srv.localCertificate = bytes.Join(cert.Certificate, []byte{})
 	srv.localPrivateKey, _ = cert.PrivateKey.(*rsa.PrivateKey)
 
 	if err := srv.initializeNamespace(); err != nil {

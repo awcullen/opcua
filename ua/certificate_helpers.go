@@ -15,17 +15,30 @@ import (
 	"github.com/pkg/errors"
 )
 
-// ValidateCertificate validates the certificate.
-func ValidateCertificate(certificate *x509.Certificate, keyUsages []x509.ExtKeyUsage, hostname, trustedPath, trustedCRLPath, issuersPath, issuersCRLPath, rejectedCertsPath string,
+// ValidateCertificate validates the leaf certificate.
+func ValidateCertificate(certificates []*x509.Certificate, keyUsages []x509.ExtKeyUsage, hostname, trustedPath, trustedCRLPath, issuersPath, issuersCRLPath, rejectedCertsPath string,
 	suppressCertificateHostNameInvalid, suppressCertificateTimeInvalid, suppressCertificateChainIncomplete, suppressCertificateRevocationUnknown bool) error {
-	if certificate == nil {
+	if len(certificates) == 0 {
 		return BadCertificateInvalid
 	}
+	if len(keyUsages) == 0 {
+		keyUsages = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	}
+	certificate := certificates[0]
+	certificates = certificates[1:]
 
 	intermediates := x509.NewCertPool()
 	roots := x509.NewCertPool()
 	trusted := []*x509.Certificate{}
 	crls := []*x509.RevocationList{}
+
+	for _, crt := range certificates {
+		if isSelfSigned(crt) {
+			roots.AddCert(crt)
+		} else {
+			intermediates.AddCert(crt)
+		}
+	}
 
 	if crts, err := readCertificates(issuersPath); err == nil {
 		for _, crt := range crts {
@@ -160,9 +173,13 @@ func ValidateCertificate(certificate *x509.Certificate, keyUsages []x509.ExtKeyU
 				// check certificate usage
 				useValid := false
 				if j == 0 { // is leaf
+					outer2:
 					for _, eku := range c.ExtKeyUsage {
-						if eku == x509.ExtKeyUsageServerAuth {
-							useValid = true
+						for _, ku := range keyUsages {
+							if eku == ku {
+								useValid = true
+								break outer2
+							}
 						}
 					}
 					if !useValid {
@@ -243,8 +260,8 @@ func readCertificates(path string) ([]*x509.Certificate, error) {
 			var block *pem.Block
 			block, buf = pem.Decode(buf)
 			if block == nil {
-				if crt, err := x509.ParseCertificate(buf); err == nil {
-					list = append(list, crt)
+				if crts, err := x509.ParseCertificates(buf); err == nil {
+					list = append(list, crts...)
 				}
 				break
 			}
@@ -312,7 +329,7 @@ func isSelfSigned(certificate *x509.Certificate) bool {
 	return bytes.Equal(certificate.RawIssuer, certificate.RawSubject)
 }
 
-// checkRevocation returns error if certificate was revoked, or revokation list was not found. 
+// checkRevocation returns error if certificate was revoked, or revokation list was not found.
 func checkRevocation(chain []*x509.Certificate, index int, crls []*x509.RevocationList, suppressCertificateRevocationUnknown bool) error {
 	if index+1 >= len(chain) {
 		return nil

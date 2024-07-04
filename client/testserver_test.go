@@ -91,7 +91,7 @@ func NewTestServer() (*server.Server, error) {
 			return nil
 		}),
 		server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
-			_, err := x509.ParseCertificate([]byte(userIdentity.Certificate))
+			_, err := x509.ParseCertificates([]byte(userIdentity.Certificate))
 			if err != nil {
 				return ua.BadUserAccessDenied
 			}
