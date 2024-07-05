@@ -228,11 +228,16 @@ func getSliceEncoder(typ reflect.Type) (encoderFunc, error) {
 			return err
 		}
 		p2 := hdr.data
-		for i := 0; i < hdr.len; i++ {
+		//encode first element
+		if err := elemEncoder(buf, p2); err != nil {
+			return err
+		}
+		//encode remaining elements
+		for i := 1; i < hdr.len; i++ {
+			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 			if err := elemEncoder(buf, p2); err != nil {
 				return err
 			}
-			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 		}
 		return nil
 	}, nil

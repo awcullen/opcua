@@ -209,11 +209,16 @@ func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 		hdr.data = p2
 		hdr.len = len
 		hdr.cap = len
-		for i := 0; i < len; i++ {
+		//decode first element
+		if err := elemDecoder(buf, p2); err != nil {
+			return err
+		}
+		//decode remaining elements
+		for i := 1; i < len; i++ {
+			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 			if err := elemDecoder(buf, p2); err != nil {
 				return err
 			}
-			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 		}
 		return nil
 	}, nil
