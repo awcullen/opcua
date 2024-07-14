@@ -198,22 +198,26 @@ func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 			return err
 		}
 		len := int(l)
-		if l <= 0 {
+		if len <= 0 {
 			hdr.data = nil
 			hdr.len = 0
 			hdr.cap = 0
 			return nil
 		}
-		val := reflect.MakeSlice(typ, len, len)
-		p2 := unsafe.Pointer(val.Pointer())
-		hdr.data = p2
+		hdr.data = unsafe.Pointer(reflect.MakeSlice(typ, len, len).Pointer())
 		hdr.len = len
 		hdr.cap = len
-		for i := 0; i < len; i++ {
+		//decode first element
+		p2 := hdr.data
+		if err := elemDecoder(buf, p2); err != nil {
+			return err
+		}
+		//decode remaining elements
+		for i := 1; i < len; i++ {
+			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 			if err := elemDecoder(buf, p2); err != nil {
 				return err
 			}
-			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 		}
 		return nil
 	}, nil

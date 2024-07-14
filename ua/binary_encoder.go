@@ -219,20 +219,22 @@ func getSliceEncoder(typ reflect.Type) (encoderFunc, error) {
 	return func(buf *BinaryEncoder, p unsafe.Pointer) error {
 		hdr := *(*sliceHeader)(p)
 		if hdr.len == 0 {
-			if err := buf.WriteInt32(-1); err != nil {
-				return err
-			}
-			return nil
+			return buf.WriteInt32(0)
 		}
 		if err := buf.WriteInt32(int32(hdr.len)); err != nil {
 			return err
 		}
+		//encode first element
 		p2 := hdr.data
-		for i := 0; i < hdr.len; i++ {
+		if err := elemEncoder(buf, p2); err != nil {
+			return err
+		}
+		//encode remaining elements
+		for i := 1; i < hdr.len; i++ {
+			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 			if err := elemEncoder(buf, p2); err != nil {
 				return err
 			}
-			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 		}
 		return nil
 	}, nil

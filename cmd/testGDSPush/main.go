@@ -21,13 +21,6 @@ func main() {
 		return
 	}
 
-	err = UpdatePLCCertificate(ch)
-	if err != nil {
-		print(err)
-		CloseClient(ch)
-		return
-	}
-
 	err = UpdateTrustList(ch)
 	if err != nil {
 		print(err)
@@ -35,7 +28,15 @@ func main() {
 		return
 	}
 
+	err = UpdatePLCCertificate(ch)
+	if err != nil {
+		print(err)
+		CloseClient(ch)
+		return
+	}
+
 	CloseClient(ch)
+
 }
 
 func ensurePKI() (err error) {
@@ -62,12 +63,14 @@ func ensurePKI() (err error) {
 func InitClient() *client.Client {
 	ctx := context.Background()
 	ch, err := client.Dial(
-		ctx, "opc.tcp://andrew-x1:48010",
-		client.WithUserNameIdentity("root", "secret"),
+		ctx, "opc.tcp://192.168.1.90:4840",
+		client.WithUserNameIdentity("root", "Secret123"),
 		client.WithSecurityPolicyURI(ua.SecurityPolicyURIBasic256Sha256, ua.MessageSecurityModeSignAndEncrypt),
 		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
-		client.WithTrustedCertificatesPaths("./pki/ca.crt", "./pki/ca.crl"),
-		client.WithRejectedCertificatesPath("./pki/rejected"),
+		//	client.WithTrustedCertificatesPaths("./pki/ca.crt", "./pki/ca.crl"),
+		//	client.WithRejectedCertificatesPath("./pki/rejected"),
+		client.WithInsecureSkipVerify(),
+		client.WithTrace(),
 	)
 	if err != nil {
 		fmt.Printf("Error opening client connection. %s\n", err.Error())

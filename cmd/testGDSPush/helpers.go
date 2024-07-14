@@ -62,7 +62,7 @@ func createCACertificate(commonName, organization, certFile, keyFile, crlFile st
 	} else {
 		return err
 	}
-	if f, err := os.Create("./pki/ca.der"); err == nil {
+	if f, err := os.Create(certFile + ".der"); err == nil {
 		f.Write(rawcrt)
 		f.Close()
 	}
@@ -92,6 +92,10 @@ func createCACertificate(commonName, organization, certFile, keyFile, crlFile st
 		f.Close()
 	} else {
 		return err
+	}
+	if f, err := os.Create(crlFile + ".der"); err == nil {
+		f.Write(crlBytes)
+		f.Close()
 	}
 
 	if f, err := os.Create(keyFile); err == nil {
@@ -199,8 +203,8 @@ func MethodCaller(ch *client.Client, method ua.CallMethodRequest) (*ua.CallMetho
 	if err != nil {
 		return nil, err
 	}
-	if res.ServiceResult.IsBad() {
-		return nil, res.ServiceResult
+	if res.Results[0].StatusCode.IsBad() {
+		return nil, res.Results[0].StatusCode
 	}
 
 	return &res.Results[0], nil
@@ -274,9 +278,7 @@ func CreateSigningRequest(ch *client.Client) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if result.StatusCode.IsBad() {
-		return nil, result.StatusCode
-	}
+
 	// Decode output
 	resByteString := result.OutputArguments[0].(ua.ByteString)
 	resDecoded, _ := base64.StdEncoding.DecodeString(resByteString.String())
@@ -305,9 +307,6 @@ func UpdateCertificate(ch *client.Client, newCert []byte) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if result.StatusCode.IsBad() {
-		return false, result.StatusCode
-	}
 
 	fmt.Printf("Successfully updated certificate.\n")
 
@@ -330,9 +329,7 @@ func OpenTrustList(ch *client.Client) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	if result.StatusCode.IsBad() {
-		return 0, result.StatusCode
-	}
+
 	fmt.Printf("Successfully opened filehandle.\n")
 
 	// Return fileHandle
@@ -372,13 +369,11 @@ func WriteTrustList(ch *client.Client, fileHandle uint32) error {
 		},
 	}
 
-	result, err := MethodCaller(ch, method)
+	_, err = MethodCaller(ch, method)
 	if err != nil {
 		return err
 	}
-	if result.StatusCode.IsBad() {
-		return result.StatusCode
-	}
+
 	fmt.Printf("Successfully written bytes.\n")
 	return nil
 }
@@ -397,9 +392,6 @@ func CloseAndUpdateTrustList(ch *client.Client, fileHandle uint32) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	if result.StatusCode.IsBad() {
-		return false, result.StatusCode
-	}
 
 	fmt.Printf("Successfully closed filehandle and updated trustlist.\n")
 
@@ -409,25 +401,20 @@ func CloseAndUpdateTrustList(ch *client.Client, fileHandle uint32) (bool, error)
 
 // see https://reference.opcfoundation.org/GDS/v105/docs/7.10.6
 func ApplyChanges(ch *client.Client) error {
-	// Connect to PLC, which should be in provisioning mode and have a user with the correct runtime rights
-	// Currently not working
-	// Certificate validation popup after call in UaExpert
-	// https://reference.opcfoundation.org/GDS/v105/docs/7.10.6
+
 	method := ua.CallMethodRequest{
-		ObjectID:       ua.ObjectIDServerConfiguration,
-		MethodID:       ua.MethodIDServerConfigurationApplyChanges,
-		InputArguments: []ua.Variant{},
+		ObjectID: ua.ObjectIDServerConfiguration,
+		MethodID: ua.MethodIDServerConfigurationApplyChanges,
 	}
 
-	result, err := MethodCaller(ch, method)
+	_, err := MethodCaller(ch, method)
 	if err != nil {
 		return err
 	}
-	if result.StatusCode.IsBad() {
-		return result.StatusCode
-	}
-	fmt.Printf("Successfully applied changes.\n")
+
+	fmt.Printf("Success applying changes.\n")
 	return nil
+
 }
 
 // GetNextNonce gets next random nonce of requested length.
