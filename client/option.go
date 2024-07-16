@@ -3,6 +3,7 @@
 package client
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/tls"
 
@@ -46,7 +47,7 @@ func WithX509IdentityFile(certPath, keyPath string) Option {
 		if err != nil {
 			return err
 		}
-		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(cert.Certificate[0]), Key: cert.PrivateKey.(*rsa.PrivateKey)}
+		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(bytes.Join(cert.Certificate, []byte{})), Key: cert.PrivateKey.(*rsa.PrivateKey)}
 		return nil
 	}
 }
@@ -59,7 +60,7 @@ func WithX509IdentityPaths(certPath, keyPath string) Option {
 		if err != nil {
 			return err
 		}
-		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(cert.Certificate[0]), Key: cert.PrivateKey.(*rsa.PrivateKey)}
+		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(bytes.Join(cert.Certificate, []byte{})), Key: cert.PrivateKey.(*rsa.PrivateKey)}
 		return nil
 	}
 }
@@ -114,7 +115,7 @@ func WithClientCertificateFile(certPath, keyPath string) Option {
 		if err != nil {
 			return err
 		}
-		c.localCertificate = cert.Certificate[0]
+		c.localCertificate = bytes.Join(cert.Certificate, []byte{})
 		c.localPrivateKey, _ = cert.PrivateKey.(*rsa.PrivateKey)
 		return nil
 	}
@@ -128,7 +129,7 @@ func WithClientCertificatePaths(certPath, keyPath string) Option {
 		if err != nil {
 			return err
 		}
-		c.localCertificate = cert.Certificate[0]
+		c.localCertificate = bytes.Join(cert.Certificate, []byte{})
 		c.localPrivateKey, _ = cert.PrivateKey.(*rsa.PrivateKey)
 		return nil
 	}
