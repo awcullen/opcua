@@ -31,6 +31,13 @@ const (
 	VariantTypeVariant
 	VariantTypeDiagnosticInfo
 )
+const (
+	// VariantArrayDimensions flags whether the array has more than one dimension
+	VariantArrayDimensions = 0x40
+
+	// VariantArrayValues flags whether the value is an array.
+	VariantArrayValues = 0x80
+)
 
 /*
 Variant stores a single value or slice of the following types:

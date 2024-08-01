@@ -199,7 +199,7 @@ func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 		}
 		len := int(l)
 		if len <= 0 {
-			hdr.data = unsafe.Pointer(reflect.MakeSlice(typ, 0, 0).Pointer()) 
+			hdr.data = unsafe.Pointer(reflect.MakeSlice(typ, 0, 0).Pointer())
 			hdr.len = 0
 			hdr.cap = 0
 			return nil
@@ -862,15 +862,29 @@ func (dec *BinaryDecoder) ReadDataValue(value *DataValue) error {
 	return nil
 }
 
+// in future to be integrated into refreshed complete Variant Type
+type VariantMetadata struct {
+	//mask contains the type and the array flags
+	//bits 0:5: built-in type id 1-25
+	//bit 6: array dimensions
+	//bit 7: array values
+	EncodingMask          byte
+	ArrayLength           int32
+	ArrayDimensionsLength int32
+	ArrayDimensions       []int32
+}
+
 // ReadVariant reads a Variant.
 func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
-	var b byte
-	if err := dec.ReadByte(&b); err != nil {
+
+	var metaData VariantMetadata
+	if err := dec.ReadByte(&metaData.EncodingMask); err != nil {
 		return BadDecodingError
 	}
 
-	if (b & 0x80) == 0 {
-		switch b & 0x3F {
+	//not array
+	if (metaData.EncodingMask & VariantArrayValues) == 0 {
+		switch metaData.EncodingMask & 0x3F {
 		case VariantTypeNull:
 			*value = nil
 			return nil
@@ -1079,9 +1093,9 @@ func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
 			return BadDecodingError
 		}
 	}
-
-	if (b & 0x40) == 0 {
-		switch b & 0x3F {
+	//not multidimensional array
+	if (metaData.EncodingMask & VariantArrayDimensions) == 0 {
+		switch metaData.EncodingMask & 0x3F {
 		case VariantTypeNull:
 			*value = nil
 			return nil
@@ -1292,7 +1306,270 @@ func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
 	}
 
 	// TODO: Multidimensional array
+	if (metaData.EncodingMask&VariantArrayDimensions) == VariantArrayDimensions &&
+		(metaData.EncodingMask&VariantArrayValues) == VariantArrayValues {
+
+		var data interface{}
+		//get variant type
+		variantType := metaData.EncodingMask & 0x3F
+		switch variantType {
+		case VariantTypeNull:
+			*value = nil
+			return nil
+		case VariantTypeBoolean:
+			var v []bool
+			//read flattened array elements
+			if err := dec.ReadBooleanArray(&v); err != nil {
+				return BadDecodingError
+			}
+			//get count of elements read
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeSByte:
+			var v []int8
+			if err := dec.ReadSByteArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeByte:
+			var v []byte
+			if err := dec.ReadByteArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+			return nil
+		case VariantTypeInt16:
+			var v []int16
+			if err := dec.ReadInt16Array(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeUInt16:
+			var v []uint16
+			if err := dec.ReadUInt16Array(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeInt32:
+			var v []int32
+			if err := dec.ReadInt32Array(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeUInt32:
+			var v []uint32
+			if err := dec.ReadUInt32Array(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeInt64:
+			var v []int64
+			if err := dec.ReadInt64Array(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeUInt64:
+			var v []uint64
+			if err := dec.ReadUInt64Array(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeFloat:
+			var v []float32
+			if err := dec.ReadFloatArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeDouble:
+			var v []float64
+			if err := dec.ReadDoubleArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeString:
+			var v []string
+			if err := dec.ReadStringArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeDateTime:
+			var v []time.Time
+			if err := dec.ReadDateTimeArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeGUID:
+			var v []uuid.UUID
+			if err := dec.ReadGUIDArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeByteString:
+			var v []ByteString
+			if err := dec.ReadByteStringArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeXMLElement:
+			var v []XMLElement
+			if err := dec.ReadXMLElementArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeNodeID:
+			var v []NodeID
+			if err := dec.ReadNodeIDArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeExpandedNodeID:
+			var v []ExpandedNodeID
+			if err := dec.ReadExpandedNodeIDArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeStatusCode:
+			var v []StatusCode
+			if err := dec.ReadStatusCodeArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeQualifiedName:
+			var v []QualifiedName
+			if err := dec.ReadQualifiedNameArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeLocalizedText:
+			var v []LocalizedText
+			if err := dec.ReadLocalizedTextArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeExtensionObject:
+			var v []ExtensionObject
+			if err := dec.ReadExtensionObjectArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeDataValue:
+			var v []DataValue
+			if err := dec.ReadDataValueArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeVariant:
+			var v []Variant
+			if err := dec.ReadVariantArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		case VariantTypeDiagnosticInfo:
+			var v []DiagnosticInfo
+			if err := dec.ReadDiagnosticInfoArray(&v); err != nil {
+				return BadDecodingError
+			}
+			metaData.ArrayLength = int32(len(v))
+			data = v
+		default:
+			return BadDecodingError
+		}
+
+		//get number of array dimensions
+		if err := dec.ReadInt32(&metaData.ArrayDimensionsLength); err != nil {
+			return BadDecodingError
+		}
+		if metaData.ArrayDimensionsLength < 0 {
+			return BadDecodingError
+		}
+
+		//get length of each array dimension
+		metaData.ArrayDimensions = make([]int32, metaData.ArrayDimensionsLength)
+		for i := 0; i < int(metaData.ArrayDimensionsLength); i++ {
+			if err := dec.ReadInt32(&metaData.ArrayDimensions[i]); err != nil {
+				return BadDecodingError
+			}
+			if metaData.ArrayDimensions[i] < 1 {
+				return BadDecodingError
+			}
+		}
+
+		//check if count of flattened elements read equals to product of dimensions
+		count := int32(1)
+		for i := range metaData.ArrayDimensions {
+			count *= metaData.ArrayDimensions[i]
+		}
+		if count != metaData.ArrayLength {
+			return BadDecodingError
+		}
+
+		dims := make([]int, len(metaData.ArrayDimensions))
+		for i := range metaData.ArrayDimensions {
+			dims[i] = int(metaData.ArrayDimensions[i])
+		}
+
+		//slice flat array into dimensional array
+		var v1 = split(0, 0, int(metaData.ArrayLength), dims, reflect.ValueOf(data)).Interface()
+		*value = v1
+		return nil
+	}
+
 	return BadDecodingError
+}
+
+// split recursively creates a multi-dimensional array from a set of values
+// and some given dimensions.
+func split(level, i, j int, dims []int, vals reflect.Value) reflect.Value {
+	if level == len(dims)-1 {
+		a := vals.Slice(i, j)
+		// fmt.Printf("split: level:%d i:%d j:%d dims:%v a:%#v\n", level, i, j, dims, a.Interface())
+		return a
+	}
+
+	// split next level
+	var elems []reflect.Value
+	if vals.Len() > 0 {
+		step := (j - i) / dims[level]
+		for ; i < j; i += step {
+			elems = append(elems, split(level+1, i, i+step, dims, vals))
+		}
+	} else {
+		for k := 0; k < dims[level]; k++ {
+			elems = append(elems, split(level+1, 0, 0, dims, vals))
+		}
+	}
+
+	// now construct the typed slice, i.e. [](type of inner slice)
+	innerT := elems[0].Type()
+	a := reflect.MakeSlice(reflect.SliceOf(innerT), len(elems), len(elems))
+	for k := range elems {
+		a.Index(k).Set(elems[k])
+	}
+	// fmt.Printf("split: level:%d i:%d j:%d dims:%v a:%#v\n", level, i, j, dims, a.Interface())
+	return a
 }
 
 // ReadDiagnosticInfo reads a DiagnosticInfo.
