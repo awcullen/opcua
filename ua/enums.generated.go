@@ -122,7 +122,7 @@ func (v IdentityCriteriaType) String() string {
 }
 
 // TrustListMasks enumeration.
-type TrustListMasks int32
+type TrustListMasks uint32
 
 // TrustListMasks enumeration.
 const (
