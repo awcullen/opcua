@@ -12,4 +12,8 @@ require (
 	gotest.tools v2.2.0+incompatible
 )
 
-require github.com/google/go-cmp v0.6.0 // indirect
+require (
+	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/gopcua/opcua v0.5.3 // indirect
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
+)
