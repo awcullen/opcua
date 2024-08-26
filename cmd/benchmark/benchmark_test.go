@@ -10,6 +10,18 @@ import (
 	gopcua "github.com/gopcua/opcua/ua"
 )
 
+/* 
+run file benchmarks, results similar to:
+pkg: github.com/awcullen/opcua/cmd/benchmark
+cpu: Intel(R) Core(TM) i7-7500U CPU @ 2.70GHz
+BenchmarkGopcuaEncode
+BenchmarkGopcuaEncode-4     	  120178	      9332 ns/op	    2536 B/op	      97 allocs/op
+BenchmarkAwcullenEncode
+BenchmarkAwcullenEncode-4   	 1728259	       859.3 ns/op	     154 B/op	       4 allocs/op
+PASS
+ */
+
+// BenchmarkGopcuaEncode encodes typical payload to a mock network connection.
 func BenchmarkGopcuaEncode(b *testing.B) {
 	pr := &gopcua.PublishResponse{
 		ResponseHeader: &gopcua.ResponseHeader{
@@ -30,7 +42,7 @@ func BenchmarkGopcuaEncode(b *testing.B) {
 					MonitoredItems: []*gopcua.MonitoredItemNotification{
 						{
 							ClientHandle: 9,
-							Value:        &gopcua.DataValue{EncodingMask: 0x15, Value: gopcua.MustVariant(time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC)), Status: 0, SourceTimestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), SourcePicoseconds: 0, ServerTimestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), ServerPicoseconds: 0},
+							Value:        &gopcua.DataValue{EncodingMask: 0x15, Value: gopcua.MustVariant(3.14159), Status: 0, SourceTimestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), SourcePicoseconds: 0, ServerTimestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), ServerPicoseconds: 0},
 						},
 					},
 					DiagnosticInfos: []*gopcua.DiagnosticInfo{},
@@ -55,6 +67,7 @@ func BenchmarkGopcuaEncode(b *testing.B) {
 	}
 }
 
+// BenchmarkAwcullenEncode encodes typical payload to a mock network connection.
 func BenchmarkAwcullenEncode(b *testing.B) {
 	pr := &awcullen.PublishResponse{
 		ResponseHeader: awcullen.ResponseHeader{
@@ -72,7 +85,7 @@ func BenchmarkAwcullenEncode(b *testing.B) {
 					MonitoredItems: []awcullen.MonitoredItemNotification{
 						{
 							ClientHandle: 9,
-							Value:        awcullen.DataValue{Value: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), StatusCode: 0, SourceTimestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), SourcePicoseconds: 0, ServerTimestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), ServerPicoseconds: 0},
+							Value:        awcullen.DataValue{Value: 3.14159, StatusCode: 0, SourceTimestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), SourcePicoseconds: 0, ServerTimestamp: time.Date(1601, time.January, 01, 12, 0, 0, 0, time.UTC), ServerPicoseconds: 0},
 						},
 					},
 					DiagnosticInfos: []awcullen.DiagnosticInfo{},

@@ -12,5 +12,17 @@ To *connect* to an OPC UA server, start here [![Godoc](http://img.shields.io/bad
 
 To *create* your own OPC UA server, start here [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua/server)
 
+## Recent News
+Benchmark shows this package **10X faster** than Gopcua/opcua to encode a typical payload to the network.  
+```
+pkg: github.com/awcullen/opcua/cmd/benchmark
+cpu: Intel(R) Core(TM) i7-7500U CPU @ 2.70GHz
+BenchmarkGopcuaEncode
+BenchmarkGopcuaEncode-4     	  120178	      9332 ns/op	    2536 B/op	      97 allocs/op
+BenchmarkAwcullenEncode
+BenchmarkAwcullenEncode-4   	 1728259	       859.3 ns/op	     154 B/op	       4 allocs/op
+PASS
+```
+
 
  [1]: robot6.jpg
