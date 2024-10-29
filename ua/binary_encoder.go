@@ -1214,34 +1214,65 @@ func (enc *BinaryEncoder) WriteVariant(value Variant) error {
 	default:
 		var refVal = reflect.ValueOf(v1)
 		var refKind = refVal.Kind()
+		if refKind == reflect.Invalid {
+			return BadEncodingError
+		}
 
 		if refKind == reflect.Slice || refKind == reflect.Array {
-			_, dim, count, err := sliceDim(refVal)
+			arrayElementType, arrayDimensions, arrayLength, err := sliceDim(refVal)
 			if err != nil {
 				return BadEncodingError
 			}
 
-			//fmt.Println(et.Kind())
-			//fmt.Println(dim)
-			//fmt.Println(count)
+			var variantMetaData VariantMetadata
+			variantMetaData.ArrayDimensionsLength = int32(len(arrayDimensions))
+			variantMetaData.ArrayDimensions = arrayDimensions
+			variantMetaData.ArrayLength = arrayLength
 
-			var vmeta VariantMetadata
-			vmeta.ArrayDimensionsLength = int32(len(dim))
-			vmeta.ArrayDimensions = dim
-			vmeta.ArrayLength = count
-			//TODO: make dynamic VariantType
-			vmeta.EncodingMask = VariantTypeBoolean
-			if vmeta.ArrayDimensionsLength > 0 {
-				vmeta.EncodingMask |= 128
-			}
-			if vmeta.ArrayDimensionsLength > 1 {
-				vmeta.EncodingMask |= 64
-			}
-
-			if err := enc.WriteByte(vmeta.EncodingMask); err != nil {
+			//TODO: expand to more VariantTypes.
+			switch arrayElementType.Kind() {
+			case reflect.Bool:
+				variantMetaData.EncodingMask = VariantTypeBoolean
+			case reflect.Int8:
+				variantMetaData.EncodingMask = VariantTypeSByte
+			case reflect.Uint8:
+				variantMetaData.EncodingMask = VariantTypeByte
+			case reflect.Int16:
+				variantMetaData.EncodingMask = VariantTypeInt16
+			case reflect.Uint16:
+				variantMetaData.EncodingMask = VariantTypeUInt16
+			case reflect.Int32:
+				variantMetaData.EncodingMask = VariantTypeInt32
+			case reflect.Uint32:
+				variantMetaData.EncodingMask = VariantTypeUInt32
+			case reflect.Int64:
+				variantMetaData.EncodingMask = VariantTypeInt64
+			case reflect.Uint64:
+				variantMetaData.EncodingMask = VariantTypeUInt64
+			case reflect.Float32:
+				variantMetaData.EncodingMask = VariantTypeFloat
+			case reflect.Float64:
+				variantMetaData.EncodingMask = VariantTypeDouble
+			case reflect.String:
+				variantMetaData.EncodingMask = VariantTypeString
+			default:
 				return BadEncodingError
 			}
-			if err := enc.WriteInt32(vmeta.ArrayLength); err != nil {
+
+			//Set byte 7 to encode an array of values
+			if variantMetaData.ArrayDimensionsLength > 0 {
+				variantMetaData.EncodingMask |= VariantArrayValues
+			}
+
+			//Set byte 6 to encode Dimensions field
+			if variantMetaData.ArrayDimensionsLength > 1 {
+				variantMetaData.EncodingMask |= VariantArrayDimensions
+			}
+
+			if err := enc.WriteByte(variantMetaData.EncodingMask); err != nil {
+				return BadEncodingError
+			}
+			if err := enc.WriteInt32(variantMetaData.ArrayLength); err != nil {
 				return BadEncodingError
 			}
 
@@ -1249,12 +1280,12 @@ func (enc *BinaryEncoder) WriteVariant(value Variant) error {
 				return BadEncodingError
 			}
 
-			if vmeta.EncodingMask&64 == 64 {
-				if err := enc.WriteInt32(vmeta.ArrayDimensionsLength); err != nil {
+			if variantMetaData.EncodingMask&VariantArrayDimensions == VariantArrayDimensions {
+				if err := enc.WriteInt32(variantMetaData.ArrayDimensionsLength); err != nil {
 					return BadEncodingError
 				}
-				for i := 0; i < int(vmeta.ArrayDimensionsLength); i++ {
-					if err := enc.WriteInt32(vmeta.ArrayDimensions[i]); err != nil {
+				for i := 0; i < int(variantMetaData.ArrayDimensionsLength); i++ {
+					if err := enc.WriteInt32(variantMetaData.ArrayDimensions[i]); err != nil {
 						return BadEncodingError
 					}
 				}
