@@ -33,6 +33,8 @@ var (
 	nilPtr              = unsafe.Pointer(nil)
 )
 
+type ByteArray []byte
+
 type encoderFunc func(*BinaryEncoder, unsafe.Pointer) error
 
 type interfaceHeader struct {
@@ -1210,6 +1212,87 @@ func (enc *BinaryEncoder) WriteVariant(value Variant) error {
 			return BadEncodingError
 		}
 	default:
+		var refVal = reflect.ValueOf(v1)
+		var refKind = refVal.Kind()
+		if refKind == reflect.Invalid {
+			return BadEncodingError
+		}
+
+		if refKind == reflect.Slice || refKind == reflect.Array {
+			arrayElementType, arrayDimensions, arrayLength, err := sliceDim(refVal)
+			if err != nil {
+				return BadEncodingError
+			}
+
+			var variantMetaData VariantMetadata
+			variantMetaData.ArrayDimensionsLength = int32(len(arrayDimensions))
+			variantMetaData.ArrayDimensions = arrayDimensions
+			variantMetaData.ArrayLength = arrayLength
+
+			//TODO: expand to more VariantTypes.
+			switch arrayElementType.Kind() {
+			case reflect.Bool:
+				variantMetaData.EncodingMask = VariantTypeBoolean
+			case reflect.Int8:
+				variantMetaData.EncodingMask = VariantTypeSByte
+			case reflect.Uint8:
+				variantMetaData.EncodingMask = VariantTypeByte
+			case reflect.Int16:
+				variantMetaData.EncodingMask = VariantTypeInt16
+			case reflect.Uint16:
+				variantMetaData.EncodingMask = VariantTypeUInt16
+			case reflect.Int32:
+				variantMetaData.EncodingMask = VariantTypeInt32
+			case reflect.Uint32:
+				variantMetaData.EncodingMask = VariantTypeUInt32
+			case reflect.Int64:
+				variantMetaData.EncodingMask = VariantTypeInt64
+			case reflect.Uint64:
+				variantMetaData.EncodingMask = VariantTypeUInt64
+			case reflect.Float32:
+				variantMetaData.EncodingMask = VariantTypeFloat
+			case reflect.Float64:
+				variantMetaData.EncodingMask = VariantTypeDouble
+			case reflect.String:
+				variantMetaData.EncodingMask = VariantTypeString
+			default:
+				return BadEncodingError
+			}
+
+			//Set byte 7 to encode an array of values
+			if variantMetaData.ArrayDimensionsLength > 0 {
+				variantMetaData.EncodingMask |= VariantArrayValues
+			}
+
+			//Set byte 6 to encode Dimensions field
+			if variantMetaData.ArrayDimensionsLength > 1 {
+				variantMetaData.EncodingMask |= VariantArrayDimensions
+			}
+
+			if err := enc.WriteByte(variantMetaData.EncodingMask); err != nil {
+				return BadEncodingError
+			}
+			if err := enc.WriteInt32(variantMetaData.ArrayLength); err != nil {
+				return BadEncodingError
+			}
+
+			if err := writeMultiDimArrayAsFlatArray(enc, v1); err != nil {
+				return BadEncodingError
+			}
+
+			if variantMetaData.EncodingMask&VariantArrayDimensions == VariantArrayDimensions {
+				if err := enc.WriteInt32(variantMetaData.ArrayDimensionsLength); err != nil {
+					return BadEncodingError
+				}
+				for i := 0; i < int(variantMetaData.ArrayDimensionsLength); i++ {
+					if err := enc.WriteInt32(variantMetaData.ArrayDimensions[i]); err != nil {
+						return BadEncodingError
+					}
+				}
+			}
+			return nil
+		}
+
 		// wrap structs in ExtensionObject
 		if err := enc.WriteByte(VariantTypeExtensionObject); err != nil {
 			return BadEncodingError
@@ -1219,6 +1302,75 @@ func (enc *BinaryEncoder) WriteVariant(value Variant) error {
 		}
 	}
 	return nil
+}
+
+func writeMultiDimArrayAsFlatArray(enc *BinaryEncoder, data interface{}) error {
+	val := reflect.ValueOf(data)
+
+	switch val.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < val.Len(); i++ {
+			if err := writeMultiDimArrayAsFlatArray(enc, val.Index(i).Interface()); err != nil {
+				return BadEncodingError
+			}
+		}
+	default:
+		//if err := enc.WriteBoolean(val.Interface().(bool)); err != nil {
+		//	println(err)
+		//}
+		if err := enc.Encode(val.Interface()); err != nil {
+			return BadEncodingError
+		}
+		//fmt.Println(val.Interface().(bool))
+	}
+	return nil
+}
+
+// sliceDim determines the element type, dimensions and the total length
+// of a one or multi-dimensional slice.
+func sliceDim(v reflect.Value) (typ reflect.Type, dim []int32, count int32, err error) {
+	// null type
+	if v.Kind() == reflect.Invalid {
+		return nil, nil, 0, nil
+	}
+
+	// https://reference.opcfoundation.org/v104/Core/docs/Part6/5.1.4/
+	//
+	// We default to treating a []byte as a ByteString which is sent as a length
+	// encoded value. However, this makes it impossible to send a []byte as an
+	// array of Byte. The ByteArray type alias supports sending a []byte as an
+	// array of Byte.
+	//
+	// https://github.com/gopcua/opcua/issues/463
+	if v.Type() == reflect.TypeOf([]byte{}) && v.Type() != reflect.TypeOf(ByteArray{}) {
+		return v.Type(), nil, 1, nil
+	}
+
+	// element type
+	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
+		return v.Type(), nil, 1, nil
+	}
+
+	// empty array
+	if v.Len() == 0 {
+		return v.Type().Elem(), append([]int32{0}, dim...), 0, nil
+	}
+
+	// check that inner slices all have the same length
+	if v.Index(0).Kind() == reflect.Slice || v.Index(0).Kind() == reflect.Array {
+		for i := 0; i < v.Len(); i++ {
+			if v.Index(i).Len() != v.Index(0).Len() {
+				return nil, nil, 0, BadDecodingError
+			}
+		}
+	}
+
+	// recurse to inner slice or element type
+	typ, dim, count, err = sliceDim(v.Index(0))
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return typ, append([]int32{int32(v.Len())}, dim...), count * int32(v.Len()), nil
 }
 
 // WriteDiagnosticInfo writes a DiagnosticInfo
