@@ -212,9 +212,6 @@ func (ch *serverSecureChannel) Open() error {
 		if msgLen < 28 {
 			return ua.BadDecodingError
 		}
-		if err != nil {
-			return ua.BadDecodingError
-		}
 		if err = dec.ReadUInt32(&cliProtocolVersion); err != nil || cliProtocolVersion < protocolVersion {
 			return ua.BadProtocolVersionUnsupported
 		}

@@ -13,6 +13,8 @@ To *connect* to an OPC UA server, start here [![Godoc](http://img.shields.io/bad
 To *create* your own OPC UA server, start here [![Godoc](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)](https://pkg.go.dev/mod/github.com/awcullen/opcua/server)
 
 ## Recent News
+Encodes variables of 2D/3D slices.
+
 Benchmark shows this package **10X faster** than Gopcua/opcua to encode a typical payload to the network.  
 ```
 pkg: github.com/awcullen/opcua/cmd/benchmark
