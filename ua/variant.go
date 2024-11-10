@@ -30,6 +30,12 @@ const (
 	VariantTypeDataValue
 	VariantTypeVariant
 	VariantTypeDiagnosticInfo
+
+	// VariantTypeMultiDimensionArray flags whether the array has more than one dimension
+	VariantTypeMultiDimensionArray = 0x40
+
+	// VariantTypeArray flags whether the value is an array.
+	VariantTypeArray = 0x80
 )
 
 /*

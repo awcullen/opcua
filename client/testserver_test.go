@@ -234,10 +234,35 @@ func NewTestServer() (*server.Server, error) {
 		nil,
 	)
 
+	// add 'Matrix' variable
+	varMatrix := server.NewVariableNode(
+		srv,
+		ua.NodeIDString{NamespaceIndex: 2, ID: "Demo.Static.Arrays.Matrix"},
+		ua.QualifiedName{NamespaceIndex: 2, Name: "Matrix"},
+		ua.LocalizedText{Text: "Matrix"},
+		ua.LocalizedText{Text: "A matrix variable for testing."},
+		nil,
+		[]ua.Reference{ // add variable to 'Demo.Static.Arrays' folder
+			{
+				ReferenceTypeID: ua.ReferenceTypeIDOrganizes,
+				IsInverse:       true,
+				TargetID:        ua.ExpandedNodeID{NodeID: ua.ParseNodeID("ns=2;s=Demo.Static.Arrays")},
+			},
+		},
+		ua.NewDataValue([][][]int32{{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {9, 10, 11}}, {{12, 13, 14}, {15, 16, 17}, {18, 19, 20}, {21, 22, 23}}}, 0, time.Now().UTC(), 0, time.Now().UTC(), 0),
+		ua.DataTypeIDInt32,
+		ua.ValueRankThreeDimensions,
+		[]uint32{0, 0, 0}, // no maximum
+		ua.AccessLevelsCurrentRead|ua.AccessLevelsCurrentWrite,
+		250.0,
+		false,
+		nil,
+	)
 	// add new nodes to namespace
 	nm.AddNodes(
 		typCustomStruct,
 		varCustomStruct,
+		varMatrix,
 	)
 
 	go func() {

@@ -122,3 +122,55 @@ func ExampleClient_Read_customstruct() {
 	//   W1: 1
 	//   W2: 2
 }
+
+// This example demonstrates reading an multidimensional array variable.
+func ExampleClient_Read_array() {
+
+	ctx := context.Background()
+
+	// open a connection to testserver running locally. Testserver is started if not already running.
+	ch, err := client.Dial(
+		ctx,
+		"opc.tcp://localhost:46010",
+		client.WithInsecureSkipVerify(), // skips verification of server certificate
+	)
+	if err != nil {
+		fmt.Printf("Error opening client connection. %s\n", err.Error())
+		return
+	}
+
+	// prepare read request
+	req := &ua.ReadRequest{
+		NodesToRead: []ua.ReadValueID{
+			{
+				NodeID:      ua.ParseNodeID("ns=2;s=Demo.Static.Arrays.Matrix"),
+				AttributeID: ua.AttributeIDValue,
+			},
+		},
+	}
+
+	// send request to server. receive response or error
+	res, err := ch.Read(ctx, req)
+	if err != nil {
+		fmt.Printf("Error reading ServerStatus. %s\n", err.Error())
+		ch.Abort(ctx)
+		return
+	}
+
+	// print results
+	if val, ok := res.Results[0].Value.([][][]int32); ok {
+		fmt.Println(val)
+	} else {
+		fmt.Println("Error decoding [][][]int32.")
+	}
+
+	// close connection
+	err = ch.Close(ctx)
+	if err != nil {
+		ch.Abort(ctx)
+		return
+	}
+
+	// Output:
+	// [[[0 1 2] [3 4 5] [6 7 8] [9 10 11]] [[12 13 14] [15 16 17] [18 19 20] [21 22 23]]]
+}

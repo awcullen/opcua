@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"math"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -5999,13 +6000,24 @@ func (srv *Server) writeValue(session *Session, writeValue ua.WriteValue) ua.Sta
 					return ua.BadTypeMismatch
 				}
 			default:
-				// case ua.ExtensionObject:
-				if destType != ua.VariantTypeExtensionObject && destType != ua.VariantTypeVariant {
+				switch v3 := reflect.ValueOf(v2); v3.Kind() {
+				case reflect.Struct:
+					// case ua.ExtensionObject:
+					if destType != ua.VariantTypeExtensionObject && destType != ua.VariantTypeVariant {
+						return ua.BadTypeMismatch
+					}
+					if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
+						return ua.BadTypeMismatch
+					}
+				case reflect.Slice, reflect.Array:
+					//TODO: check destType
+					if destRank == ua.ValueRankScalar {
+						return ua.BadTypeMismatch
+					}
+				default:
 					return ua.BadTypeMismatch
 				}
-				if destRank != ua.ValueRankScalar && destRank != ua.ValueRankScalarOrOneDimension && destRank != ua.ValueRankAny {
-					return ua.BadTypeMismatch
-				}
+
 			}
 
 			if f := n1.writeValueHandler; f != nil {

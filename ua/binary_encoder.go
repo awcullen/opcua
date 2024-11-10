@@ -30,8 +30,11 @@ var (
 	typeExtensionObject = reflect.TypeOf((*ExtensionObject)(nil)).Elem()
 	typeVariant         = reflect.TypeOf((*Variant)(nil)).Elem()
 	typeDiagnosticInfo  = reflect.TypeOf((*DiagnosticInfo)(nil)).Elem()
+	typeSliceOfByte     = reflect.TypeOf((*[]byte)(nil)).Elem()
 	nilPtr              = unsafe.Pointer(nil)
 )
+
+type ByteArray []byte
 
 type encoderFunc func(*BinaryEncoder, unsafe.Pointer) error
 
@@ -112,10 +115,16 @@ func getEncoder(typ reflect.Type) (encoderFunc, error) {
 			return getStructEncoder(typ)
 		}
 	case reflect.Slice:
-		elemTyp := typ.Elem()
-		switch elemTyp.Kind() {
+		switch elemTyp := typ.Elem(); elemTyp.Kind() {
 		case reflect.Uint8:
 			return getByteArrayEncoder()
+		// case reflect.Slice:
+		// 	switch elemTyp := elemTyp.Elem(); elemTyp.Kind() {
+		// 	case reflect.Slice:
+		// 		return get3DSliceEncoder(typ)
+		// 	default:
+		// 		return get2DSliceEncoder(typ)
+		// 	}
 		default:
 			return getSliceEncoder(typ)
 		}
@@ -210,9 +219,9 @@ func getStructPtrEncoder(typ reflect.Type) (encoderFunc, error) {
 }
 
 func getSliceEncoder(typ reflect.Type) (encoderFunc, error) {
-	elem := typ.Elem()
-	elemSize := elem.Size()
-	elemEncoder, err := getEncoder(elem)
+	elemType := typ.Elem()
+	elemSize := elemType.Size()
+	elemEncoder, err := getEncoder(elemType)
 	if err != nil {
 		return nil, err
 	}
@@ -1034,187 +1043,666 @@ func (enc *BinaryEncoder) WriteVariant(value Variant) error {
 		if err := enc.WriteLocalizedText(v1); err != nil {
 			return BadEncodingError
 		}
-	// case ExtensionObject:
-	// 	if err := enc.WriteByte(VariantTypeExtensionObject); err != nil {
-	// 		return BadEncodingError
-	// 	}
-	// 	if err := enc.WriteExtensionObject(v1); err != nil {
-	// 		return BadEncodingError
-	// 	}
 	case []bool:
-		if err := enc.WriteByte(VariantTypeBoolean | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeBoolean | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteBooleanArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]bool:
+		if err := enc.WriteByte(VariantTypeBoolean | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteBooleanArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]bool:
+		if err := enc.WriteByte(VariantTypeBoolean | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteBooleanArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []int8:
-		if err := enc.WriteByte(VariantTypeSByte | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeSByte | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteSByteArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]int8:
+		if err := enc.WriteByte(VariantTypeSByte | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteSByteArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]int8:
+		if err := enc.WriteByte(VariantTypeSByte | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteSByteArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []uint8:
-		if err := enc.WriteByte(VariantTypeByte | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeByte | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteByteArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]uint8:
+		if err := enc.WriteByte(VariantTypeByte | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteByteArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]uint8:
+		if err := enc.WriteByte(VariantTypeByte | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteByteArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []int16:
-		if err := enc.WriteByte(VariantTypeInt16 | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeInt16 | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteInt16Array(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]int16:
+		if err := enc.WriteByte(VariantTypeInt16 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt16Array(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]int16:
+		if err := enc.WriteByte(VariantTypeInt16 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt16Array(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []uint16:
-		if err := enc.WriteByte(VariantTypeUInt16 | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeUInt16 | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteUInt16Array(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]uint16:
+		if err := enc.WriteByte(VariantTypeUInt16 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteUInt16Array(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]uint16:
+		if err := enc.WriteByte(VariantTypeUInt16 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteUInt16Array(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []int32:
-		if err := enc.WriteByte(VariantTypeInt32 | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeInt32 | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteInt32Array(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]int32:
+		if err := enc.WriteByte(VariantTypeInt32 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]int32:
+		if err := enc.WriteByte(VariantTypeInt32 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []uint32:
-		if err := enc.WriteByte(VariantTypeUInt32 | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeUInt32 | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteUInt32Array(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]uint32:
+		if err := enc.WriteByte(VariantTypeUInt32 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteUInt32Array(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]uint32:
+		if err := enc.WriteByte(VariantTypeUInt32 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteUInt32Array(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []int64:
-		if err := enc.WriteByte(VariantTypeInt64 | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeInt64 | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteInt64Array(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]int64:
+		if err := enc.WriteByte(VariantTypeInt64 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt64Array(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]int64:
+		if err := enc.WriteByte(VariantTypeInt64 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt64Array(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []uint64:
-		if err := enc.WriteByte(VariantTypeUInt64 | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeUInt64 | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteUInt64Array(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]uint64:
+		if err := enc.WriteByte(VariantTypeUInt64 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteUInt64Array(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]uint64:
+		if err := enc.WriteByte(VariantTypeUInt64 | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteUInt64Array(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []float32:
-		if err := enc.WriteByte(VariantTypeFloat | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeFloat | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteFloatArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]float32:
+		if err := enc.WriteByte(VariantTypeFloat | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteFloatArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]float32:
+		if err := enc.WriteByte(VariantTypeFloat | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteFloatArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []float64:
-		if err := enc.WriteByte(VariantTypeDouble | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeDouble | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteDoubleArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]float64:
+		if err := enc.WriteByte(VariantTypeDouble | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteDoubleArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]float64:
+		if err := enc.WriteByte(VariantTypeDouble | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteDoubleArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []string:
-		if err := enc.WriteByte(VariantTypeString | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeString | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteStringArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]string:
+		if err := enc.WriteByte(VariantTypeString | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteStringArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]string:
+		if err := enc.WriteByte(VariantTypeString | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteStringArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []time.Time:
-		if err := enc.WriteByte(VariantTypeDateTime | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeDateTime | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteDateTimeArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]time.Time:
+		if err := enc.WriteByte(VariantTypeDateTime | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteDateTimeArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]time.Time:
+		if err := enc.WriteByte(VariantTypeDateTime | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteDateTimeArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []uuid.UUID:
-		if err := enc.WriteByte(VariantTypeGUID | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeGUID | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteGUIDArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]uuid.UUID:
+		if err := enc.WriteByte(VariantTypeGUID | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteGUIDArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]uuid.UUID:
+		if err := enc.WriteByte(VariantTypeGUID | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteGUIDArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []ByteString:
-		if err := enc.WriteByte(VariantTypeByteString | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeByteString | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteByteStringArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]ByteString:
+		if err := enc.WriteByte(VariantTypeByteString | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteByteStringArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]ByteString:
+		if err := enc.WriteByte(VariantTypeByteString | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteByteStringArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []XMLElement:
-		if err := enc.WriteByte(VariantTypeXMLElement | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeXMLElement | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteXMLElementArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]XMLElement:
+		if err := enc.WriteByte(VariantTypeXMLElement | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteXMLElementArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]XMLElement:
+		if err := enc.WriteByte(VariantTypeXMLElement | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteXMLElementArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []NodeID:
-		if err := enc.WriteByte(VariantTypeNodeID | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeNodeID | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteNodeIDArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]NodeID:
+		if err := enc.WriteByte(VariantTypeNodeID | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteNodeIDArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]NodeID:
+		if err := enc.WriteByte(VariantTypeNodeID | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteNodeIDArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []ExpandedNodeID:
-		if err := enc.WriteByte(VariantTypeExpandedNodeID | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeExpandedNodeID | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteExpandedNodeIDArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]ExpandedNodeID:
+		if err := enc.WriteByte(VariantTypeExpandedNodeID | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteExpandedNodeIDArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]ExpandedNodeID:
+		if err := enc.WriteByte(VariantTypeExpandedNodeID | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteExpandedNodeIDArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
+
 	case []StatusCode:
-		if err := enc.WriteByte(VariantTypeStatusCode | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeStatusCode | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteStatusCodeArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]StatusCode:
+		if err := enc.WriteByte(VariantTypeStatusCode | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteStatusCodeArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]StatusCode:
+		if err := enc.WriteByte(VariantTypeStatusCode | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteStatusCodeArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []QualifiedName:
-		if err := enc.WriteByte(VariantTypeQualifiedName | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeQualifiedName | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteQualifiedNameArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]QualifiedName:
+		if err := enc.WriteByte(VariantTypeQualifiedName | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteQualifiedNameArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]QualifiedName:
+		if err := enc.WriteByte(VariantTypeQualifiedName | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteQualifiedNameArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []LocalizedText:
-		if err := enc.WriteByte(VariantTypeLocalizedText | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeLocalizedText | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteLocalizedTextArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]LocalizedText:
+		if err := enc.WriteByte(VariantTypeLocalizedText | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteLocalizedTextArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]LocalizedText:
+		if err := enc.WriteByte(VariantTypeLocalizedText | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteLocalizedTextArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []ExtensionObject:
-		if err := enc.WriteByte(VariantTypeExtensionObject | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeExtensionObject | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteExtensionObjectArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]ExtensionObject:
+		if err := enc.WriteByte(VariantTypeExtensionObject | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteExtensionObjectArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]ExtensionObject:
+		if err := enc.WriteByte(VariantTypeExtensionObject | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteExtensionObjectArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []DataValue:
-		if err := enc.WriteByte(VariantTypeDataValue | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeDataValue | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteDataValueArray(v1); err != nil {
 			return BadEncodingError
 		}
+	case [][]DataValue:
+		if err := enc.WriteByte(VariantTypeDataValue | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteDataValueArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]DataValue:
+		if err := enc.WriteByte(VariantTypeDataValue | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteDataValueArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
 	case []Variant:
-		if err := enc.WriteByte(VariantTypeVariant | 128); err != nil {
+		if err := enc.WriteByte(VariantTypeVariant | VariantTypeArray); err != nil {
 			return BadEncodingError
 		}
 		if err := enc.WriteVariantArray(v1); err != nil {
 			return BadEncodingError
 		}
-	default:
-		// wrap structs in ExtensionObject
-		if err := enc.WriteByte(VariantTypeExtensionObject); err != nil {
+	case [][]Variant:
+		if err := enc.WriteByte(VariantTypeVariant | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
 			return BadEncodingError
 		}
-		if err := enc.WriteExtensionObject(v1); err != nil {
+		if err := enc.WriteVariantArray(flatten2D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims2D(v1)); err != nil {
+			return BadEncodingError
+		}
+	case [][][]Variant:
+		if err := enc.WriteByte(VariantTypeVariant | VariantTypeArray | VariantTypeMultiDimensionArray); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteVariantArray(flatten3D(v1)); err != nil {
+			return BadEncodingError
+		}
+		if err := enc.WriteInt32Array(dims3D(v1)); err != nil {
+			return BadEncodingError
+		}
+	default:
+		switch v2 := reflect.ValueOf(value); v2.Kind() {
+		case reflect.Struct:
+			// wrap structs in ExtensionObject
+			if err := enc.WriteByte(VariantTypeExtensionObject); err != nil {
+				return BadEncodingError
+			}
+			if err := enc.WriteExtensionObject(value); err != nil {
+				return BadEncodingError
+			}
+		default:
 			return BadEncodingError
 		}
 	}
@@ -1684,4 +2172,56 @@ func (enc *BinaryEncoder) WriteDiagnosticInfoArray(value []DiagnosticInfo) error
 		}
 	}
 	return nil
+}
+
+// flatten2D returns a new slice concatenating the elements of the passed in slice.
+func flatten2D[S [][]E, E any](slice S) []E {
+	size := 0
+	for _, s := range slice {
+		size += len(s)
+	}
+	newslice := make([]E, 0, size)
+	for _, s := range slice {
+		newslice = append(newslice, s...)
+	}
+	return newslice
+}
+
+// flatten3D returns a new slice concatenating the elements of the passed in slice.
+func flatten3D[S [][][]E, E any](slice S) []E {
+	size := 0
+	for _, s := range slice {
+		for _, s2 := range s {
+			size += len(s2)
+		}
+	}
+	newslice := make([]E, 0, size)
+	for _, s := range slice {
+		for _, s2 := range s {
+			newslice = append(newslice, s2...)
+		}
+	}
+	return newslice
+}
+
+// dims2D returns a slice concatenating the dimensions of the passed in slice.
+func dims2D[S [][]E, E any](slice S) []int32 {
+	size := int32(len(slice))
+	if size == 0 {
+		return []int32{0, 0}
+	}
+	return []int32{size, int32(len(slice[0]))}
+}
+
+// dims3D returns a slice concatenating the dimensions of the passed in slice.
+func dims3D[S [][][]E, E any](slice S) []int32 {
+	size := int32(len(slice))
+	if size == 0 {
+		return []int32{0, 0, 0}
+	}
+	size2 := int32(len(slice[0]))
+	if size2 == 0 {
+		return []int32{0, 0, 0}
+	}
+	return []int32{size, size2, int32(len(slice[0][0]))}
 }

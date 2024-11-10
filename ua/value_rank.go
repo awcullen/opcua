@@ -4,6 +4,8 @@ package ua
 
 // ValueRank identifies the rank of value that may be stored in the Value attribute.
 const (
+	ValueRankThreeDimensions      = int32(3)
+	ValueRankTwoDimensions        = int32(2)
 	ValueRankOneDimension         = int32(1)
 	ValueRankOneOrMoreDimensions  = int32(0)
 	ValueRankScalar               = int32(-1)

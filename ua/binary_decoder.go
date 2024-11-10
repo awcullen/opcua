@@ -199,7 +199,7 @@ func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 		}
 		len := int(l)
 		if len <= 0 {
-			hdr.data = unsafe.Pointer(reflect.MakeSlice(typ, 0, 0).Pointer()) 
+			hdr.data = unsafe.Pointer(reflect.MakeSlice(typ, 0, 0).Pointer())
 			hdr.len = 0
 			hdr.cap = 0
 			return nil
@@ -869,7 +869,8 @@ func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
 		return BadDecodingError
 	}
 
-	if (b & 0x80) == 0 {
+	// If scalar value
+	if (b & VariantTypeArray) == 0 {
 		switch b & 0x3F {
 		case VariantTypeNull:
 			*value = nil
@@ -1080,7 +1081,8 @@ func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
 		}
 	}
 
-	if (b & 0x40) == 0 {
+	// if single dimension array
+	if (b & VariantTypeMultiDimensionArray) == 0 {
 		switch b & 0x3F {
 		case VariantTypeNull:
 			*value = nil
@@ -1291,8 +1293,794 @@ func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
 		}
 	}
 
-	// TODO: Multidimensional array
-	return BadDecodingError
+	// Multidimensional array
+	switch b & 0x3F {
+	case VariantTypeNull:
+		*value = nil
+		return nil
+	case VariantTypeBoolean:
+		var vals []bool
+		if err := dec.ReadBooleanArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]bool, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]bool, dims[0])
+			for i := range res {
+				res[i] = make([][]bool, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeSByte:
+		var vals []int8
+		if err := dec.ReadSByteArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]int8, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]int8, dims[0])
+			for i := range res {
+				res[i] = make([][]int8, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeByte:
+		var vals []byte
+		if err := dec.ReadByteArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]byte, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]byte, dims[0])
+			for i := range res {
+				res[i] = make([][]byte, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeInt16:
+		var vals []int16
+		if err := dec.ReadInt16Array(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]int16, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]int16, dims[0])
+			for i := range res {
+				res[i] = make([][]int16, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeUInt16:
+		var vals []uint16
+		if err := dec.ReadUInt16Array(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]uint16, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]uint16, dims[0])
+			for i := range res {
+				res[i] = make([][]uint16, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeInt32:
+		var vals []int32
+		if err := dec.ReadInt32Array(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]int32, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]int32, dims[0])
+			for i := range res {
+				res[i] = make([][]int32, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeUInt32:
+		var vals []uint32
+		if err := dec.ReadUInt32Array(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]uint32, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]uint32, dims[0])
+			for i := range res {
+				res[i] = make([][]uint32, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeInt64:
+		var vals []int64
+		if err := dec.ReadInt64Array(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]int64, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]int64, dims[0])
+			for i := range res {
+				res[i] = make([][]int64, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeUInt64:
+		var vals []uint64
+		if err := dec.ReadUInt64Array(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]uint64, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]uint64, dims[0])
+			for i := range res {
+				res[i] = make([][]uint64, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeFloat:
+		var vals []float32
+		if err := dec.ReadFloatArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]float32, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]float32, dims[0])
+			for i := range res {
+				res[i] = make([][]float32, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeDouble:
+		var vals []float64
+		if err := dec.ReadDoubleArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]float64, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]float64, dims[0])
+			for i := range res {
+				res[i] = make([][]float64, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeString:
+		var vals []string
+		if err := dec.ReadStringArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]string, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]string, dims[0])
+			for i := range res {
+				res[i] = make([][]string, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeDateTime:
+		var vals []time.Time
+		if err := dec.ReadDateTimeArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]time.Time, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]time.Time, dims[0])
+			for i := range res {
+				res[i] = make([][]time.Time, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeGUID:
+		var vals []uuid.UUID
+		if err := dec.ReadGUIDArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]uuid.UUID, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]uuid.UUID, dims[0])
+			for i := range res {
+				res[i] = make([][]uuid.UUID, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeByteString:
+		var vals []ByteString
+		if err := dec.ReadByteStringArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]ByteString, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]ByteString, dims[0])
+			for i := range res {
+				res[i] = make([][]ByteString, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeXMLElement:
+		var vals []XMLElement
+		if err := dec.ReadXMLElementArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]XMLElement, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]XMLElement, dims[0])
+			for i := range res {
+				res[i] = make([][]XMLElement, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeNodeID:
+		var vals []NodeID
+		if err := dec.ReadNodeIDArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]NodeID, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]NodeID, dims[0])
+			for i := range res {
+				res[i] = make([][]NodeID, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeExpandedNodeID:
+		var vals []ExpandedNodeID
+		if err := dec.ReadExpandedNodeIDArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]ExpandedNodeID, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]ExpandedNodeID, dims[0])
+			for i := range res {
+				res[i] = make([][]ExpandedNodeID, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeStatusCode:
+		var vals []StatusCode
+		if err := dec.ReadStatusCodeArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]StatusCode, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]StatusCode, dims[0])
+			for i := range res {
+				res[i] = make([][]StatusCode, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeQualifiedName:
+		var vals []QualifiedName
+		if err := dec.ReadQualifiedNameArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]QualifiedName, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]QualifiedName, dims[0])
+			for i := range res {
+				res[i] = make([][]QualifiedName, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeLocalizedText:
+		var vals []LocalizedText
+		if err := dec.ReadLocalizedTextArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]LocalizedText, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]LocalizedText, dims[0])
+			for i := range res {
+				res[i] = make([][]LocalizedText, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeExtensionObject:
+		var vals []ExtensionObject
+		if err := dec.ReadExtensionObjectArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]ExtensionObject, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]ExtensionObject, dims[0])
+			for i := range res {
+				res[i] = make([][]ExtensionObject, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeDataValue:
+		var vals []DataValue
+		if err := dec.ReadDataValueArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]DataValue, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]DataValue, dims[0])
+			for i := range res {
+				res[i] = make([][]DataValue, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeVariant:
+		var vals []Variant
+		if err := dec.ReadVariantArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]Variant, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]Variant, dims[0])
+			for i := range res {
+				res[i] = make([][]Variant, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	case VariantTypeDiagnosticInfo:
+		var vals []DiagnosticInfo
+		if err := dec.ReadDiagnosticInfoArray(&vals); err != nil {
+			return BadDecodingError
+		}
+		var dims []int32
+		if err := dec.ReadInt32Array(&dims); err != nil {
+			return BadDecodingError
+		}
+		if len(dims) == 2 {
+			res := make([][]DiagnosticInfo, dims[0])
+			for i := range res {
+				res[i], vals = vals[:dims[1]], vals[dims[1]:]
+			}
+			*value = res
+			return nil
+		}
+		if len(dims) == 3 {
+			res := make([][][]DiagnosticInfo, dims[0])
+			for i := range res {
+				res[i] = make([][]DiagnosticInfo, dims[1])
+				for j := range res[i] {
+					res[i][j], vals = vals[:dims[2]], vals[dims[2]:]
+				}
+			}
+			*value = res
+			return nil
+		}
+		return BadDecodingError
+
+	default:
+		return BadDecodingError
+	}
+}
+
+// split recursively creates a multi-dimensional array from a set of values
+// and some given dimensions.
+func split(level, i, j int, dims []int, vals reflect.Value) reflect.Value {
+	if level == len(dims)-1 {
+		a := vals.Slice(i, j)
+		return a
+	}
+
+	// split next level
+	var elems []reflect.Value
+	if vals.Len() > 0 {
+		step := (j - i) / dims[level]
+		for ; i < j; i += step {
+			elems = append(elems, split(level+1, i, i+step, dims, vals))
+		}
+	} else {
+		for k := 0; k < dims[level]; k++ {
+			elems = append(elems, split(level+1, 0, 0, dims, vals))
+		}
+	}
+
+	// now construct the typed slice, i.e. [](type of inner slice)
+	innerT := elems[0].Type()
+	a := reflect.MakeSlice(reflect.SliceOf(innerT), len(elems), len(elems))
+	for k := range elems {
+		a.Index(k).Set(elems[k])
+	}
+	return a
 }
 
 // ReadDiagnosticInfo reads a DiagnosticInfo.
