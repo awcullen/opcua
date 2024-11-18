@@ -62,6 +62,7 @@ func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *
 		if len(req.ProfileURIs) > 0 {
 			for _, pu := range req.ProfileURIs {
 				if ep.TransportProfileURI == pu {
+					ep.EndpointURL = req.EndpointURL
 					eps = append(eps, ep)
 					break
 				}
