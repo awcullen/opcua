@@ -68,6 +68,7 @@ func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *
 				}
 			}
 		} else {
+			ep.EndpointURL = req.EndpointURL
 			eps = append(eps, ep)
 		}
 	}
