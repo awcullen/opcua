@@ -324,20 +324,22 @@ func (srv *Server) ListenAndServe() error {
 // Close server.
 func (srv *Server) Close() error {
 	srv.Lock()
-	if srv.state != ua.ServerStateRunning {
+	if srv.state == ua.ServerStateRunning {
+		srv.state = ua.ServerStateShutdown
 		srv.Unlock()
-		return ua.BadInternalError
-	}
-	srv.state = ua.ServerStateShutdown
-	srv.Unlock()
 
-	// allow for existing clients to exit gracefully
-	srv.shutdownReason = ua.NewLocalizedText("Closing", "")
-	for i := 3; i > 0; i-- {
-		srv.secondsTillShutdown = uint32(i)
-		time.Sleep(time.Second)
+		// allow for existing clients to exit gracefully
+		srv.shutdownReason = ua.NewLocalizedText("Closing", "")
+		for i := 3; i > 0; i-- {
+			srv.secondsTillShutdown = uint32(i)
+			time.Sleep(time.Second)
+		}
+		srv.secondsTillShutdown = uint32(0)
+		
+	} else {
+		srv.state = ua.ServerStateShutdown
+		srv.Unlock()
 	}
-	srv.secondsTillShutdown = uint32(0)
 
 	// begin closing channels
 	close(srv.closing)

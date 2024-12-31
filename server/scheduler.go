@@ -5,27 +5,19 @@ import (
 	"time"
 )
 
-// <AvailableSamplingRates>
-// <SamplingRate>0</SamplingRate>
-// <SamplingRate>50</SamplingRate>
-// <SamplingRate>100</SamplingRate>
-// <SamplingRate>250</SamplingRate>
-// <SamplingRate>500</SamplingRate>
-// <SamplingRate>1000</SamplingRate>
-// <SamplingRate>2000</SamplingRate>
-// <SamplingRate>5000</SamplingRate>
-// <SamplingRate>10000</SamplingRate>
-// </AvailableSamplingRates>
-
 type Scheduler struct {
 	sync.Mutex
-	cancellationCh      chan struct{}
+	server              *Server
 	tickers             map[time.Duration]*PollGroup
 	minSamplingInterval time.Duration
 }
 
 func NewScheduler(server *Server) *Scheduler {
-	s := &Scheduler{sync.Mutex{}, server.closing, make(map[time.Duration]*PollGroup), time.Duration(server.ServerCapabilities().MinSupportedSampleRate) * time.Millisecond}
+	s := &Scheduler{
+		server:              server,
+		tickers:             make(map[time.Duration]*PollGroup),
+		minSamplingInterval: time.Duration(server.ServerCapabilities().MinSupportedSampleRate) * time.Millisecond,
+	}
 	return s
 }
 
@@ -38,7 +30,7 @@ func (s *Scheduler) GetPollGroup(interval time.Duration) *PollGroup {
 	if t, ok := s.tickers[interval]; ok {
 		return t
 	}
-	t := NewPollGroup(interval, s.cancellationCh)
+	t := NewPollGroup(interval, s.server.closing)
 	s.tickers[interval] = t
 	return t
 }
@@ -52,7 +44,6 @@ type PollGroup struct {
 
 func NewPollGroup(interval time.Duration, cancellationCh chan struct{}) *PollGroup {
 	b := &PollGroup{
-		Mutex:          sync.Mutex{},
 		cancellationCh: cancellationCh,
 		interval:       interval,
 		subs:           map[PollListener]struct{}{},
