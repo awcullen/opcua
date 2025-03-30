@@ -118,13 +118,13 @@ func getEncoder(typ reflect.Type) (encoderFunc, error) {
 		switch elemTyp := typ.Elem(); elemTyp.Kind() {
 		case reflect.Uint8:
 			return getByteArrayEncoder()
-		// case reflect.Slice:
-		// 	switch elemTyp := elemTyp.Elem(); elemTyp.Kind() {
-		// 	case reflect.Slice:
-		// 		return get3DSliceEncoder(typ)
-		// 	default:
-		// 		return get2DSliceEncoder(typ)
-		// 	}
+		case reflect.Slice:
+			switch elemTyp := elemTyp.Elem(); elemTyp.Kind() {
+			case reflect.Slice:
+				return get3DSliceEncoder(typ)
+			default:
+				return get2DSliceEncoder(typ)
+			}
 		default:
 			return getSliceEncoder(typ)
 		}
@@ -248,6 +248,47 @@ func getSliceEncoder(typ reflect.Type) (encoderFunc, error) {
 		return nil
 	}, nil
 }
+
+func get2DSliceEncoder(typ reflect.Type) (encoderFunc, error) {
+	// see https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.5
+	elem1Type := typ.Elem()
+	elem1Size := elem1Type.Size()
+	elem2Type := elem1Type.Elem()
+	elem2Size := elem2Type.Size()
+	fmt.Println(elem1Type, elem1Size, elem2Type, elem2Size)
+	elemEncoder, err := getEncoder(elem2Type)
+	if err != nil {
+		return nil, err
+	}
+	return func(buf *BinaryEncoder, p unsafe.Pointer) error {
+		hdr := *(*sliceHeader)(p)
+		if hdr.len == 0 {
+			return buf.WriteInt32(0)
+		}
+		if err := buf.WriteInt32(int32(hdr.len)); err != nil {
+			return err
+		}
+		//encode first element
+		p2 := hdr.data
+		if err := elemEncoder(buf, p2); err != nil {
+			return err
+		}
+		//encode remaining elements
+		for i := 1; i < hdr.len; i++ {
+			p2 = unsafe.Pointer(uintptr(p2) + elem1Size)
+			if err := elemEncoder(buf, p2); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, nil
+}
+
+func get3DSliceEncoder(typ reflect.Type) (encoderFunc, error) {
+	// see https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.5
+	panic("Not Implemented")
+}
+
 func getBooleanEncoder() (encoderFunc, error) {
 	return func(buf *BinaryEncoder, p unsafe.Pointer) error {
 		return buf.WriteBoolean(*(*bool)(p))

@@ -86,10 +86,16 @@ func getDecoder(typ reflect.Type) (decoderFunc, error) {
 			return getStructDecoder(typ)
 		}
 	case reflect.Slice:
-		elemTyp := typ.Elem()
-		switch elemTyp.Kind() {
+		switch elemTyp := typ.Elem(); elemTyp.Kind() {
 		case reflect.Uint8:
 			return getByteArrayDecoder()
+		case reflect.Slice:
+			switch elemTyp := elemTyp.Elem(); elemTyp.Kind() {
+			case reflect.Slice:
+				return get3DSliceDecoder(typ)
+			default:
+				return get2DSliceDecoder(typ)
+			}
 		default:
 			return getSliceDecoder(typ)
 		}
@@ -222,6 +228,17 @@ func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 		return nil
 	}, nil
 }
+
+func get2DSliceDecoder(typ reflect.Type) (decoderFunc, error) {
+	// see https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.5
+	panic("Not Implemented")
+}
+
+func get3DSliceDecoder(typ reflect.Type) (decoderFunc, error) {
+	// see https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.5
+	panic("Not Implemented")
+}
+
 func getBooleanDecoder() (decoderFunc, error) {
 	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
 		return buf.ReadBoolean((*bool)(p))
@@ -2053,35 +2070,35 @@ func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
 	}
 }
 
-// split recursively creates a multi-dimensional array from a set of values
+// split recursively creates a multi-dimensional slice from a set of values
 // and some given dimensions.
-func split(level, i, j int, dims []int, vals reflect.Value) reflect.Value {
-	if level == len(dims)-1 {
-		a := vals.Slice(i, j)
-		return a
-	}
+// func split(level, i, j int, dims []int, vals reflect.Value) reflect.Value {
+// 	if level == len(dims)-1 {
+// 		a := vals.Slice(i, j)
+// 		return a
+// 	}
 
-	// split next level
-	var elems []reflect.Value
-	if vals.Len() > 0 {
-		step := (j - i) / dims[level]
-		for ; i < j; i += step {
-			elems = append(elems, split(level+1, i, i+step, dims, vals))
-		}
-	} else {
-		for k := 0; k < dims[level]; k++ {
-			elems = append(elems, split(level+1, 0, 0, dims, vals))
-		}
-	}
+// 	// split next level
+// 	var elems []reflect.Value
+// 	if vals.Len() > 0 {
+// 		step := (j - i) / dims[level]
+// 		for ; i < j; i += step {
+// 			elems = append(elems, split(level+1, i, i+step, dims, vals))
+// 		}
+// 	} else {
+// 		for k := 0; k < dims[level]; k++ {
+// 			elems = append(elems, split(level+1, 0, 0, dims, vals))
+// 		}
+// 	}
 
-	// now construct the typed slice, i.e. [](type of inner slice)
-	innerT := elems[0].Type()
-	a := reflect.MakeSlice(reflect.SliceOf(innerT), len(elems), len(elems))
-	for k := range elems {
-		a.Index(k).Set(elems[k])
-	}
-	return a
-}
+// 	// now construct the typed slice, i.e. [](type of inner slice)
+// 	innerT := elems[0].Type()
+// 	a := reflect.MakeSlice(reflect.SliceOf(innerT), len(elems), len(elems))
+// 	for k := range elems {
+// 		a.Index(k).Set(elems[k])
+// 	}
+// 	return a
+// }
 
 // ReadDiagnosticInfo reads a DiagnosticInfo.
 func (dec *BinaryDecoder) ReadDiagnosticInfo(value *DiagnosticInfo) error {
