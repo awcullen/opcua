@@ -748,7 +748,7 @@ func TestStructWithMatrix(t *testing.T) {
 		bytes []byte
 	}{
 		{
-			CustomStruct{
+			&CustomStruct{
 				A: [][]int32{
 					{0, 1, 2},
 					{3, 4, 5},
@@ -756,11 +756,8 @@ func TestStructWithMatrix(t *testing.T) {
 					{9, 10, 11},
 				},
 			},
-			CustomStruct{},
+			&CustomStruct{},
 			[]byte{
-				0xc6,
-				0x0c, 0x00, 0x00, 0x00,
-				0x03, 0x00, 0x00, 0x00,
 				0x02, 0x00, 0x00, 0x00,
 				0x04, 0x00, 0x00, 0x00,
 				0x03, 0x00, 0x00, 0x00,
@@ -787,11 +784,11 @@ func TestStructWithMatrix(t *testing.T) {
 		}
 		assert.DeepEqual(t, buf.Bytes(), c.bytes)
 
-		// dec := ua.NewBinaryDecoder(buf, ua.NewEncodingContext())
-		// var out any
-		// if err := dec.Decode(out); err != nil {
-		// 	t.Fatal(err)
-		// }
-		// assert.DeepEqual(t, out, c.in)
+		dec := ua.NewBinaryDecoder(buf, ua.NewEncodingContext())
+		if err := dec.Decode(c.out); err != nil {
+			t.Fatal(err)
+		}
+		assert.DeepEqual(t, c.out, c.in)
+
 	}
 }

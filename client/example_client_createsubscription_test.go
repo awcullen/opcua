@@ -29,8 +29,8 @@ func ExampleClient_CreateSubscription() {
 	// prepare create subscription request
 	req := &ua.CreateSubscriptionRequest{
 		RequestedPublishingInterval: 1000.0,
-		RequestedMaxKeepAliveCount:  30,
-		RequestedLifetimeCount:      30 * 3,
+		RequestedMaxKeepAliveCount:  3,
+		RequestedLifetimeCount:      3 * 3,
 		PublishingEnabled:           true,
 	}
 
@@ -48,14 +48,14 @@ func ExampleClient_CreateSubscription() {
 		TimestampsToReturn: ua.TimestampsToReturnBoth,
 		ItemsToCreate: []ua.MonitoredItemCreateRequest{
 			{
-				ItemToMonitor:  ua.ReadValueID{
-					NodeID: ua.VariableIDServerServerStatusCurrentTime, 
+				ItemToMonitor: ua.ReadValueID{
+					NodeID:      ua.VariableIDServerServerStatusCurrentTime,
 					AttributeID: ua.AttributeIDValue,
 				},
 				MonitoringMode: ua.MonitoringModeReporting,
 				// specify a unique ClientHandle. The ClientHandle is returned in the PublishResponse
 				RequestedParameters: ua.MonitoringParameters{
-					ClientHandle: 42, QueueSize: 1, DiscardOldest: true, SamplingInterval: 1000.0},
+					ClientHandle: 42, SamplingInterval: 1000.0, QueueSize: 1, DiscardOldest: true},
 			},
 		},
 	}
@@ -75,13 +75,14 @@ func ExampleClient_CreateSubscription() {
 	}
 
 	// loop until 3 data changes received.
-	numChanges := 0
-	for numChanges < 3 {
+	numResponses := 0
+	for numResponses < 3 {
 		// send publish request to the server.
 		res3, err := ch.Publish(ctx, req3)
 		if err != nil {
 			break
 		}
+		numResponses++
 		// loop thru all the notifications in the response.
 		for _, data := range res3.NotificationMessage.NotificationData {
 			switch body := data.(type) {
@@ -91,7 +92,6 @@ func ExampleClient_CreateSubscription() {
 					// each monitored item notification contains a clientHandle and dataValue.
 					if item.ClientHandle == 42 {
 						fmt.Println("<the current utc time here>" /* item.Value.Value */)
-						numChanges++
 					}
 				}
 			}

@@ -213,12 +213,12 @@ func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 		hdr.data = unsafe.Pointer(reflect.MakeSlice(typ, len, len).Pointer())
 		hdr.len = len
 		hdr.cap = len
-		//decode first element
+		// decode first element
 		p2 := hdr.data
 		if err := elemDecoder(buf, p2); err != nil {
 			return err
 		}
-		//decode remaining elements
+		// decode remaining elements
 		for i := 1; i < len; i++ {
 			p2 = unsafe.Pointer(uintptr(p2) + elemSize)
 			if err := elemDecoder(buf, p2); err != nil {
@@ -231,12 +231,170 @@ func getSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 
 func get2DSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 	// see https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.5
-	panic("Not Implemented")
+	elem1Type := typ.Elem()
+	elem1Size := elem1Type.Size()
+	elem2Type := elem1Type.Elem()
+	elem2Size := elem2Type.Size()
+	elemDecoder, err := getDecoder(elem2Type)
+	if err != nil {
+		return nil, err
+	}
+	return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+		var l int32
+		if err := buf.ReadInt32(&l); err != nil {
+			return err
+		}
+		if l != 2 {
+			return BadDecodingError
+		}
+		if err := buf.ReadInt32(&l); err != nil {
+			return err
+		}
+		len1 := int(l)
+		if err := buf.ReadInt32(&l); err != nil {
+			return err
+		}
+		len2 := int(l)
+		hdr1 := (*sliceHeader)(p)
+		if len1 <= 0 || len2 <= 0 {
+			hdr1.data = unsafe.Pointer(reflect.MakeSlice(typ, 0, 0).Pointer())
+			hdr1.len = 0
+			hdr1.cap = 0
+			return nil
+		}
+		hdr1.data = unsafe.Pointer(reflect.MakeSlice(typ, len1, len1).Pointer())
+		hdr1.len = len1
+		hdr1.cap = len1
+
+		// decode first element of first slice
+		p1 := hdr1.data
+		hdr2 := (*sliceHeader)(p1)
+		hdr2.data = unsafe.Pointer(reflect.MakeSlice(elem1Type, len2, len2).Pointer())
+		hdr2.len = len2
+		hdr2.cap = len2
+		p2 := hdr2.data
+		if err := elemDecoder(buf, p2); err != nil {
+			return err
+		}
+		// decode remaining elements of first slice
+		for i := 1; i < len2; i++ {
+			p2 = unsafe.Pointer(uintptr(p2) + elem2Size)
+			if err := elemDecoder(buf, p2); err != nil {
+				return err
+			}
+		}
+
+		for j := 1; j < len1; j++ {
+			p1 = unsafe.Pointer(uintptr(p1) + elem1Size)
+			hdr2 := (*sliceHeader)(p1)
+			hdr2.data = unsafe.Pointer(reflect.MakeSlice(elem1Type, len2, len2).Pointer())
+			hdr2.len = len2
+			hdr2.cap = len2
+
+			// encode first element of next slice
+			p2 := hdr2.data
+			if err := elemDecoder(buf, p2); err != nil {
+				return err
+			}
+			// encode remaining elements of next slice
+			for i := 1; i < len2; i++ {
+				p2 = unsafe.Pointer(uintptr(p2) + elem2Size)
+				if err := elemDecoder(buf, p2); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}, nil
+
 }
 
 func get3DSliceDecoder(typ reflect.Type) (decoderFunc, error) {
 	// see https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.5
 	panic("Not Implemented")
+	/*
+		elem1Type := typ.Elem()
+		elem1Size := elem1Type.Size()
+		elem2Type := elem1Type.Elem()
+		elem2Size := elem2Type.Size()
+		elem3Type := elem2Type.Elem()
+		elem3Size := elem3Type.Size()
+		elemDecoder, err := getDecoder(elem3Type)
+		if err != nil {
+			return nil, err
+		}
+		return func(buf *BinaryDecoder, p unsafe.Pointer) error {
+			var l int32
+			if err := buf.ReadInt32(&l); err != nil {
+				return err
+			}
+			if l != 3 {
+				return BadDecodingError
+			}
+			if err := buf.ReadInt32(&l); err != nil {
+				return err
+			}
+			len1 := int(l)
+			if err := buf.ReadInt32(&l); err != nil {
+				return err
+			}
+			len2 := int(l)
+			if err := buf.ReadInt32(&l); err != nil {
+				return err
+			}
+			len3 := int(l)
+			hdr1 := (*sliceHeader)(p)
+			if len1 <= 0 || len2 <= 0 || len3 <= 0{
+				hdr1.data = unsafe.Pointer(reflect.MakeSlice(typ, 0, 0).Pointer())
+				hdr1.len = 0
+				hdr1.cap = 0
+				return nil
+			}
+			hdr1.data = unsafe.Pointer(reflect.MakeSlice(typ, len1, len1).Pointer())
+			hdr1.len = len1
+			hdr1.cap = len1
+
+			//decode first element of first slice
+			p1 := hdr1.data
+			hdr2 := (*sliceHeader)(p1)
+			hdr2.data = unsafe.Pointer(reflect.MakeSlice(elem1Type, len2, len2).Pointer())
+			hdr2.len = len2
+			hdr2.cap = len2
+			p2 := hdr2.data
+			if err := elemDecoder(buf, p2); err != nil {
+				return err
+			}
+			//decode remaining elements of first slice
+			for i := 1; i < len2; i++ {
+				p2 = unsafe.Pointer(uintptr(p2) + elem2Size)
+				if err := elemDecoder(buf, p2); err != nil {
+					return err
+				}
+			}
+
+			for j := 1; j < len1; j++ {
+				p1 = unsafe.Pointer(uintptr(p1) + elem1Size)
+				hdr2 := (*sliceHeader)(p1)
+				hdr2.data = unsafe.Pointer(reflect.MakeSlice(elem1Type, len2, len2).Pointer())
+				hdr2.len = len2
+				hdr2.cap = len2
+
+				//encode first element of next slice
+				p2 := hdr2.data
+				if err := elemDecoder(buf, p2); err != nil {
+					return err
+				}
+				//encode remaining elements of next slice
+				for i := 1; i < len2; i++ {
+					p2 = unsafe.Pointer(uintptr(p2) + elem2Size)
+					if err := elemDecoder(buf, p2); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		}, nil
+	*/
 }
 
 func getBooleanDecoder() (decoderFunc, error) {

@@ -29,8 +29,13 @@ type CustomStruct struct {
 	W2 uint16
 }
 
+type StructA struct {
+	A [][]int32
+}
+
 func init() {
 	ua.RegisterBinaryEncodingID(reflect.TypeOf(CustomStruct{}), ua.ParseExpandedNodeID("nsu=http://github.com/awcullen/opcua/testserver/;i=12"))
+	ua.RegisterBinaryEncodingID(reflect.TypeOf(StructA{}), ua.ParseExpandedNodeID(`nsu=http://www.siemens.com/simatic-s7-opcua;s=TE_"StructA"`))
 }
 
 func NewTestServer() (*server.Server, error) {

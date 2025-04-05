@@ -30,7 +30,6 @@ var (
 	typeExtensionObject = reflect.TypeOf((*ExtensionObject)(nil)).Elem()
 	typeVariant         = reflect.TypeOf((*Variant)(nil)).Elem()
 	typeDiagnosticInfo  = reflect.TypeOf((*DiagnosticInfo)(nil)).Elem()
-	typeSliceOfByte     = reflect.TypeOf((*[]byte)(nil)).Elem()
 	nilPtr              = unsafe.Pointer(nil)
 )
 
@@ -255,29 +254,58 @@ func get2DSliceEncoder(typ reflect.Type) (encoderFunc, error) {
 	elem1Size := elem1Type.Size()
 	elem2Type := elem1Type.Elem()
 	elem2Size := elem2Type.Size()
-	fmt.Println(elem1Type, elem1Size, elem2Type, elem2Size)
 	elemEncoder, err := getEncoder(elem2Type)
 	if err != nil {
 		return nil, err
 	}
 	return func(buf *BinaryEncoder, p unsafe.Pointer) error {
-		hdr := *(*sliceHeader)(p)
-		if hdr.len == 0 {
-			return buf.WriteInt32(0)
-		}
-		if err := buf.WriteInt32(int32(hdr.len)); err != nil {
+		if err := buf.WriteInt32(2); err != nil {
 			return err
 		}
-		//encode first element
-		p2 := hdr.data
+		hdr1 := *(*sliceHeader)(p)
+		if hdr1.len == 0 {
+			if err := buf.WriteInt32(0); err != nil {
+				return err
+			}
+			return buf.WriteInt32(0)
+		}
+		if err := buf.WriteInt32(int32(hdr1.len)); err != nil {
+			return err
+		}
+		hdr2 := *(*sliceHeader)(hdr1.data)
+		if err := buf.WriteInt32(int32(hdr2.len)); err != nil {
+			return err
+		}
+
+		// encode first element of first slice
+		p1 := hdr1.data
+		p2 := hdr2.data
 		if err := elemEncoder(buf, p2); err != nil {
 			return err
 		}
-		//encode remaining elements
-		for i := 1; i < hdr.len; i++ {
-			p2 = unsafe.Pointer(uintptr(p2) + elem1Size)
+		// encode remaining elements of first slice
+		for i := 1; i < hdr2.len; i++ {
+			p2 = unsafe.Pointer(uintptr(p2) + elem2Size)
 			if err := elemEncoder(buf, p2); err != nil {
 				return err
+			}
+		}
+
+		for j := 1; j < hdr1.len; j++ {
+			p1 = unsafe.Pointer(uintptr(p1) + elem1Size)
+			hdr2 := *(*sliceHeader)(p1)
+
+			// encode first element of next slice
+			p2 := hdr2.data
+			if err := elemEncoder(buf, p2); err != nil {
+				return err
+			}
+			// encode remaining elements of next slice
+			for i := 1; i < hdr2.len; i++ {
+				p2 = unsafe.Pointer(uintptr(p2) + elem2Size)
+				if err := elemEncoder(buf, p2); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
