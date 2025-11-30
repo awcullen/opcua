@@ -402,15 +402,16 @@ func (m *NamespaceManager) AddNode(node Node) error {
 func (m *NamespaceManager) DeleteNodes(nodes []Node, deleteChildren bool) error {
 	m.Lock()
 	defer m.Unlock()
-	children := []Node{}
 	for _, node := range nodes {
-		children = append(children, m.GetChildren(node, m.namespaces, hasChildandSubtypes)...)
-	}
-	for _, node := range children {
-		m.deleteNodeandInverseReferences(node, m.namespaces)
-	}
-	for _, node := range nodes {
-		m.deleteNodeandInverseReferences(node, m.namespaces)
+		if deleteChildren {
+			children := m.GetChildren(node, m.namespaces, hasChildandSubtypes)
+			for _, child := range children {
+				m.deleteNodeandInverseReferences(child, m.namespaces)
+			}
+		}
+		for _, node := range nodes {
+			m.deleteNodeandInverseReferences(node, m.namespaces)
+		}
 	}
 	return nil
 }
