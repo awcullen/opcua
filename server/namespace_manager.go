@@ -449,6 +449,111 @@ func (m *NamespaceManager) DeleteNode(node Node, deleteChildren bool) error {
 	return m.DeleteNodes([]Node{node}, deleteChildren)
 }
 
+// isProtectedNode checks if a node should be protected from deletion.
+// Protected nodes include nodes in namespace 0 and mandatory OPC-UA nodes.
+func (m *NamespaceManager) isProtectedNode(id ua.NodeID) bool {
+	// Check if node is in standard namespace (namespace 0)
+	if id != nil {
+		switch v := id.(type) {
+		case ua.NodeIDNumeric:
+			if v.NamespaceIndex == 0 {
+				return true
+			}
+		case ua.NodeIDString:
+			if v.NamespaceIndex == 0 {
+				return true
+			}
+		case ua.NodeIDGUID:
+			if v.NamespaceIndex == 0 {
+				return true
+			}
+		case ua.NodeIDOpaque:
+			if v.NamespaceIndex == 0 {
+				return true
+			}
+		}
+	}
+
+	// Check against specific mandatory nodes (these should also be in ns=0, but double-check)
+	mandatoryNodes := []ua.NodeID{
+		ua.ObjectIDServer,
+		ua.ObjectIDObjectsFolder,
+		ua.ObjectIDRootFolder,
+		ua.ObjectIDTypesFolder,
+		ua.ObjectIDViewsFolder,
+	}
+	for _, mandatoryNode := range mandatoryNodes {
+		if id == mandatoryNode {
+			return true
+		}
+	}
+
+	return false
+}
+
+// DeleteNodeByID removes a node from the address space by NodeID.
+// Returns an error if the node doesn't exist or cannot be deleted.
+// This method is thread-safe and removes inverse references as well.
+func (m *NamespaceManager) DeleteNodeByID(nodeId ua.NodeID) error {
+	m.Lock()
+	defer m.Unlock()
+
+	// Check if node is protected
+	if m.isProtectedNode(nodeId) {
+		return ua.BadNodeIDInvalid
+	}
+
+	// Find the node
+	node, ok := m.nodes[nodeId]
+	if !ok {
+		return ua.BadNodeIDUnknown
+	}
+
+	// Delete the node and its inverse references
+	return m.deleteNodeandInverseReferences(node, m.namespaces)
+}
+
+// DeleteNodeByIDRecursive removes a node and all its children from the address space by NodeID.
+// Returns the count of deleted nodes and any error encountered.
+// This method is thread-safe and removes inverse references as well.
+func (m *NamespaceManager) DeleteNodeByIDRecursive(nodeId ua.NodeID) (int, error) {
+	m.Lock()
+	defer m.Unlock()
+
+	// Check if node is protected
+	if m.isProtectedNode(nodeId) {
+		return 0, ua.BadNodeIDInvalid
+	}
+
+	// Find the node
+	node, ok := m.nodes[nodeId]
+	if !ok {
+		return 0, ua.BadNodeIDUnknown
+	}
+
+	// Get all children recursively
+	children := m.GetChildren(node, m.namespaces, hasChildandSubtypes)
+
+	// Delete all children first
+	for _, child := range children {
+		// Check if child is also protected (safety check)
+		if m.isProtectedNode(child.NodeID()) {
+			continue // Skip protected children
+		}
+		if err := m.deleteNodeandInverseReferences(child, m.namespaces); err != nil {
+			return len(children), err
+		}
+	}
+
+	// Delete the parent node
+	if err := m.deleteNodeandInverseReferences(node, m.namespaces); err != nil {
+		return len(children), err
+	}
+
+	// Return count including the parent node
+	return len(children) + 1, nil
+}
+
 // GetSubTypes traverses the tree to get all target nodes with HasSubtype reference type.
 func (m *NamespaceManager) GetSubTypes(node Node) []Node {
 	children := []Node{}
