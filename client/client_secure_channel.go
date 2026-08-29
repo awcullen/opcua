@@ -506,8 +506,17 @@ func (ch *clientSecureChannel) IsClosing() bool {
 func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *ua.ServiceOperation) error {
 	// Check if time to renew security token.
 	if !ch.tokenRenewalTime.IsZero() && time.Now().After(ch.tokenRenewalTime) {
-		ch.tokenRenewalTime = ch.tokenRenewalTime.Add(60000 * time.Millisecond)
-		ch.renewToken(ctx)
+		ch.tokenLock.Lock()
+		if !ch.tokenRenewalTime.IsZero() && time.Now().After(ch.tokenRenewalTime) {
+			ch.tokenRenewalTime = ch.tokenRenewalTime.Add(60000 * time.Millisecond)
+			ch.tokenLock.Unlock()
+			err := ch.renewToken(ctx)
+			if err != nil {
+				log.Println("OPCUa renew token error:", err)
+			}
+		} else {
+			ch.tokenLock.Unlock()
+		}
 	}
 
 	ch.sendingSemaphore.Lock()
