@@ -30,6 +30,8 @@ const (
 	defaultMaxSubscriptionCount uint32 = 0
 	// the default number of worker threads that may be created.
 	defaultMaxWorkerThreads int = 4
+	// the default time Close publishes SecondsTillShutdown before closing channels.
+	defaultShutdownCountdown time.Duration = 3 * time.Second
 	// the length of nonce in bytes.
 	nonceLength int = 32
 )
@@ -70,6 +72,7 @@ type Server struct {
 	closing                              chan struct{}
 	state                                ua.ServerState
 	secondsTillShutdown                  uint32
+	shutdownCountdown                    time.Duration
 	shutdownReason                       ua.LocalizedText
 	workerpool                           *workerpool.WorkerPool
 	sessionManager                       *SessionManager
@@ -111,6 +114,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		maxChunkCount:                      defaultMaxChunkCount,
 		maxWorkerThreads:                   defaultMaxWorkerThreads,
 		serverDiagnostics:                  true,
+		shutdownCountdown:                  defaultShutdownCountdown,
 		trace:                              false,
 		closing:                            make(chan struct{}),
 		serverUris:                         []string{localDescription.ApplicationURI},
@@ -330,9 +334,11 @@ func (srv *Server) Close() error {
 
 		// allow for existing clients to exit gracefully
 		srv.shutdownReason = ua.NewLocalizedText("Closing", "")
-		for i := 3; i > 0; i-- {
-			srv.secondsTillShutdown = uint32(i)
-			time.Sleep(time.Second)
+		for remaining := srv.shutdownCountdown; remaining > 0; {
+			srv.secondsTillShutdown = uint32((remaining + time.Second - 1) / time.Second)
+			step := min(remaining, time.Second)
+			time.Sleep(step)
+			remaining -= step
 		}
 		srv.secondsTillShutdown = uint32(0)
 

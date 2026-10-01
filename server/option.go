@@ -2,7 +2,11 @@
 
 package server
 
-import "github.com/awcullen/opcua/ua"
+import (
+	"time"
+
+	"github.com/awcullen/opcua/ua"
+)
 
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
@@ -101,6 +105,19 @@ func WithMaxWorkerThreads(value int) Option {
 func WithServerDiagnostics(value bool) Option {
 	return func(opts *Server) error {
 		opts.serverDiagnostics = value
+		return nil
+	}
+}
+
+// WithShutdownCountdown sets how long Close publishes SecondsTillShutdown before
+// closing channels, so connected clients can exit gracefully. Zero closes
+// immediately. (default: 3s)
+func WithShutdownCountdown(value time.Duration) Option {
+	return func(srv *Server) error {
+		if value < 0 {
+			return ua.BadConfigurationError
+		}
+		srv.shutdownCountdown = value
 		return nil
 	}
 }
