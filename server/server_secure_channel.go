@@ -115,7 +115,7 @@ func newServerSecureChannel(srv *Server, conn net.Conn, trace bool) *serverSecur
 		securityPolicy:        new(ua.SecurityPolicyNone),
 		localCertificate:      srv.localCertificate,
 		localPrivateKey:       srv.localPrivateKey,
-		tokenExpiration:       time.Now().Add(20 * time.Second),
+		tokenExpiration:       time.Now().Add(srv.helloTimeout),
 	}
 	return ch
 }
