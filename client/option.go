@@ -218,6 +218,32 @@ func WithConnectTimeout(value int64) Option {
 	}
 }
 
+// WithReverseConnectURL listens at the given client URL during Dial and waits for the server to initiate the TCP connection.
+// The URL is in the form opc.tcp://[host]:[port].
+// The listener closes when Dial returns; use WithReverseConnectManager to keep it open across dials.
+func WithReverseConnectURL(value string) Option {
+	return func(c *Client) error {
+		c.reverseConnectURL = value
+		return nil
+	}
+}
+
+// WithReverseConnectServerURIs limits reverse connections to servers with matching ApplicationURI values.
+func WithReverseConnectServerURIs(values []string) Option {
+	return func(c *Client) error {
+		c.reverseConnectServerURIs = append(c.reverseConnectServerURIs[:0], values...)
+		return nil
+	}
+}
+
+// WithReverseConnectManager uses manager to wait for incoming reverse connections.
+func WithReverseConnectManager(manager *ReverseConnectManager) Option {
+	return func(c *Client) error {
+		c.reverseConnectManager = manager
+		return nil
+	}
+}
+
 // WithTrace logs all ServiceRequests and ServiceResponses to StdOut.
 func WithTrace() Option {
 	return func(c *Client) error {

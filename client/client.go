@@ -50,12 +50,34 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		}
 	}
 
+	var reverseManager = cli.reverseConnectManager
+	if cli.reverseConnectURL != "" && reverseManager != nil {
+		return nil, ua.BadInvalidArgument
+	}
+	if cli.reverseConnectURL != "" {
+		timeout := reverseConnectDuration(cli.connectTimeout)
+		reverseManager, err = NewReverseConnectManager(
+			cli.reverseConnectURL,
+			WithReverseConnectHoldTime(timeout),
+			WithReverseConnectWaitTimeout(timeout),
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer reverseManager.Close()
+	}
+
 	// get endpoints from discovery url
 	req := &ua.GetEndpointsRequest{
 		EndpointURL: endpointURL,
 		ProfileURIs: []string{ua.TransportProfileURIUaTcpTransport},
 	}
-	res, err := GetEndpoints(ctx, req)
+	var res *ua.GetEndpointsResponse
+	if reverseManager != nil {
+		res, err = getEndpointsReverse(ctx, req, reverseManager, endpointURL, cli.reverseConnectServerURIs, cli.connectTimeout)
+	} else {
+		res, err = GetEndpoints(ctx, req)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +164,14 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		cli.maxChunkCount,
 		cli.trace)
 
+	if reverseManager != nil {
+		conn, err := reverseManager.Wait(ctx, endpointURL, cli.reverseConnectServerURIs)
+		if err != nil {
+			return nil, err
+		}
+		cli.channel.conn = conn
+	}
+
 	// open session and read the namespace table
 	if err := cli.open(ctx); err != nil {
 		cli.Abort(ctx)
@@ -187,6 +217,9 @@ type Client struct {
 	maxBufferSize                        uint32
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
+	reverseConnectURL                    string
+	reverseConnectServerURIs             []string
+	reverseConnectManager                *ReverseConnectManager
 	trace                                bool
 }
 

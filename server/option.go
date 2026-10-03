@@ -2,7 +2,12 @@
 
 package server
 
-import "github.com/awcullen/opcua/ua"
+import (
+	"net/url"
+	"time"
+
+	"github.com/awcullen/opcua/ua"
+)
 
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
@@ -93,6 +98,47 @@ func WithTransportLimits(maxBufferSize, maxMessageSize, maxChunkCount uint32) Op
 func WithMaxWorkerThreads(value int) Option {
 	return func(opts *Server) error {
 		opts.maxWorkerThreads = value
+		return nil
+	}
+}
+
+// WithReverseConnectClientURLs sets the client URLs that the server connects to for reverse connections.
+// The URLs are in the form opc.tcp://[host]:[port].
+// The interval controls how often the server retries client URLs without a waiting socket.
+func WithReverseConnectClientURLs(urls []string, interval time.Duration) Option {
+	return func(srv *Server) error {
+		targets := make([]reverseConnectTarget, len(urls))
+		for i, clientURL := range urls {
+			u, err := url.Parse(clientURL)
+			if err != nil || u.Host == "" {
+				return ua.BadTCPEndpointURLInvalid
+			}
+			targets[i] = reverseConnectTarget{host: u.Host}
+		}
+		srv.reverseConnectTargets = targets
+		if interval > 0 {
+			srv.reverseConnectInterval = interval
+		}
+		return nil
+	}
+}
+
+// WithReverseConnectTimeout sets how long to wait when dialing a reverse connect client URL.
+func WithReverseConnectTimeout(value time.Duration) Option {
+	return func(srv *Server) error {
+		if value > 0 {
+			srv.reverseConnectTimeout = value
+		}
+		return nil
+	}
+}
+
+// WithReverseConnectRejectTimeout sets how long to wait before retrying a client URL that rejects ReverseHello.
+func WithReverseConnectRejectTimeout(value time.Duration) Option {
+	return func(srv *Server) error {
+		if value > 0 {
+			srv.reverseConnectRejectTimeout = value
+		}
 		return nil
 	}
 }

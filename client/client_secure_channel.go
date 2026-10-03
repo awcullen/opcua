@@ -300,9 +300,11 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		}
 	}
 
-	ch.conn, err = net.DialTimeout("tcp", remoteURL.Host, time.Duration(ch.connectTimeout)*time.Millisecond)
-	if err != nil {
-		return err
+	if ch.conn == nil {
+		ch.conn, err = net.DialTimeout("tcp", remoteURL.Host, time.Duration(ch.connectTimeout)*time.Millisecond)
+		if err != nil {
+			return err
+		}
 	}
 
 	buf := *(ch.bytesPool.Get().(*[]byte))

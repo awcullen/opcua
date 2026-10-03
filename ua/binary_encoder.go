@@ -30,7 +30,6 @@ var (
 	typeExtensionObject = reflect.TypeOf((*ExtensionObject)(nil)).Elem()
 	typeVariant         = reflect.TypeOf((*Variant)(nil)).Elem()
 	typeDiagnosticInfo  = reflect.TypeOf((*DiagnosticInfo)(nil)).Elem()
-	typeSliceOfByte     = reflect.TypeOf((*[]byte)(nil)).Elem()
 	nilPtr              = unsafe.Pointer(nil)
 )
 
@@ -792,8 +791,8 @@ func (enc *BinaryEncoder) WriteExtensionObject(value ExtensionObject) error {
 	// cast writer to BufferAt to access superpowers
 	if buf, ok := enc.w.(buffer.BufferAt); ok {
 		mark := buf.Len() // mark where length is written
-		bs := make([]byte, 4)
-		if _, err := buf.Write(bs); err != nil {
+		var bs [4]byte
+		if _, err := buf.Write(bs[:]); err != nil {
 			return BadEncodingError
 		}
 		start := buf.Len() // mark where encoding starts
@@ -801,19 +800,19 @@ func (enc *BinaryEncoder) WriteExtensionObject(value ExtensionObject) error {
 			return BadEncodingError
 		}
 		end := buf.Len() // mark where encoding ends
-		binary.LittleEndian.PutUint32(bs, uint32(end-start))
+		binary.LittleEndian.PutUint32(bs[:], uint32(end-start))
 		// write actual length at mark
-		if _, err := buf.WriteAt(bs, mark); err != nil {
+		if _, err := buf.WriteAt(bs[:], mark); err != nil {
 			return BadEncodingError
 		}
 		return nil
 	}
 
 	// fall back to using extra buffer
-	buf2 := *(bytesPool.Get().(*[]byte))
-	defer bytesPool.Put(&buf2)
-	var writer = NewWriter(buf2)
-	enc2 := NewBinaryEncoder(writer, enc.ec)
+	buf2 := bytesPool.Get().(*[]byte)
+	defer bytesPool.Put(buf2)
+	writer := Writer{s: *buf2}
+	enc2 := BinaryEncoder{w: &writer, ec: enc.ec}
 	if err := enc2.Encode(value); err != nil {
 		return BadEncodingError
 	}

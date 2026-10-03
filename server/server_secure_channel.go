@@ -115,7 +115,7 @@ func newServerSecureChannel(srv *Server, conn net.Conn, trace bool) *serverSecur
 		securityPolicy:        new(ua.SecurityPolicyNone),
 		localCertificate:      srv.localCertificate,
 		localPrivateKey:       srv.localPrivateKey,
-		tokenExpiration:       time.Now().Add(20 * time.Second),
+		tokenExpiration:       time.Now().Add(helloTimeout),
 	}
 	return ch
 }
@@ -179,6 +179,31 @@ func (ch *serverSecureChannel) IsExpired() bool {
 	return time.Now().After(ch.tokenExpiration)
 }
 
+func (ch *serverSecureChannel) writeReverseHello() error {
+	serverURI := ch.srv.localDescription.ApplicationURI
+	endpointURL := ch.srv.endpointURL
+	n := 16 + len(serverURI) + len(endpointURL)
+	bufp := ch.bytesPool.Get().(*[]byte)
+	defer ch.bytesPool.Put(bufp)
+	var b []byte
+	if len(*bufp) >= n {
+		b = (*bufp)[:n]
+	} else {
+		b = make([]byte, n)
+	}
+	binary.LittleEndian.PutUint32(b[0:4], ua.MessageTypeReverseHello)
+	binary.LittleEndian.PutUint32(b[4:8], uint32(n))
+	binary.LittleEndian.PutUint32(b[8:12], uint32(len(serverURI)))
+	off := 12 + copy(b[12:], serverURI)
+	binary.LittleEndian.PutUint32(b[off:off+4], uint32(len(endpointURL)))
+	copy(b[off+4:], endpointURL)
+	ch.conn.SetWriteDeadline(time.Now().Add(3000 * time.Millisecond))
+	if _, err := ch.write(b); err != nil {
+		return err
+	}
+	return ch.conn.SetWriteDeadline(time.Time{})
+}
+
 // Open the secure channel to the remote endpoint.
 func (ch *serverSecureChannel) Open() error {
 	ch.Lock()
@@ -230,7 +255,22 @@ func (ch *serverSecureChannel) Open() error {
 		if err := dec.ReadString(&ch.endpointURL); err != nil {
 			return ua.BadDecodingError
 		}
+		if ch.tokenExpiration.IsZero() {
+			// reverse sockets wait for Hello without a deadline; bound the rest of Open.
+			ch.tokenExpiration = time.Now().Add(helloTimeout)
+			ch.conn.SetDeadline(ch.tokenExpiration)
+		}
 		// log.Printf("-> Hello { ver: %d, rec: %d, snd: %d, msg: %d, chk: %d, ep: %s }\n", remoteProtocolVersion, remoteReceiveBufferSize, remoteSendBufferSize, remoteMaxMessageSize, remoteMaxChunkCount, ch.endpointURL)
+
+	case ua.MessageTypeError:
+		if msgLen < 16 {
+			return ua.BadDecodingError
+		}
+		var remoteCode uint32
+		if err := dec.ReadUInt32(&remoteCode); err != nil {
+			return ua.BadDecodingError
+		}
+		return remoteError(remoteCode)
 
 	default:
 		return ua.BadDecodingError

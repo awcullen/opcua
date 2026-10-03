@@ -34,6 +34,10 @@ func init() {
 }
 
 func NewTestServer() (*server.Server, error) {
+	return NewTestServerAt(fmt.Sprintf("opc.tcp://%s:%d", host, port))
+}
+
+func NewTestServerAt(endpointURL string, options ...server.Option) (*server.Server, error) {
 
 	// userids for testing
 	userids := []ua.UserNameIdentity{
@@ -58,48 +62,49 @@ func NewTestServer() (*server.Server, error) {
 			ApplicationType:     ua.ApplicationTypeServer,
 			GatewayServerURI:    "",
 			DiscoveryProfileURI: "",
-			DiscoveryURLs:       []string{fmt.Sprintf("opc.tcp://%s:%d", host, port)},
+			DiscoveryURLs:       []string{endpointURL},
 		},
 		"./pki/server.crt",
 		"./pki/server.key",
-		fmt.Sprintf("opc.tcp://%s:%d", host, port),
-		server.WithBuildInfo(
+		endpointURL,
+		append([]server.Option{server.WithBuildInfo(
 			ua.BuildInfo{
 				ProductURI:       "http://github.com/awcullen/opcua",
 				ManufacturerName: "awcullen",
 				ProductName:      "testserver",
 				SoftwareVersion:  SoftwareVersion,
 			}),
-		server.WithAuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
-			// log.Printf("Login anonymous identity from %s\n", applicationURI)
-			return nil
-		}),
-		server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
-			valid := false
-			for _, user := range userids {
-				if user.UserName == userIdentity.UserName {
-					if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(userIdentity.Password)); err == nil {
-						valid = true
-						break
+			server.WithAuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
+				// log.Printf("Login anonymous identity from %s\n", applicationURI)
+				return nil
+			}),
+			server.WithAuthenticateUserNameIdentityFunc(func(userIdentity ua.UserNameIdentity, applicationURI string, endpointURL string) error {
+				valid := false
+				for _, user := range userids {
+					if user.UserName == userIdentity.UserName {
+						if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(userIdentity.Password)); err == nil {
+							valid = true
+							break
+						}
 					}
 				}
-			}
-			if !valid {
-				return ua.BadUserAccessDenied
-			}
-			// log.Printf("Login %s from %s\n", userIdentity.UserName, applicationURI)
-			return nil
-		}),
-		server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
-			_, err := x509.ParseCertificates([]byte(userIdentity.Certificate))
-			if err != nil {
-				return ua.BadUserAccessDenied
-			}
-			// log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
-			return nil
-		}),
-		server.WithSecurityPolicyNone(true),
-		server.WithInsecureSkipVerify(),
+				if !valid {
+					return ua.BadUserAccessDenied
+				}
+				// log.Printf("Login %s from %s\n", userIdentity.UserName, applicationURI)
+				return nil
+			}),
+			server.WithAuthenticateX509IdentityFunc(func(userIdentity ua.X509Identity, applicationURI string, endpointURL string) error {
+				_, err := x509.ParseCertificates([]byte(userIdentity.Certificate))
+				if err != nil {
+					return ua.BadUserAccessDenied
+				}
+				// log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
+				return nil
+			}),
+			server.WithSecurityPolicyNone(true),
+			server.WithInsecureSkipVerify(),
+		}, options...)...,
 	)
 	if err != nil {
 		return nil, err
