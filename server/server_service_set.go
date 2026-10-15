@@ -586,7 +586,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf.Write(cipherBytes)
-			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
+			cipherText := make([]byte, srv.localPrivateKey.Size())
 			for cipherBuf.Len() > 0 {
 				cipherBuf.Read(cipherText)
 				// decrypt with local private key.
@@ -646,7 +646,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf.Write(cipherBytes)
-			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
+			cipherText := make([]byte, srv.localPrivateKey.Size())
 			for cipherBuf.Len() > 0 {
 				cipherBuf.Read(cipherText)
 				// decrypt with local private key.
@@ -706,7 +706,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf.Write(cipherBytes)
-			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
+			cipherText := make([]byte, srv.localPrivateKey.Size())
 			for cipherBuf.Len() > 0 {
 				cipherBuf.Read(cipherText)
 				// decrypt with local private key.
