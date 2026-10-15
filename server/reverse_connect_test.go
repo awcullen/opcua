@@ -32,6 +32,7 @@ func TestReverseConnect(t *testing.T) {
 	clientAddr := ln.Addr().String()
 	ln.Close()
 
+	var opened atomic.Int64
 	const rcPort = 46011
 	rcEndpointURL := fmt.Sprintf("opc.tcp://%s:%d", host, rcPort)
 	srv, err := server.New(
@@ -48,6 +49,11 @@ func TestReverseConnect(t *testing.T) {
 		server.WithInsecureSkipVerify(),
 		server.WithAuthenticateAnonymousIdentityFunc(func(ua.AnonymousIdentity, string, string) error { return nil }),
 		server.WithReverseConnect("opc.tcp://"+clientAddr),
+		server.WithReverseConnectStateFunc(func(_ string, err error) {
+			if err == nil {
+				opened.Add(1)
+			}
+		}),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +122,11 @@ func TestReverseConnect(t *testing.T) {
 		if err := ch.Close(ctx); err != nil {
 			t.Fatalf("session %d: close: %v", i, err)
 		}
+	}
+	// the state func reports each secure channel opened on a reverse socket (a Dial
+	// may open more than one: it reads the endpoints first).
+	if n := opened.Load(); n < 2 {
+		t.Errorf("the state func reported %d opened channels, want at least 2", n)
 	}
 }
 

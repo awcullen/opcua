@@ -244,10 +244,11 @@ func WithReverseConnect(clientURLs ...string) Option {
 }
 
 // WithReverseConnectStateFunc sets a function the server calls with the state of each
-// reverse connection: a nil error when a socket to the client is open and its ReverseHello
-// was sent, or the error that ended an attempt (a failed dial, or a peer that sent bytes
-// that did not open a secure channel). It is called on every attempt, from the goroutine
-// that serves the client, and must not block.
+// reverse connection: a nil error when the client opened a secure channel on a reverse
+// socket, or the error that ended an attempt (a failed dial, a failed ReverseHello, or a
+// peer that sent bytes that did not open a secure channel). A socket the client closed or
+// let time out without sending anything is not reported. It is called from the goroutine
+// that serves the client and must not block.
 func WithReverseConnectStateFunc(f func(clientURL string, err error)) Option {
 	return func(srv *Server) error {
 		srv.reverseConnectStateFunc = f

@@ -91,10 +91,12 @@ func (srv *Server) serveReverseConnection(ctx context.Context, clientURL string,
 		conn.Close()
 		return err
 	}
-	srv.reportReverseConnect(clientURL, nil)
 	var openErr error
 	opened := func(err error) {
 		openErr = err
+		if err == nil {
+			srv.reportReverseConnect(clientURL, nil)
+		}
 	}
 	done := make(chan struct{})
 	wg.Add(1)
