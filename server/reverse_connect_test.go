@@ -257,3 +257,34 @@ func TestReverseConnectHoldsOneSocketPerClient(t *testing.T) {
 		t.Fatalf("the server held %d sockets open to one client at once; want 1", n)
 	}
 }
+
+// TestReverseConnectToAQuietClientDoesNotBackOff points the server at a client that
+// accepts each socket and closes it without sending anything, as a client with no
+// session to open may. That is not a failure: the server reconnects after the minimum
+// delay, so the client gets a socket promptly when it wants one.
+func TestReverseConnectToAQuietClientDoesNotBackOff(t *testing.T) {
+	defer server.SetReverseConnectDelays(50*time.Millisecond, 1*time.Second)()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	var accepted atomic.Int64
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted.Add(1)
+			conn.Close()
+		}
+	}()
+	stop := startReverseConnectServer(t, 46015, ln.Addr().String())
+	defer stop()
+	time.Sleep(1 * time.Second)
+	// with backoff, 50+100+200+400 ms would allow about four.
+	if n := accepted.Load(); n < 10 {
+		t.Fatalf("the server reconnected to a quiet client %d times in 1s; want the minimum delay (at least 10)", n)
+	}
+}

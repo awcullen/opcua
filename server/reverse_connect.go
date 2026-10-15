@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/awcullen/opcua/ua"
@@ -25,10 +26,11 @@ var (
 // See https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.3
 //
 // It holds at most one socket to the client at a time: the next one is opened only after the
-// previous one closes. Before every dial it waits: the minimum delay after a socket the client
-// used, or a delay that doubles up to the maximum after one it did not. A socket counts as used
-// only when the client opened a secure channel on it, so a peer that answers with something else
-// (a service on a mistyped port) is backed off like an unreachable one.
+// previous one closes. Before every dial it waits: the minimum delay after a socket that ended
+// well, or a delay that doubles up to the maximum after a failure. A socket ended well when the
+// client opened a secure channel on it, or sent nothing at all before it closed (a client that
+// had no session to open). A failure is a dial that failed, or a peer that sent bytes that did not
+// open a secure channel (a service on a mistyped port), which is backed off like an unreachable one.
 func (srv *Server) reverseConnect(clientURL string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	u, err := url.Parse(clientURL)
@@ -49,18 +51,16 @@ func (srv *Server) reverseConnect(clientURL string, wg *sync.WaitGroup) {
 	var dialer net.Dialer
 	delay := reverseConnectMinDelay
 	for {
-		used := false
 		conn, err := dialer.DialContext(ctx, "tcp", u.Host)
 		if err == nil {
-			used, err = srv.serveReverseConnection(ctx, clientURL, conn, wg)
+			err = srv.serveReverseConnection(ctx, clientURL, conn, wg)
 		}
 		if ctx.Err() != nil {
 			return
 		}
 		if err != nil {
 			srv.reportReverseConnect(clientURL, err)
-		}
-		if used {
+		} else {
 			delay = reverseConnectMinDelay
 		}
 		select {
@@ -68,7 +68,7 @@ func (srv *Server) reverseConnect(clientURL string, wg *sync.WaitGroup) {
 		case <-ctx.Done():
 			return
 		}
-		if !used {
+		if err != nil {
 			delay *= 2
 			if delay > reverseConnectMaxDelay {
 				delay = reverseConnectMaxDelay
@@ -85,12 +85,11 @@ func (srv *Server) reportReverseConnect(clientURL string, err error) {
 }
 
 // serveReverseConnection sends the ReverseHello and serves the connection until it closes.
-// It returns whether the client opened a secure channel on it, and the error that ended an
-// unused connection.
-func (srv *Server) serveReverseConnection(ctx context.Context, clientURL string, conn net.Conn, wg *sync.WaitGroup) (bool, error) {
+// It returns nil when the connection ended well, or the failure that ended it.
+func (srv *Server) serveReverseConnection(ctx context.Context, clientURL string, conn net.Conn, wg *sync.WaitGroup) error {
 	if err := srv.writeReverseHello(conn); err != nil {
 		conn.Close()
-		return false, err
+		return err
 	}
 	srv.reportReverseConnect(clientURL, nil)
 	var openErr error
@@ -99,9 +98,10 @@ func (srv *Server) serveReverseConnection(ctx context.Context, clientURL string,
 	}
 	done := make(chan struct{})
 	wg.Add(1)
+	rc := &reverseConn{Conn: conn}
 	go func() {
 		defer close(done)
-		srv.serveConnection(conn, wg, opened)
+		srv.serveConnection(rc, wg, opened)
 	}()
 	select {
 	case <-done:
@@ -110,10 +110,10 @@ func (srv *Server) serveReverseConnection(ctx context.Context, clientURL string,
 		conn.Close()
 		<-done
 	}
-	if openErr != nil {
-		return false, fmt.Errorf("the client did not open a secure channel: %w", openErr)
+	if openErr != nil && rc.spoke.Load() {
+		return fmt.Errorf("the client did not open a secure channel: %w", openErr)
 	}
-	return true, nil
+	return nil
 }
 
 // writeReverseHello writes a ReverseHello message to the connection.
@@ -129,4 +129,18 @@ func (srv *Server) writeReverseHello(conn net.Conn) error {
 	defer conn.SetWriteDeadline(time.Time{})
 	_, err := conn.Write(buf.Bytes())
 	return err
+}
+
+// reverseConn records whether the peer sent anything.
+type reverseConn struct {
+	net.Conn
+	spoke atomic.Bool
+}
+
+func (c *reverseConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if n > 0 {
+		c.spoke.Store(true)
+	}
+	return n, err
 }
