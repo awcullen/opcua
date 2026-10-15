@@ -88,6 +88,7 @@ type Server struct {
 	rolesProvider                        RolesProvider
 	rolePermissions                      []ua.RolePermissionType
 	lastChannelID                        uint32
+	reverseConnectURLs                   []string
 }
 
 // New initializes a new instance of the Server.
@@ -310,6 +311,10 @@ func (srv *Server) ListenAndServe() error {
 	}()
 
 	var wg sync.WaitGroup
+	for _, clientURL := range srv.reverseConnectURLs {
+		wg.Add(1)
+		go srv.reverseConnect(clientURL, &wg)
+	}
 	err = srv.serve(ln, &wg)
 
 	// wait until channels closed

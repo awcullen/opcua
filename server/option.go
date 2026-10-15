@@ -2,7 +2,11 @@
 
 package server
 
-import "github.com/awcullen/opcua/ua"
+import (
+	"net/url"
+
+	"github.com/awcullen/opcua/ua"
+)
 
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
@@ -213,6 +217,26 @@ func WithRolePermissions(permissions []ua.RolePermissionType) Option {
 func WithHistorian(historian HistoryReadWriter) Option {
 	return func(srv *Server) error {
 		srv.historian = historian
+		return nil
+	}
+}
+
+// WithReverseConnect sets the URLs of clients the server connects to, in addition to
+// listening for incoming connections. For each URL, the server opens a socket to the
+// client, sends a ReverseHello message and then waits for the client to open a secure
+// channel on that socket, as defined in https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.3
+// When the client starts using a socket, or a connection fails, the server opens
+// another one, so the client always has a socket available. Each URL has the form
+// opc.tcp://[host]:[port]
+func WithReverseConnect(clientURLs ...string) Option {
+	return func(srv *Server) error {
+		for _, clientURL := range clientURLs {
+			u, err := url.Parse(clientURL)
+			if err != nil || u.Scheme != "opc.tcp" || u.Hostname() == "" || u.Port() == "" {
+				return ua.BadTCPEndpointURLInvalid
+			}
+		}
+		srv.reverseConnectURLs = append(srv.reverseConnectURLs, clientURLs...)
 		return nil
 	}
 }
