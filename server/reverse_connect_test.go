@@ -5,7 +5,11 @@ package server_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -126,5 +130,130 @@ func TestWithReverseConnectRejectsInvalidURL(t *testing.T) {
 		if err != ua.BadTCPEndpointURLInvalid {
 			t.Errorf("WithReverseConnect(%q): err = %v, want BadTCPEndpointURLInvalid", u, err)
 		}
+	}
+}
+
+// startReverseConnectServer starts a server that reverse connects to clientAddr and
+// returns a func that closes it.
+func startReverseConnectServer(t *testing.T, port int, clientAddr string, opts ...server.Option) func() {
+	t.Helper()
+	endpointURL := fmt.Sprintf("opc.tcp://%s:%d", host, port)
+	srv, err := server.New(
+		ua.ApplicationDescription{
+			ApplicationURI:  fmt.Sprintf("urn:%s:reverseconnect", host),
+			ApplicationName: ua.LocalizedText{Text: "reverseconnect"},
+			ApplicationType: ua.ApplicationTypeServer,
+			DiscoveryURLs:   []string{endpointURL},
+		},
+		"./pki/server.crt",
+		"./pki/server.key",
+		endpointURL,
+		append([]server.Option{
+			server.WithSecurityPolicyNone(true),
+			server.WithInsecureSkipVerify(),
+			server.WithReverseConnect("opc.tcp://" + clientAddr),
+		}, opts...)...,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- srv.ListenAndServe() }()
+	return func() {
+		srv.Close()
+		<-served
+	}
+}
+
+// TestReverseConnectToAPeerThatIsNotAClientBacksOff points the server at a peer that
+// speaks first and is not an OPC UA client (an SSH banner, as a mistyped port would
+// find). Each socket fails to open a secure channel, so the server must back off
+// rather than redial at once.
+func TestReverseConnectToAPeerThatIsNotAClientBacksOff(t *testing.T) {
+	defer server.SetReverseConnectDelays(50*time.Millisecond, 200*time.Millisecond)()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	var accepted atomic.Int64
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted.Add(1)
+			go func() {
+				defer conn.Close()
+				conn.Write([]byte("SSH-2.0-OpenSSH_9.6\r\n"))
+				io.Copy(io.Discard, conn)
+			}()
+		}
+	}()
+	var mu sync.Mutex
+	var states []error
+	stop := startReverseConnectServer(t, 46013, ln.Addr().String(),
+		server.WithReverseConnectStateFunc(func(clientURL string, err error) {
+			mu.Lock()
+			states = append(states, err)
+			mu.Unlock()
+		}))
+	defer stop()
+	time.Sleep(1 * time.Second)
+	mu.Lock()
+	sawFailure := false
+	for _, err := range states {
+		if err != nil && strings.Contains(err.Error(), "did not open a secure channel") {
+			sawFailure = true
+		}
+	}
+	mu.Unlock()
+	if !sawFailure {
+		t.Errorf("the state func never reported the failed secure channel; got %v", states)
+	}
+	// 50+100+200+200+200 ms of backoff fit in a second: about six dials.
+	if n := accepted.Load(); n > 10 {
+		t.Fatalf("the server dialled a peer that is not a client %d times in 1s; want backoff (at most 10)", n)
+	}
+}
+
+// TestReverseConnectHoldsOneSocketPerClient points the server at a peer that sends a
+// byte and then holds every socket open. The server must not open a second socket
+// while the first is open.
+func TestReverseConnectHoldsOneSocketPerClient(t *testing.T) {
+	defer server.SetReverseConnectDelays(10*time.Millisecond, 20*time.Millisecond)()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	var open, maxOpen atomic.Int64
+	var conns sync.WaitGroup
+	defer conns.Wait()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			n := open.Add(1)
+			for m := maxOpen.Load(); n > m && !maxOpen.CompareAndSwap(m, n); m = maxOpen.Load() {
+			}
+			conns.Add(1)
+			go func() {
+				defer conns.Done()
+				defer open.Add(-1)
+				defer conn.Close()
+				conn.Write([]byte{0})
+				io.Copy(io.Discard, conn)
+			}()
+		}
+	}()
+	stop := startReverseConnectServer(t, 46014, ln.Addr().String())
+	defer stop()
+	time.Sleep(500 * time.Millisecond)
+	if n := maxOpen.Load(); n != 1 {
+		t.Fatalf("the server held %d sockets open to one client at once; want 1", n)
 	}
 }

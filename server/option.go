@@ -225,8 +225,10 @@ func WithHistorian(historian HistoryReadWriter) Option {
 // listening for incoming connections. For each URL, the server opens a socket to the
 // client, sends a ReverseHello message and then waits for the client to open a secure
 // channel on that socket, as defined in https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.3
-// When the client starts using a socket, or a connection fails, the server opens
-// another one, so the client always has a socket available. Each URL has the form
+// The server holds one socket per client at a time and opens the next one after it
+// closes, waiting a short delay after a socket the client used and a delay that doubles
+// (up to 30s) after one it did not. A socket counts as used only when the client opens a
+// secure channel on it. Each URL has the form
 // opc.tcp://[host]:[port]
 func WithReverseConnect(clientURLs ...string) Option {
 	return func(srv *Server) error {
@@ -237,6 +239,18 @@ func WithReverseConnect(clientURLs ...string) Option {
 			}
 		}
 		srv.reverseConnectURLs = append(srv.reverseConnectURLs, clientURLs...)
+		return nil
+	}
+}
+
+// WithReverseConnectStateFunc sets a function the server calls with the state of each
+// reverse connection: a nil error when a socket to the client is open and its ReverseHello
+// was sent, or the error that ended an attempt (a failed dial, or a socket on which the
+// client did not open a secure channel). It is called on every attempt, from the goroutine
+// that serves the client, and must not block.
+func WithReverseConnectStateFunc(f func(clientURL string, err error)) Option {
+	return func(srv *Server) error {
+		srv.reverseConnectStateFunc = f
 		return nil
 	}
 }

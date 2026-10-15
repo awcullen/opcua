@@ -89,6 +89,7 @@ type Server struct {
 	rolePermissions                      []ua.RolePermissionType
 	lastChannelID                        uint32
 	reverseConnectURLs                   []string
+	reverseConnectStateFunc              func(clientURL string, err error)
 }
 
 // New initializes a new instance of the Server.
@@ -340,7 +341,7 @@ func (srv *Server) Close() error {
 			time.Sleep(time.Second)
 		}
 		srv.secondsTillShutdown = uint32(0)
-		
+
 	} else {
 		srv.state = ua.ServerStateShutdown
 		srv.Unlock()
@@ -387,10 +388,19 @@ func (srv *Server) serve(ln net.Listener, wg *sync.WaitGroup) error {
 
 // handleConnection wraps conn in ServerSecureChannel and handles service requests.
 func (srv *Server) handleConnection(conn net.Conn, wg *sync.WaitGroup) {
+	srv.serveConnection(conn, wg, nil)
+}
+
+// serveConnection opens a secure channel on conn and serves it until it closes.
+// opened, when not nil, is called with the result of opening the secure channel.
+func (srv *Server) serveConnection(conn net.Conn, wg *sync.WaitGroup, opened func(error)) {
 	defer conn.Close()
 	defer wg.Done()
 	ch := newServerSecureChannel(srv, conn, srv.trace)
 	err := ch.Open()
+	if opened != nil {
+		opened(err)
+	}
 	if err != nil {
 		// log.Printf("Error opening secure channel. %s\n", err)
 		if c, ok := err.(ua.StatusCode); ok {

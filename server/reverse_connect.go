@@ -5,6 +5,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"net/url"
 	"sync"
@@ -22,10 +23,17 @@ var (
 
 // reverseConnect keeps one socket open to the client at clientURL, until the server is closed.
 // See https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.3
+//
+// It holds at most one socket to the client at a time: the next one is opened only after the
+// previous one closes. Before every dial it waits: the minimum delay after a socket the client
+// used, or a delay that doubles up to the maximum after one it did not. A socket counts as used
+// only when the client opened a secure channel on it, so a peer that answers with something else
+// (a service on a mistyped port) is backed off like an unreachable one.
 func (srv *Server) reverseConnect(clientURL string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	u, err := url.Parse(clientURL)
 	if err != nil {
+		srv.reportReverseConnect(clientURL, err)
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -41,57 +49,71 @@ func (srv *Server) reverseConnect(clientURL string, wg *sync.WaitGroup) {
 	var dialer net.Dialer
 	delay := reverseConnectMinDelay
 	for {
-		inUse := false
+		used := false
 		conn, err := dialer.DialContext(ctx, "tcp", u.Host)
 		if err == nil {
-			inUse = srv.serveReverseConnection(ctx, conn, wg)
+			used, err = srv.serveReverseConnection(ctx, clientURL, conn, wg)
 		}
 		if ctx.Err() != nil {
 			return
 		}
-		if inUse {
-			// the client is using the socket, so open the next one now.
+		if err != nil {
+			srv.reportReverseConnect(clientURL, err)
+		}
+		if used {
 			delay = reverseConnectMinDelay
-			continue
 		}
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
 			return
 		}
-		delay *= 2
-		if delay > reverseConnectMaxDelay {
-			delay = reverseConnectMaxDelay
+		if !used {
+			delay *= 2
+			if delay > reverseConnectMaxDelay {
+				delay = reverseConnectMaxDelay
+			}
 		}
 	}
 }
 
-// serveReverseConnection sends the ReverseHello and hands the connection to handleConnection.
-// It returns true when the client starts using the connection, or false when the connection
-// closes before the client sends a Hello.
-func (srv *Server) serveReverseConnection(ctx context.Context, conn net.Conn, wg *sync.WaitGroup) bool {
+// reportReverseConnect calls the function set by WithReverseConnectStateFunc, if any.
+func (srv *Server) reportReverseConnect(clientURL string, err error) {
+	if srv.reverseConnectStateFunc != nil {
+		srv.reverseConnectStateFunc(clientURL, err)
+	}
+}
+
+// serveReverseConnection sends the ReverseHello and serves the connection until it closes.
+// It returns whether the client opened a secure channel on it, and the error that ended an
+// unused connection.
+func (srv *Server) serveReverseConnection(ctx context.Context, clientURL string, conn net.Conn, wg *sync.WaitGroup) (bool, error) {
 	if err := srv.writeReverseHello(conn); err != nil {
 		conn.Close()
-		return false
+		return false, err
 	}
-	rc := &reverseConn{Conn: conn, used: make(chan struct{})}
+	srv.reportReverseConnect(clientURL, nil)
+	var openErr error
+	opened := func(err error) {
+		openErr = err
+	}
 	done := make(chan struct{})
 	wg.Add(1)
 	go func() {
 		defer close(done)
-		srv.handleConnection(rc, wg)
+		srv.serveConnection(conn, wg, opened)
 	}()
 	select {
-	case <-rc.used:
-		return true
 	case <-done:
-		return false
 	case <-ctx.Done():
-		// the client never used this socket; do not wait for the Hello timeout.
+		// do not wait for the Hello timeout of an unused socket.
 		conn.Close()
 		<-done
-		return false
 	}
+	if openErr != nil {
+		return false, fmt.Errorf("the client did not open a secure channel: %w", openErr)
+	}
+	return true, nil
 }
 
 // writeReverseHello writes a ReverseHello message to the connection.
@@ -107,19 +129,4 @@ func (srv *Server) writeReverseHello(conn net.Conn) error {
 	defer conn.SetWriteDeadline(time.Time{})
 	_, err := conn.Write(buf.Bytes())
 	return err
-}
-
-// reverseConn signals when the client sends its first message.
-type reverseConn struct {
-	net.Conn
-	once sync.Once
-	used chan struct{}
-}
-
-func (c *reverseConn) Read(p []byte) (int, error) {
-	n, err := c.Conn.Read(p)
-	if n > 0 {
-		c.once.Do(func() { close(c.used) })
-	}
-	return n, err
 }
