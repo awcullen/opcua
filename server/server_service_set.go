@@ -27,7 +27,8 @@ import (
 // FindServers returns the Servers known to a Server or Discovery Server.
 func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *ua.FindServersRequest) error {
 	srvs := make([]ua.ApplicationDescription, 0, 1)
-	for _, s := range []ua.ApplicationDescription{srv.LocalDescription()} {
+	host := clientHost(req.EndpointURL, ch.conn)
+	for _, s := range []ua.ApplicationDescription{describeFor(srv.LocalDescription(), host)} {
 		if len(req.ServerURIs) > 0 {
 			for _, su := range req.ServerURIs {
 				if s.ApplicationURI == su {
@@ -57,18 +58,17 @@ func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *u
 
 // GetEndpoints returns the endpoint descriptions supported by the server.
 func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *ua.GetEndpointsRequest) error {
-	eps := make([]ua.EndpointDescription, 0, len(srv.Endpoints()))
-	for _, ep := range srv.Endpoints() {
+	all := srv.endpointsFor(req.EndpointURL, ch.conn)
+	eps := make([]ua.EndpointDescription, 0, len(all))
+	for _, ep := range all {
 		if len(req.ProfileURIs) > 0 {
 			for _, pu := range req.ProfileURIs {
 				if ep.TransportProfileURI == pu {
-					ep.EndpointURL = req.EndpointURL
 					eps = append(eps, ep)
 					break
 				}
 			}
 		} else {
-			ep.EndpointURL = req.EndpointURL
 			eps = append(eps, ep)
 		}
 	}
@@ -263,7 +263,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			RevisedSessionTimeout:      session.timeout,
 			ServerNonce:                session.sessionNonce,
 			ServerCertificate:          ua.ByteString(srv.LocalCertificate()),
-			ServerEndpoints:            srv.Endpoints(),
+			ServerEndpoints:            srv.endpointsFor(req.EndpointURL, ch.conn),
 			ServerSoftwareCertificates: nil,
 			ServerSignature:            serverSignature,
 			MaxRequestMessageSize:      srv.maxMessageSize,
