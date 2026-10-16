@@ -55,7 +55,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		EndpointURL: endpointURL,
 		ProfileURIs: []string{ua.TransportProfileURIUaTcpTransport},
 	}
-	res, err := GetEndpoints(ctx, req)
+	res, err := getEndpoints(ctx, req, cli.dialer)
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +141,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		cli.maxMessageSize,
 		cli.maxChunkCount,
 		cli.trace)
+	cli.channel.dialer = cli.dialer
 
 	// open session and read the namespace table
 	if err := cli.open(ctx); err != nil {
@@ -188,6 +189,7 @@ type Client struct {
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
 	trace                                bool
+	dialer                               Dialer
 }
 
 // EndpointURL gets the EndpointURL of the server.

@@ -71,6 +71,7 @@ type clientSecureChannel struct {
 	maxResponseMessageSize               uint32
 	maxResponseChunkCount                uint32
 	conn                                 net.Conn
+	dialer                               Dialer
 	connectTimeout                       int64
 	trustedCertsPath                     string
 	trustedCRLsPath                      string
@@ -300,7 +301,13 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		}
 	}
 
-	ch.conn, err = net.DialTimeout("tcp", remoteURL.Host, time.Duration(ch.connectTimeout)*time.Millisecond)
+	if ch.dialer != nil {
+		dialCtx, cancel := context.WithTimeout(ctx, time.Duration(ch.connectTimeout)*time.Millisecond)
+		ch.conn, err = ch.dialer(dialCtx, "tcp", remoteURL.Host)
+		cancel()
+	} else {
+		ch.conn, err = net.DialTimeout("tcp", remoteURL.Host, time.Duration(ch.connectTimeout)*time.Millisecond)
+	}
 	if err != nil {
 		return err
 	}

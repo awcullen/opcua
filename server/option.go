@@ -2,7 +2,11 @@
 
 package server
 
-import "github.com/awcullen/opcua/ua"
+import (
+	"net/url"
+
+	"github.com/awcullen/opcua/ua"
+)
 
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
@@ -213,6 +217,41 @@ func WithRolePermissions(permissions []ua.RolePermissionType) Option {
 func WithHistorian(historian HistoryReadWriter) Option {
 	return func(srv *Server) error {
 		srv.historian = historian
+		return nil
+	}
+}
+
+// WithReverseConnect sets the URLs of clients the server connects to, in addition to
+// listening for incoming connections. For each URL, the server opens a socket to the
+// client, sends a ReverseHello message and then waits for the client to open a secure
+// channel on that socket, as defined in https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.3
+// The server holds one socket per client at a time and opens the next one after it
+// closes, waiting a short delay after a socket that ended well and a delay that doubles
+// (up to 30s) after a failure: a failed dial, or a peer that sent bytes that did not open
+// a secure channel. Each URL has the form
+// opc.tcp://[host]:[port]
+func WithReverseConnect(clientURLs ...string) Option {
+	return func(srv *Server) error {
+		for _, clientURL := range clientURLs {
+			u, err := url.Parse(clientURL)
+			if err != nil || u.Scheme != "opc.tcp" || u.Hostname() == "" || u.Port() == "" {
+				return ua.BadTCPEndpointURLInvalid
+			}
+		}
+		srv.reverseConnectURLs = append(srv.reverseConnectURLs, clientURLs...)
+		return nil
+	}
+}
+
+// WithReverseConnectStateFunc sets a function the server calls with the state of each
+// reverse connection: a nil error when the client opened a secure channel on a reverse
+// socket, or the error that ended an attempt (a failed dial, a failed ReverseHello, or a
+// peer that sent bytes that did not open a secure channel). A socket the client closed or
+// let time out without sending anything is not reported. It is called from the goroutine
+// that serves the client and must not block.
+func WithReverseConnectStateFunc(f func(clientURL string, err error)) Option {
+	return func(srv *Server) error {
+		srv.reverseConnectStateFunc = f
 		return nil
 	}
 }

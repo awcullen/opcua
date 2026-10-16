@@ -235,3 +235,12 @@ func WithTransportLimits(maxBufferSize, maxMessageSize, maxChunkCount uint32) Op
 		return nil
 	}
 }
+
+// WithDialer sets the function used to open the connection to the server. (default: net.Dial)
+// See ReverseConnectDialer for a dialer that accepts connections from a server using reverse connect.
+func WithDialer(value Dialer) Option {
+	return func(c *Client) error {
+		c.dialer = value
+		return nil
+	}
+}
