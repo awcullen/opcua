@@ -299,3 +299,52 @@ func TestReverseConnectToAQuietClientDoesNotBackOff(t *testing.T) {
 		t.Fatalf("the server reconnected to a quiet client %d times in 1s; want the minimum delay (at least 10)", n)
 	}
 }
+
+// TestReverseHelloNamesTheAddressTheClientReaches starts a server bound to every
+// interface (opc.tcp://0.0.0.0:port). Its ReverseHello must not carry 0.0.0.0, which
+// no client can dial: it carries the address the reverse socket left from, with the
+// server's port.
+func TestReverseHelloNamesTheAddressTheClientReaches(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	const port = 46017
+	endpointURL := fmt.Sprintf("opc.tcp://0.0.0.0:%d", port)
+	srv, err := server.New(
+		ua.ApplicationDescription{
+			ApplicationURI:  fmt.Sprintf("urn:%s:reverseconnect", host),
+			ApplicationName: ua.LocalizedText{Text: "reverseconnect"},
+			ApplicationType: ua.ApplicationTypeServer,
+			DiscoveryURLs:   []string{endpointURL},
+		},
+		"./pki/server.crt",
+		"./pki/server.key",
+		endpointURL,
+		server.WithSecurityPolicyNone(true),
+		server.WithInsecureSkipVerify(),
+		server.WithReverseConnect("opc.tcp://"+ln.Addr().String()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- srv.ListenAndServe() }()
+	defer func() {
+		srv.Close()
+		<-served
+	}()
+	conn, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_, gotEndpointURL, err := client.ReadReverseHello(conn)
+	if err != nil {
+		t.Fatalf("reading ReverseHello: %v", err)
+	}
+	if want := fmt.Sprintf("opc.tcp://127.0.0.1:%d", port); gotEndpointURL != want {
+		t.Fatalf("ReverseHello EndpointUrl = %q, want %q", gotEndpointURL, want)
+	}
+}

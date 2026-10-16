@@ -121,16 +121,38 @@ func (srv *Server) serveReverseConnection(ctx context.Context, clientURL string,
 // writeReverseHello writes a ReverseHello message to the connection.
 func (srv *Server) writeReverseHello(conn net.Conn) error {
 	serverURI := srv.localDescription.ApplicationURI
+	endpointURL := reverseHelloEndpointURL(srv.endpointURL, conn.LocalAddr())
 	var buf bytes.Buffer
 	enc := ua.NewBinaryEncoder(&buf, ua.NewEncodingContext())
 	enc.WriteUInt32(ua.MessageTypeReverseHello)
-	enc.WriteUInt32(uint32(16 + len(serverURI) + len(srv.endpointURL)))
+	enc.WriteUInt32(uint32(16 + len(serverURI) + len(endpointURL)))
 	enc.WriteString(serverURI)
-	enc.WriteString(srv.endpointURL)
+	enc.WriteString(endpointURL)
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	defer conn.SetWriteDeadline(time.Time{})
 	_, err := conn.Write(buf.Bytes())
 	return err
+}
+
+// reverseHelloEndpointURL is the EndpointUrl a ReverseHello sent from local carries.
+// A server bound to every interface (opc.tcp://0.0.0.0:port, opc.tcp://[::]:port) has an
+// endpoint URL that no client can dial, so its host is replaced by the address the reverse
+// socket left from: the address of this server that the client reaches, and the one a
+// GetEndpoints request over it is answered with. Any other endpoint URL is sent unchanged.
+func reverseHelloEndpointURL(endpointURL string, local net.Addr) string {
+	u, err := url.Parse(endpointURL)
+	if err != nil {
+		return endpointURL
+	}
+	if ip := net.ParseIP(u.Hostname()); u.Hostname() != "" && (ip == nil || !ip.IsUnspecified()) {
+		return endpointURL
+	}
+	tcp, ok := local.(*net.TCPAddr)
+	if !ok || tcp.IP == nil || tcp.IP.IsUnspecified() {
+		return endpointURL
+	}
+	u.Host = net.JoinHostPort(tcp.IP.String(), u.Port())
+	return u.String()
 }
 
 // reverseConn records whether the peer sent anything.
