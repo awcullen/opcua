@@ -26,6 +26,9 @@ type NamespaceManager struct {
 	server     *Server
 	namespaces []string
 	nodes      map[ua.NodeID]Node
+	// inverseRefKeys 是引用的键索引，避免 AddNodes 为去重而线性扫描父节点的全部引用。
+	// 键 = (引用类型, 目标节点, 源节点, 是否反向)。
+	inverseRefKeys map[inverseRefKeyT]struct{}
 }
 
 // NewNamespaceManager instantiates a new NamespaceManager.
@@ -35,6 +38,27 @@ func NewNamespaceManager(server *Server) *NamespaceManager {
 		namespaces: []string{"http://opcfoundation.org/UA/", server.LocalDescription().ApplicationURI},
 		nodes:      make(map[ua.NodeID]Node, 4096),
 	}
+}
+
+// inverseRefKeyT 唯一标识一条引用，用于 O(1) 判重。
+type inverseRefKeyT struct {
+	refType   ua.NodeID
+	target    ua.NodeID
+	source    ua.NodeID
+	isInverse bool
+}
+
+// buildInverseRefKeys 建立全部引用的键索引（O(总引用数)），仅在索引失效时调用。
+func (m *NamespaceManager) buildInverseRefKeys() {
+	keys := make(map[inverseRefKeyT]struct{}, len(m.nodes)*2)
+	for _, node := range m.nodes {
+		src := node.NodeID()
+		for _, r := range node.References() {
+			target := ua.ToNodeID(r.TargetID, m.namespaces)
+			keys[inverseRefKeyT{r.ReferenceTypeID, target, src, r.IsInverse}] = struct{}{}
+		}
+	}
+	m.inverseRefKeys = keys
 }
 
 // Add adds a namespace to the end of the table and returns the index.
@@ -331,27 +355,33 @@ func (m *NamespaceManager) AddNodes(nodes ...Node) error {
 	for _, node := range nodes {
 		m.nodes[node.NodeID()] = node
 	}
+	// 引用键索引：缺失时重建一次
+	if m.inverseRefKeys == nil {
+		m.buildInverseRefKeys()
+	}
+	// 把本次新增节点自身的引用登记进索引
+	for _, node := range nodes {
+		src := node.NodeID()
+		for _, r := range node.References() {
+			target := ua.ToNodeID(r.TargetID, m.namespaces)
+			m.inverseRefKeys[inverseRefKeyT{r.ReferenceTypeID, target, src, r.IsInverse}] = struct{}{}
+		}
+	}
 	// then, add all the inverse references
+	//
+	// 原实现为判重线性扫描父节点的全部引用，父节点引用数随子节点增长，
+	// 整体退化为 O(n^2)（实测 100 万点位下建号要几分钟甚至更久）。
+	// 这里改用 inverseRefKeys 做 O(1) 判重。
 	for _, node := range nodes {
 		id := node.NodeID()
-		// for each reference
 		for _, r := range node.References() {
 			if r.ReferenceTypeID == ua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == ua.ReferenceTypeIDHasModellingRule {
 				continue
 			}
-			// if target node exists
 			if t, ok := m.nodes[ua.ToNodeID(r.TargetID, m.namespaces)]; ok {
-				// check if inverse reference exists
-				flag := false
-				for _, tr := range t.References() {
-					if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && ua.ToNodeID(tr.TargetID, m.namespaces) == id {
-						flag = true
-						break
-					}
-				}
-				// if inverse reference does not exist, add it
-				if !flag {
-					// log.Printf("Adding reference source: %s, target: %s, type: %s, isInverse: %t\n", t.NodeID(), id, r.ReferenceTypeID, !r.IsInverse)
+				key := inverseRefKeyT{r.ReferenceTypeID, id, t.NodeID(), !r.IsInverse}
+				if _, exists := m.inverseRefKeys[key]; !exists {
+					m.inverseRefKeys[key] = struct{}{}
 					inverseRef := ua.Reference{
 						ReferenceTypeID: r.ReferenceTypeID,
 						IsInverse:       !r.IsInverse,
@@ -494,6 +524,8 @@ func (m *NamespaceManager) DeleteNodes(nodes ...ua.NodeID) error {
 		// finally, delete node from namespace
 		delete(m.nodes, id)
 	}
+	// 删除节点后引用索引失效，下次 AddNodes 时重建（删除属低频操作）
+	m.inverseRefKeys = nil
 	return nil
 }
 
