@@ -106,7 +106,7 @@ type clientSecureChannel struct {
 	receivingSemaphore         sync.Mutex
 	pendingResponseCh          chan *ua.ServiceOperation
 	pendingResponses           map[uint32]*ua.ServiceOperation
-	closing                    bool
+	closing                    atomic.Bool // read by responseWorker without ch.Mutex
 	requestHandle              uint32
 	sequenceNumber             uint32
 	sendingTokenID             uint32
@@ -473,7 +473,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 func (ch *clientSecureChannel) Close(ctx context.Context) error {
 	ch.Lock()
 	defer ch.Unlock()
-	ch.closing = true
+	ch.closing.Store(true)
 	_, err := ch.Request(ctx, &ua.CloseSecureChannelRequest{})
 	if err != nil {
 		return err
@@ -488,7 +488,7 @@ func (ch *clientSecureChannel) Close(ctx context.Context) error {
 func (ch *clientSecureChannel) Abort(ctx context.Context) error {
 	ch.Lock()
 	defer ch.Unlock()
-	ch.closing = true
+	ch.closing.Store(true)
 	if ch.conn != nil {
 		ch.conn.Close()
 	}
@@ -499,7 +499,7 @@ func (ch *clientSecureChannel) Abort(ctx context.Context) error {
 func (ch *clientSecureChannel) IsClosing() bool {
 	ch.Lock()
 	defer ch.Unlock()
-	return ch.closing
+	return ch.closing.Load()
 }
 
 // sendRequest sends the service request on transport channel.
@@ -1351,7 +1351,7 @@ func (ch *clientSecureChannel) responseWorker() {
 	for {
 		res, status := ch.readResponse()
 		if status != ua.Good {
-			if ch.closing {
+			if ch.closing.Load() {
 				ch.statusCode = ua.Good
 				close(ch.closed)
 				return
