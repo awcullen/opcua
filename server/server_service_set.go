@@ -600,7 +600,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			if plainBuf.Len() > 0 {
 				binary.Read(plainBuf, binary.LittleEndian, &plainLength)
 			}
-			if plainLength < 32 || plainLength > 96 {
+			// plainLength counts the password and the 32 byte nonce. It may not claim more
+			// bytes than were decrypted, which also bounds the allocation below.
+			if plainLength < 32 || int64(plainLength) > int64(plainBuf.Len()) {
 				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
@@ -660,7 +662,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			if plainBuf.Len() > 0 {
 				binary.Read(plainBuf, binary.LittleEndian, &plainLength)
 			}
-			if plainLength < 32 || plainLength > 96 {
+			// plainLength counts the password and the 32 byte nonce. It may not claim more
+			// bytes than were decrypted, which also bounds the allocation below.
+			if plainLength < 32 || int64(plainLength) > int64(plainBuf.Len()) {
 				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{
@@ -720,7 +724,9 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			if plainBuf.Len() > 0 {
 				binary.Read(plainBuf, binary.LittleEndian, &plainLength)
 			}
-			if plainLength < 32 || plainLength > 96 {
+			// plainLength counts the password and the 32 byte nonce. It may not claim more
+			// bytes than were decrypted, which also bounds the allocation below.
+			if plainLength < 32 || int64(plainLength) > int64(plainBuf.Len()) {
 				srv.serverDiagnosticsSummary.SecurityRejectedSessionCount++
 				srv.serverDiagnosticsSummary.RejectedSessionCount++
 				srv.serverDiagnosticsSummary.SecurityRejectedRequestsCount++
