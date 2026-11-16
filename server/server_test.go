@@ -145,6 +145,51 @@ func TestOpenClientWithSecurity(t *testing.T) {
 	}
 }
 
+// TestLongPassword logs in with a password longer than 64 bytes, on every policy and mode the server offers.
+func TestLongPassword(t *testing.T) {
+	ctx := context.Background()
+	const password = "0123456789abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	if len(password) != 72 {
+		t.Fatalf("the test password is %d bytes, want 72", len(password))
+	}
+	res, err := client.GetEndpoints(ctx, &ua.GetEndpointsRequest{EndpointURL: endpointURL})
+	if err != nil {
+		t.Fatal(errors.Wrap(err, "Error calling GetEndpoints"))
+	}
+	for _, e := range res.Endpoints {
+		if e.SecurityMode == ua.MessageSecurityModeNone {
+			continue
+		}
+		ch, err := client.Dial(
+			ctx,
+			endpointURL,
+			client.WithSecurityPolicyURI(e.SecurityPolicyURI, e.SecurityMode),
+			client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
+			client.WithInsecureSkipVerify(),
+			client.WithUserNameIdentity("longpw", password),
+		)
+		if err != nil {
+			t.Errorf("%s %s: %v", e.SecurityPolicyURI, e.SecurityMode, err)
+			continue
+		}
+		if err := ch.Close(ctx); err != nil {
+			ch.Abort(ctx)
+		}
+	}
+	// A wrong password of the same length is refused as a wrong password.
+	_, err = client.Dial(
+		ctx,
+		endpointURL,
+		client.WithSecurityPolicyURI(ua.SecurityPolicyURIBasic256Sha256, ua.MessageSecurityModeSignAndEncrypt),
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
+		client.WithInsecureSkipVerify(),
+		client.WithUserNameIdentity("longpw", strings.Repeat("x", 72)),
+	)
+	if err != ua.BadUserAccessDenied {
+		t.Errorf("a wrong 72 byte password: got %v, want %v", err, ua.BadUserAccessDenied)
+	}
+}
+
 // TestReadServerStatus tests reading the server status variable.
 func TestReadServerStatus(t *testing.T) {
 	ctx := context.Background()

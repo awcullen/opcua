@@ -29,6 +29,8 @@ func NewTestServer() (*server.Server, error) {
 		{UserName: "root", Password: "secret"},
 		{UserName: "user1", Password: "password"},
 		{UserName: "user2", Password: "password1"},
+		// 72 bytes, the longest bcrypt takes, and over the 64 that a user name token used to carry.
+		{UserName: "longpw", Password: "0123456789abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
 	}
 	for i := range userids {
 		hash, _ := bcrypt.GenerateFromPassword([]byte(userids[i].Password), 8)
