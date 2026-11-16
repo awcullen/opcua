@@ -81,6 +81,7 @@ type Server struct {
 	scheduler                            *Scheduler
 	historian                            HistoryReadWriter
 	allowSecurityPolicyNone              bool
+	disabledSecurityPolicies             map[string]bool
 	anonymousIdentityAuthenticator       AnonymousIdentityAuthenticator
 	userNameIdentityAuthenticator        UserNameIdentityAuthenticator
 	x509IdentityAuthenticator            X509IdentityAuthenticator
@@ -982,12 +983,17 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		})
 	}
 
-	uris := []string{
+	uris := []string{}
+	for _, uri := range []string{
 		ua.SecurityPolicyURIBasic128Rsa15,
 		ua.SecurityPolicyURIBasic256,
 		ua.SecurityPolicyURIBasic256Sha256,
 		ua.SecurityPolicyURIAes128Sha256RsaOaep,
 		ua.SecurityPolicyURIAes256Sha256RsaPss,
+	} {
+		if !srv.disabledSecurityPolicies[uri] {
+			uris = append(uris, uri)
+		}
 	}
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
