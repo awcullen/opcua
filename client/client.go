@@ -237,7 +237,7 @@ func (ch *Client) open(ctx context.Context) error {
 	}
 
 	var localNonce, localCertificate, remoteNonce []byte
-	localNonce = getNextNonce(nonceLength)
+	localNonce = ua.GetNextNonce(nonceLength)
 	localCertificate = ch.channel.localCertificate
 
 	var createSessionRequest = &ua.CreateSessionRequest{
