@@ -1368,6 +1368,7 @@ func (ch *clientSecureChannel) renewTokenWorker() {
 		case <-tmr.C:
 
 		case <-ch.closed:
+			tmr.Stop()
 			return
 		}
 
