@@ -20,18 +20,18 @@ var (
 	// bytesPool is a pool of byte slices
 	bytesPool           = sync.Pool{New: func() any { s := make([]byte, 64*1024); return &s }}
 	typeToEncoderMap    sync.Map
-	typeDateTime        = reflect.TypeOf((*time.Time)(nil)).Elem()
-	typeGUID            = reflect.TypeOf((*uuid.UUID)(nil)).Elem()
-	typeNodeID          = reflect.TypeOf((*NodeID)(nil)).Elem()
-	typeExpandedNodeID  = reflect.TypeOf((*ExpandedNodeID)(nil)).Elem()
-	typeQualifiedName   = reflect.TypeOf((*QualifiedName)(nil)).Elem()
-	typeLocalizedText   = reflect.TypeOf((*LocalizedText)(nil)).Elem()
-	typeDataValue       = reflect.TypeOf((*DataValue)(nil)).Elem()
-	typeExtensionObject = reflect.TypeOf((*ExtensionObject)(nil)).Elem()
-	typeVariant         = reflect.TypeOf((*Variant)(nil)).Elem()
-	typeDiagnosticInfo  = reflect.TypeOf((*DiagnosticInfo)(nil)).Elem()
-	typeSliceOfByte     = reflect.TypeOf((*[]byte)(nil)).Elem()
-	nilPtr              = unsafe.Pointer(nil)
+	typeDateTime        = reflect.TypeFor[time.Time]()
+	typeGUID            = reflect.TypeFor[uuid.UUID]()
+	typeNodeID          = reflect.TypeFor[NodeID]()
+	typeExpandedNodeID  = reflect.TypeFor[ExpandedNodeID]()
+	typeQualifiedName   = reflect.TypeFor[QualifiedName]()
+	typeLocalizedText   = reflect.TypeFor[LocalizedText]()
+	typeDataValue       = reflect.TypeFor[DataValue]()
+	typeExtensionObject = reflect.TypeFor[ExtensionObject]()
+	typeVariant         = reflect.TypeFor[Variant]()
+	typeDiagnosticInfo  = reflect.TypeFor[DiagnosticInfo]()
+	// typeSliceOfByte     = reflect.TypeFor[[]byte]()
+	nilPtr = unsafe.Pointer(nil)
 )
 
 type ByteArray []byte
