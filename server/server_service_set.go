@@ -220,10 +220,10 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	}
 	session := NewSession(
 		srv,
-		ua.NewNodeIDOpaque(1, ua.ByteString(getNextNonce(15))),
+		ua.NewNodeIDOpaque(1, ua.ByteString(ua.GetNextNonce(15))),
 		sessionName,
-		ua.NewNodeIDOpaque(0, ua.ByteString(getNextNonce(nonceLength))),
-		ua.ByteString(getNextNonce(nonceLength)),
+		ua.NewNodeIDOpaque(0, ua.ByteString(ua.GetNextNonce(nonceLength))),
+		ua.ByteString(ua.GetNextNonce(nonceLength)),
 		sessionTimeout,
 		req.ClientDescription,
 		req.ServerURI,
@@ -839,7 +839,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	}
 
 	session.SetUserIdentity(userIdentity)
-	session.SetSessionNonce(ua.ByteString(getNextNonce(nonceLength)))
+	session.SetSessionNonce(ua.ByteString(ua.GetNextNonce(nonceLength)))
 	session.SetSecureChannelId(ch.ChannelID())
 	session.SetSecurityMode(ch.securityMode)
 	session.SetSecurityPolicyURI(ch.securityPolicyURI)

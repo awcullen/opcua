@@ -5,10 +5,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
@@ -280,7 +278,7 @@ func (ch *serverSecureChannel) Open() error {
 
 	ch.securityMode = oscr.SecurityMode
 	if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
-		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
+		ch.localNonce = ua.GetNextNonce(ch.securityPolicy.NonceSize())
 	} else {
 		ch.localNonce = []byte{}
 	}
@@ -1103,7 +1101,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 					ch.remoteEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
 					ch.remoteInitializationVector = make([]byte, ch.securityPolicy.SymEncryptionBlockSize())
 
-					remoteSecurityKey := calculatePSHA(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
+					remoteSecurityKey := ua.Prf(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
 					jj := copy(ch.remoteSigningKey, remoteSecurityKey)
 					jj += copy(ch.remoteEncryptingKey, remoteSecurityKey[jj:])
 					copy(ch.remoteInitializationVector, remoteSecurityKey[jj:])
@@ -1127,7 +1125,7 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 					ch.localEncryptingKey = make([]byte, ch.securityPolicy.SymEncryptionKeySize())
 					ch.localInitializationVector = make([]byte, ch.securityPolicy.SymEncryptionBlockSize())
 
-					localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
+					localSecurityKey := ua.Prf(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
 					jj := copy(ch.localSigningKey, localSecurityKey)
 					jj += copy(ch.localEncryptingKey, localSecurityKey[jj:])
 					copy(ch.localInitializationVector, localSecurityKey[jj:])
@@ -1472,7 +1470,7 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 	}
 
 	if ch.securityMode == ua.MessageSecurityModeSignAndEncrypt || ch.securityMode == ua.MessageSecurityModeSign {
-		ch.localNonce = getNextNonce(ch.securityPolicy.NonceSize())
+		ch.localNonce = ua.GetNextNonce(ch.securityPolicy.NonceSize())
 	} else {
 		ch.localNonce = []byte{}
 	}
@@ -1542,47 +1540,6 @@ func (ch *serverSecureChannel) getNextTokenID() uint32 {
 			return new
 		}
 	}
-}
-
-// getNextNonce gets next random nonce of requested length.
-func getNextNonce(length int) []byte {
-	var nonce = make([]byte, length)
-	rand.Read(nonce)
-	return nonce
-}
-
-// calculatePSHA calculates the pseudo random function.
-func calculatePSHA(secret, seed []byte, sizeBytes int, securityPolicyURI string) []byte {
-	var mac hash.Hash
-	switch securityPolicyURI {
-	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
-		mac = hmac.New(sha1.New, secret)
-
-	default:
-		mac = hmac.New(sha256.New, secret)
-	}
-	size := mac.Size()
-	output := make([]byte, sizeBytes)
-	a := seed
-	iterations := (sizeBytes + size - 1) / size
-	for i := 0; i < iterations; i++ {
-		mac.Reset()
-		mac.Write(a)
-		buf := mac.Sum(nil)
-		a = buf
-		mac.Reset()
-		mac.Write(a)
-		mac.Write(seed)
-		buf2 := mac.Sum(nil)
-		m := size * i
-		n := sizeBytes - m
-		if n > size {
-			n = size
-		}
-		copy(output[m:m+n], buf2)
-	}
-
-	return output
 }
 
 // Read receives a chunk from the remote endpoint.

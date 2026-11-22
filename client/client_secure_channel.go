@@ -8,10 +8,8 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
@@ -104,11 +102,11 @@ type clientSecureChannel struct {
 	statusCode                 ua.StatusCode
 	sendingSemaphore           sync.Mutex
 	receivingSemaphore         sync.Mutex
-	pendingResponseCh          chan *ua.ServiceOperation
+	pendingResponsesLock       sync.Mutex
 	pendingResponses           map[uint32]*ua.ServiceOperation
 	closing                    bool
-	requestHandle              uint32
-	sequenceNumber             uint32
+	requestHandle              atomic.Uint32
+	sequenceNumber             atomic.Uint32
 	sendingTokenID             uint32
 	receivingTokenID           uint32
 	localSigningKey            []byte
@@ -243,7 +241,9 @@ func (ch *clientSecureChannel) Request(ctx context.Context, req ua.ServiceReques
 		header.TimeoutHint = defaultTimeoutHint
 	}
 	var operation = ua.NewServiceOperation(req, make(chan ua.ServiceResponse, 1))
-	ch.pendingResponseCh <- operation
+	ch.pendingResponsesLock.Lock()
+	ch.pendingResponses[header.RequestHandle] = operation
+	ch.pendingResponsesLock.Unlock()
 	ctx, cancel := context.WithDeadline(ctx, header.Timestamp.Add(time.Duration(header.TimeoutHint)*time.Millisecond))
 	err := ch.sendRequest(ctx, operation)
 	if err != nil {
@@ -433,7 +433,6 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		ch.remotePublicKeySize = ch.remotePublicKey.Size()
 	}
 
-	ch.pendingResponseCh = make(chan *ua.ServiceOperation, 32)
 	ch.pendingResponses = make(map[uint32]*ua.ServiceOperation)
 	ch.closed = make(chan struct{})
 	ch.channelID = 0
@@ -447,7 +446,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		ClientProtocolVersion: protocolVersion,
 		RequestType:           ua.SecurityTokenRequestTypeIssue,
 		SecurityMode:          ch.securityMode,
-		ClientNonce:           ua.ByteString(getNextNonce(ch.securityPolicy.NonceSize())),
+		ClientNonce:           ua.ByteString(ua.GetNextNonce(ch.securityPolicy.NonceSize())),
 		RequestedLifetime:     ch.tokenRequestedLifetime,
 	}
 	res, err := ch.Request(ctx, request)
@@ -460,12 +459,15 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 	}
 
 	ch.tokenLock.Lock()
-	ch.tokenRenewalTime = time.Now().Add(time.Duration(response.SecurityToken.RevisedLifetime*75/100) * time.Millisecond)
 	ch.channelID = response.SecurityToken.ChannelID
 	ch.tokenID = response.SecurityToken.TokenID
 	ch.localNonce = []byte(request.ClientNonce)
 	ch.remoteNonce = []byte(response.ServerNonce)
+	ch.tokenRenewalTime = time.Now().Add(time.Duration(response.SecurityToken.RevisedLifetime*3/4) * time.Millisecond)
 	ch.tokenLock.Unlock()
+
+	go ch.renewTokenWorker()
+
 	return nil
 }
 
@@ -504,12 +506,6 @@ func (ch *clientSecureChannel) IsClosing() bool {
 
 // sendRequest sends the service request on transport channel.
 func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *ua.ServiceOperation) error {
-	// Check if time to renew security token.
-	if !ch.tokenRenewalTime.IsZero() && time.Now().After(ch.tokenRenewalTime) {
-		ch.tokenRenewalTime = ch.tokenRenewalTime.Add(60000 * time.Millisecond)
-		ch.renewToken(ctx)
-	}
-
 	ch.sendingSemaphore.Lock()
 	defer ch.sendingSemaphore.Unlock()
 
@@ -546,7 +542,7 @@ func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *ua.ServiceOp
 }
 
 // sendOpenSecureChannelRequest sends open secure channel service request on transport channel.
-func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context, request *ua.OpenSecureChannelRequest) error {
+func (ch *clientSecureChannel) sendOpenSecureChannelRequest(_ context.Context, request *ua.OpenSecureChannelRequest) error {
 	var bodyStream = buffer.NewPartitionAt(ch.bufferPool)
 	defer bodyStream.Reset()
 
@@ -741,7 +737,7 @@ func (ch *clientSecureChannel) sendOpenSecureChannelRequest(ctx context.Context,
 }
 
 // sendCloseSecureChannelRequest sends the close secure channel request on transport channel.
-func (ch *clientSecureChannel) sendCloseSecureChannelRequest(ctx context.Context, request ua.ServiceRequest) error {
+func (ch *clientSecureChannel) sendCloseSecureChannelRequest(_ context.Context, request ua.ServiceRequest) error {
 	var bodyStream = buffer.NewPartitionAt(ch.bufferPool)
 	defer bodyStream.Reset()
 
@@ -838,7 +834,7 @@ func (ch *clientSecureChannel) sendCloseSecureChannelRequest(ctx context.Context
 			switch ch.securityMode {
 			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 				// (re)create security keys for signing, encrypting
-				localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
+				localSecurityKey := ua.Prf(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
 				jj := copy(ch.localSigningKey, localSecurityKey)
 				jj += copy(ch.localEncryptingKey, localSecurityKey[jj:])
 				copy(ch.localInitializationVector, localSecurityKey[jj:])
@@ -908,7 +904,7 @@ func (ch *clientSecureChannel) sendCloseSecureChannelRequest(ctx context.Context
 }
 
 // sendServiceRequest sends the service request on transport channel.
-func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request ua.ServiceRequest) error {
+func (ch *clientSecureChannel) sendServiceRequest(_ context.Context, request ua.ServiceRequest) error {
 	var bodyStream = buffer.NewPartitionAt(ch.bufferPool)
 	defer bodyStream.Reset()
 
@@ -1277,7 +1273,7 @@ func (ch *clientSecureChannel) sendServiceRequest(ctx context.Context, request u
 			switch ch.securityMode {
 			case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 				// (re)create security keys for signing, encrypting
-				localSecurityKey := calculatePSHA(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
+				localSecurityKey := ua.Prf(ch.remoteNonce, ch.localNonce, len(ch.localSigningKey)+len(ch.localEncryptingKey)+len(ch.localInitializationVector), ch.securityPolicyURI)
 				jj := copy(ch.localSigningKey, localSecurityKey)
 				jj += copy(ch.localEncryptingKey, localSecurityKey[jj:])
 				copy(ch.localInitializationVector, localSecurityKey[jj:])
@@ -1364,6 +1360,41 @@ func (ch *clientSecureChannel) responseWorker() {
 	}
 }
 
+// renewTokenWorker starts a task to renew security token.
+func (ch *clientSecureChannel) renewTokenWorker() {
+	for {
+		tmr := time.NewTimer(time.Until(ch.tokenRenewalTime))
+		select {
+		case <-tmr.C:
+
+		case <-ch.closed:
+			tmr.Stop()
+			return
+		}
+
+		request := &ua.OpenSecureChannelRequest{
+			ClientProtocolVersion: protocolVersion,
+			RequestType:           ua.SecurityTokenRequestTypeRenew,
+			SecurityMode:          ch.securityMode,
+			ClientNonce:           ua.ByteString(ua.GetNextNonce(ch.securityPolicy.NonceSize())),
+			RequestedLifetime:     ch.tokenRequestedLifetime,
+		}
+		res, err := ch.Request(context.Background(), request)
+		if err != nil {
+
+			return
+		}
+		response := res.(*ua.OpenSecureChannelResponse)
+
+		ch.tokenLock.Lock()
+		ch.tokenID = response.SecurityToken.TokenID
+		ch.localNonce = []byte(request.ClientNonce)
+		ch.remoteNonce = []byte(response.ServerNonce)
+		ch.tokenRenewalTime = time.Now().Add(time.Duration(response.SecurityToken.RevisedLifetime*3/4) * time.Millisecond)
+		ch.tokenLock.Unlock()
+	}
+}
+
 // readResponse receives next service response from transport channel.
 func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, ua.StatusCode) {
 	ch.receivingSemaphore.Lock()
@@ -1432,14 +1463,18 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, ua.StatusCode
 			}
 
 			// detect new token
-			ch.tokenLock.RLock()
 			if tokenID != ch.receivingTokenID {
+				ch.tokenLock.RLock()
+				if ch.tokenID != tokenID {
+					ch.tokenLock.RUnlock()
+					return nil, ua.BadSecurityChecksFailed
+				}
 				ch.receivingTokenID = tokenID
 
 				switch ch.securityMode {
 				case ua.MessageSecurityModeSignAndEncrypt, ua.MessageSecurityModeSign:
 					// (re)create remote security keys for verifying, decrypting
-					remoteSecurityKey := calculatePSHA(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
+					remoteSecurityKey := ua.Prf(ch.localNonce, ch.remoteNonce, len(ch.remoteSigningKey)+len(ch.remoteEncryptingKey)+len(ch.remoteInitializationVector), ch.securityPolicyURI)
 					jj := copy(ch.remoteSigningKey, remoteSecurityKey)
 					jj += copy(ch.remoteEncryptingKey, remoteSecurityKey[jj:])
 					copy(ch.remoteInitializationVector, remoteSecurityKey[jj:])
@@ -1450,8 +1485,8 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, ua.StatusCode
 						ch.symDecryptingBlockCipher, _ = aes.NewCipher(ch.remoteEncryptingKey)
 					}
 				}
+				ch.tokenLock.RUnlock()
 			}
-			ch.tokenLock.RUnlock()
 
 			plainHeaderSize = 16
 			// decrypt
@@ -1732,7 +1767,8 @@ func (ch *clientSecureChannel) readResponse() (ua.ServiceResponse, ua.StatusCode
 
 // handleResponse directs the response to the correct handler.
 func (ch *clientSecureChannel) handleResponse(res ua.ServiceResponse) error {
-	ch.mapPendingResponses()
+	ch.pendingResponsesLock.Lock()
+	defer ch.pendingResponsesLock.Unlock()
 	hnd := res.Header().RequestHandle
 	if op, ok := ch.pendingResponses[hnd]; ok {
 		delete(ch.pendingResponses, hnd)
@@ -1746,88 +1782,16 @@ func (ch *clientSecureChannel) handleResponse(res ua.ServiceResponse) error {
 	return ua.BadUnknownResponse
 }
 
-// mapPendingResponses maps operations coming from pendingResponseCh.
-func (ch *clientSecureChannel) mapPendingResponses() {
-	for {
-		select {
-		case op := <-ch.pendingResponseCh:
-			ch.pendingResponses[op.Request().Header().RequestHandle] = op
-		default:
-			return
-		}
-	}
-}
-
-// renewToken sends request to renew security token.
-func (ch *clientSecureChannel) renewToken(ctx context.Context) error {
-	request := &ua.OpenSecureChannelRequest{
-		ClientProtocolVersion: protocolVersion,
-		RequestType:           ua.SecurityTokenRequestTypeRenew,
-		SecurityMode:          ch.securityMode,
-		ClientNonce:           ua.ByteString(getNextNonce(ch.securityPolicy.NonceSize())),
-		RequestedLifetime:     ch.tokenRequestedLifetime,
-	}
-	res, err := ch.Request(ctx, request)
-	if err != nil {
-		return err
-	}
-	response := res.(*ua.OpenSecureChannelResponse)
-	if response.ServerProtocolVersion < protocolVersion {
-		return ua.BadProtocolVersionUnsupported
-	}
-
-	ch.tokenLock.Lock()
-	ch.tokenRenewalTime = time.Now().Add(time.Duration(response.SecurityToken.RevisedLifetime*75/100) * time.Millisecond)
-	// ch.channelId = response.ua.SecurityToken.ChannelID
-	ch.tokenID = response.SecurityToken.TokenID
-	ch.localNonce = []byte(request.ClientNonce)
-	ch.remoteNonce = []byte(response.ServerNonce)
-	ch.tokenLock.Unlock()
-	return nil
-}
-
-// calculatePSHA calculates the pseudo random function.
-func calculatePSHA(secret, seed []byte, sizeBytes int, securityPolicyURI string) []byte {
-	var mac hash.Hash
-	switch securityPolicyURI {
-	case ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256:
-		mac = hmac.New(sha1.New, secret)
-	default:
-		mac = hmac.New(sha256.New, secret)
-	}
-	size := mac.Size()
-	output := make([]byte, sizeBytes)
-	a := seed
-	iterations := (sizeBytes + size - 1) / size
-	for i := 0; i < iterations; i++ {
-		mac.Reset()
-		mac.Write(a)
-		buf := mac.Sum(nil)
-		a = buf
-		mac.Reset()
-		mac.Write(a)
-		mac.Write(seed)
-		buf2 := mac.Sum(nil)
-		m := size * i
-		n := sizeBytes - m
-		if n > size {
-			n = size
-		}
-		copy(output[m:m+n], buf2)
-	}
-	return output
-}
-
 // getNextRequestHandle gets next RequestHandle in sequence, skipping zero.
 func (ch *clientSecureChannel) getNextRequestHandle() uint32 {
 	for {
-		old := atomic.LoadUint32(&ch.requestHandle)
+		old := ch.requestHandle.Load()
 		new := old
 		if new == math.MaxUint32 {
 			new = 0
 		}
 		new++
-		if atomic.CompareAndSwapUint32(&ch.requestHandle, old, new) {
+		if ch.requestHandle.CompareAndSwap(old, new) {
 			return new
 		}
 	}
@@ -1836,23 +1800,16 @@ func (ch *clientSecureChannel) getNextRequestHandle() uint32 {
 // getNextSequenceNumber gets next SequenceNumber in sequence, skipping zero.
 func (ch *clientSecureChannel) getNextSequenceNumber() uint32 {
 	for {
-		old := atomic.LoadUint32(&ch.sequenceNumber)
+		old := ch.sequenceNumber.Load()
 		new := old
 		if new == math.MaxUint32 {
 			new = 0
 		}
 		new++
-		if atomic.CompareAndSwapUint32(&ch.sequenceNumber, old, new) {
+		if ch.sequenceNumber.CompareAndSwap(old, new) {
 			return new
 		}
 	}
-}
-
-// getNextNonce gets next random nonce of requested length.
-func getNextNonce(length int) []byte {
-	var nonce = make([]byte, length)
-	rand.Read(nonce)
-	return nonce
 }
 
 // Write sends a chunk to the remote endpoint.
