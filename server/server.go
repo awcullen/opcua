@@ -30,6 +30,8 @@ const (
 	defaultMaxSubscriptionCount uint32 = 0
 	// the default number of worker threads that may be created.
 	defaultMaxWorkerThreads int = 4
+	// the default time to wait for Hello on an incoming connection.
+	defaultHelloTimeout = 20 * time.Second
 	// the length of nonce in bytes.
 	nonceLength int = 32
 )
@@ -63,6 +65,7 @@ type Server struct {
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
 	maxWorkerThreads                     int
+	helloTimeout                         time.Duration
 	serverDiagnostics                    bool
 	trace                                bool
 	localCertificate                     []byte
@@ -110,6 +113,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		maxMessageSize:                     defaultMaxMessageSize,
 		maxChunkCount:                      defaultMaxChunkCount,
 		maxWorkerThreads:                   defaultMaxWorkerThreads,
+		helloTimeout:                       defaultHelloTimeout,
 		serverDiagnostics:                  true,
 		trace:                              false,
 		closing:                            make(chan struct{}),
