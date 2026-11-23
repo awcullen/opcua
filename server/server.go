@@ -21,7 +21,7 @@ import (
 
 const (
 	// the minimum number of milliseconds that a session may be unused before being closed by the server. (2 min)
-	minSessionTimeout float64 = 10 * 1000
+	minSessionTimeout float64 = 120 * 1000
 	// the maximum number of milliseconds that a session may be unused before being closed by the server. (60 min)
 	maxSessionTimeout float64 = 3600 * 1000
 	// the default number of sessions that may be active. (no limit)
