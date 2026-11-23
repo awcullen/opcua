@@ -12,7 +12,7 @@ import (
 )
 
 func TestWithHelloTimeoutRejectsNonPositive(t *testing.T) {
-	for _, d := range []time.Duration{0, -time.Second} {
+	for _, d := range []uint32{0, 121 * 1000} {
 		if err := WithHelloTimeout(d)(&Server{}); err != ua.BadInvalidArgument {
 			t.Errorf("%v: expected %v, got %v", d, ua.BadInvalidArgument, err)
 		}
@@ -31,7 +31,7 @@ func TestHelloTimeoutClosesIdleConnection(t *testing.T) {
 		"./pki/server.crt",
 		"./pki/server.key",
 		"opc.tcp://"+addr,
-		WithHelloTimeout(200*time.Millisecond),
+		WithHelloTimeout(200),
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -3,8 +3,6 @@
 package server
 
 import (
-	"time"
-
 	"github.com/awcullen/opcua/ua"
 )
 
@@ -101,10 +99,10 @@ func WithMaxWorkerThreads(value int) Option {
 	}
 }
 
-// WithHelloTimeout sets how long an incoming connection may wait for Hello and OpenSecureChannel before it is closed. (default: 20s)
-func WithHelloTimeout(value time.Duration) Option {
+// WithHelloTimeout sets the number of milliseconds to wait for Hello on an incoming connection. (default: 20 s)
+func WithHelloTimeout(value uint32) Option {
 	return func(srv *Server) error {
-		if value <= 0 {
+		if value == 0 || value > 120*1000 {
 			return ua.BadInvalidArgument
 		}
 		srv.helloTimeout = value
