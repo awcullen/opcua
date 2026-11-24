@@ -94,7 +94,7 @@ func WithSessionName(value string) Option {
 // DEPRECIATED. Use WithSessionTimeoutDuration().
 func WithSessionTimeout(value float64) Option {
 	return func(c *Client) error {
-		c.sessionTimeout = time.Duration(int64(value) * int64(time.Millisecond))
+		c.sessionTimeout = value
 		return nil
 	}
 }
@@ -102,7 +102,7 @@ func WithSessionTimeout(value float64) Option {
 // WithSessionTimeoutDuration sets the duration that a session may be unused before being closed by the server. (default: 2 minutes)
 func WithSessionTimeoutDuration(value time.Duration) Option {
 	return func(c *Client) error {
-		c.sessionTimeout = value
+		c.sessionTimeout = float64(value.Milliseconds())
 		return nil
 	}
 }
@@ -200,7 +200,7 @@ func WithInsecureSkipVerify() Option {
 // DEPRECIATED. Use WithTimeoutHintDuration().
 func WithTimeoutHint(value uint32) Option {
 	return func(c *Client) error {
-		c.timeoutHint = time.Duration(int64(value) * int64(time.Millisecond))
+		c.timeoutHint = value
 		return nil
 	}
 }
@@ -208,12 +208,13 @@ func WithTimeoutHint(value uint32) Option {
 // WithTimeoutHintDuration sets the default duration to wait before the ServiceRequest is cancelled. (default: 15 seconds)
 func WithTimeoutHintDuration(value time.Duration) Option {
 	return func(c *Client) error {
-		c.timeoutHint = value
+		c.timeoutHint = uint32(value.Milliseconds())
 		return nil
 	}
 }
 
 // WithDiagnosticsHint sets the default diagnostic hint that is sent in a request. (default: None)
+// DEPRECIATED.
 func WithDiagnosticsHint(value uint32) Option {
 	return func(c *Client) error {
 		c.diagnosticsHint = value
@@ -225,7 +226,7 @@ func WithDiagnosticsHint(value uint32) Option {
 // DEPRECIATED. Use WithTokenLifetimeDuration().
 func WithTokenLifetime(value uint32) Option {
 	return func(c *Client) error {
-		c.tokenLifetime = time.Duration(int64(value) * int64(time.Millisecond))
+		c.requestedLifetime = value
 		return nil
 	}
 }
@@ -233,7 +234,7 @@ func WithTokenLifetime(value uint32) Option {
 // WithTokenLifetimeDuration sets the requested duration before a security token is renewed. (default: 60 minutes)
 func WithTokenLifetimeDuration(value time.Duration) Option {
 	return func(c *Client) error {
-		c.tokenLifetime = value
+		c.requestedLifetime = uint32(value.Milliseconds())
 		return nil
 	}
 }

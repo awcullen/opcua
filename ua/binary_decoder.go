@@ -36,7 +36,7 @@ type decoderFunc func(*BinaryDecoder, unsafe.Pointer) error
 // Decode decodes the value using the UA Binary protocol.
 func (dec *BinaryDecoder) Decode(v any) error {
 	typ := reflect.TypeOf(v)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	ptr := ((*interfaceHeader)(unsafe.Pointer(&v))).ptr
@@ -93,7 +93,7 @@ func getDecoder(typ reflect.Type) (decoderFunc, error) {
 		default:
 			return getSliceDecoder(typ)
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		typ = typ.Elem()
 		return getStructPtrDecoder(typ)
 	case reflect.Interface:

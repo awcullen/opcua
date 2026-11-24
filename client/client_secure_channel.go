@@ -30,16 +30,16 @@ import (
 )
 
 const (
-	// defaultTimeoutHint is the duration before a request is cancelled.
-	defaultTimeoutHint time.Duration = 15 * time.Second
-	// defaultDiagnosticsHint is the default diagnostic hint that is sent in a request. (None)
+	// defaultTimeoutHint is the default number of milliseconds before a request is cancelled.
+	defaultTimeoutHint uint32 = 15 * 1000
+	// defaultDiagnosticsHint is the default diagnostic hint that is sent in a request.
 	defaultDiagnosticsHint uint32 = 0x00000000
-	// defaultTokenRequestedLifetime is the default duration before a security token is expired.
-	defaultTokenRequestedLifetime time.Duration = 60 * time.Minute
+	// defaultRequestedLifetime is the default number of milliseconds before a security token is expired.
+	defaultRequestedLifetime uint32 = 3600 * 1000
 	// defaultConnectTimeout is the default duration to wait for a connection response.
 	defaultConnectTimeout time.Duration = 15 * time.Second
-	// defaultSessionTimeout the default duration that the session will remain open without activity.
-	defaultSessionTimeout time.Duration = 2 * time.Minute
+	// defaultSessionTimeout the default number of milliseconds that the session will remain open without activity.
+	defaultSessionTimeout float64 = 120 * 1000
 	// protocolVersion documents the version of binary protocol that this library supports.
 	protocolVersion uint32 = 0
 	// defaultMaxBufferSize is the default limit on the size of the send and receive buffers.
@@ -58,9 +58,9 @@ const (
 type clientSecureChannel struct {
 	sync.RWMutex
 	localDescription                     ua.ApplicationDescription
-	timeoutHint                          time.Duration
+	timeoutHint                          uint32
 	diagnosticsHint                      uint32
-	tokenRequestedLifetime               time.Duration
+	requestedLifetime                    uint32
 	endpointURL                          string
 	receiveBufferSize                    uint32
 	sendBufferSize                       uint32
@@ -79,50 +79,47 @@ type clientSecureChannel struct {
 	suppressCertificateExpired           bool
 	suppressCertificateChainIncomplete   bool
 	suppressCertificateRevocationUnknown bool
-	//
-	localCertificate           []byte
-	remoteCertificate          []byte
-	localPrivateKey            *rsa.PrivateKey
-	remotePublicKey            *rsa.PublicKey
-	localPrivateKeySize        int
-	remotePublicKeySize        int
-	remoteThumbprint           [20]byte
-	localNonce                 []byte
-	remoteNonce                []byte
-	channelID                  uint32
-	tokenID                    uint32
-	tokenLock                  sync.RWMutex
-	authenticationToken        ua.NodeID
-	securityPolicyURI          string
-	securityPolicy             ua.SecurityPolicy
-	securityMode               ua.MessageSecurityMode
-	namespaceURIs              []string
-	serverURIs                 []string
-	closed                     chan struct{}
-	statusCode                 ua.StatusCode
-	sendingSemaphore           sync.Mutex
-	receivingSemaphore         sync.Mutex
-	pendingResponsesLock       sync.Mutex
-	pendingResponses           map[uint32]*ua.ServiceOperation
-	closing                    atomic.Bool
-	requestHandle              atomic.Uint32
-	sequenceNumber             atomic.Uint32
-	sendingTokenID             uint32
-	receivingTokenID           uint32
-	localSigningKey            []byte
-	localEncryptingKey         []byte
-	localInitializationVector  []byte
-	remoteSigningKey           []byte
-	remoteEncryptingKey        []byte
-	remoteInitializationVector []byte
-	tokenRenewalTime           time.Time
-	symSignHMAC                hash.Hash
-	symVerifyHMAC              hash.Hash
-	symEncryptingBlockCipher   cipher.Block
-	symDecryptingBlockCipher   cipher.Block
-	bytesPool                  sync.Pool
-	bufferPool                 buffer.PoolAt
-	trace                      bool
+	localCertificate                     []byte
+	remoteCertificate                    []byte
+	localPrivateKey                      *rsa.PrivateKey
+	remotePublicKey                      *rsa.PublicKey
+	localPrivateKeySize                  int
+	remotePublicKeySize                  int
+	remoteThumbprint                     [20]byte
+	localNonce                           []byte
+	remoteNonce                          []byte
+	channelID                            uint32
+	tokenID                              uint32
+	tokenLock                            sync.RWMutex
+	authenticationToken                  ua.NodeID
+	securityPolicyURI                    string
+	securityPolicy                       ua.SecurityPolicy
+	securityMode                         ua.MessageSecurityMode
+	namespaceURIs                        []string
+	serverURIs                           []string
+	closed                               chan struct{}
+	sendingSemaphore                     sync.Mutex
+	receivingSemaphore                   sync.Mutex
+	pendingResponsesLock                 sync.Mutex
+	pendingResponses                     map[uint32]*ua.ServiceOperation
+	requestHandle                        atomic.Uint32
+	sequenceNumber                       atomic.Uint32
+	sendingTokenID                       uint32
+	receivingTokenID                     uint32
+	localSigningKey                      []byte
+	localEncryptingKey                   []byte
+	localInitializationVector            []byte
+	remoteSigningKey                     []byte
+	remoteEncryptingKey                  []byte
+	remoteInitializationVector           []byte
+	tokenRenewalTime                     time.Time
+	symSignHMAC                          hash.Hash
+	symVerifyHMAC                        hash.Hash
+	symEncryptingBlockCipher             cipher.Block
+	symDecryptingBlockCipher             cipher.Block
+	bytesPool                            sync.Pool
+	bufferPool                           buffer.PoolAt
+	trace                                bool
 }
 
 // newClientSecureChannel initializes a new instance of the secure channel.
@@ -144,9 +141,9 @@ func newClientSecureChannel(
 	suppressCertificateExpired bool,
 	suppressCertificateChainIncomplete bool,
 	suppressCertificateRevocationUnknown bool,
-	timeoutHint time.Duration,
+	timeoutHint uint32,
 	diagnosticsHint uint32,
-	tokenLifetime time.Duration,
+	tokenLifetime uint32,
 	maxBufferSize uint32,
 	maxMessageSize uint32,
 	maxChunkCount uint32,
@@ -175,7 +172,7 @@ func newClientSecureChannel(
 		suppressCertificateRevocationUnknown: suppressCertificateRevocationUnknown,
 		timeoutHint:                          timeoutHint,
 		diagnosticsHint:                      diagnosticsHint,
-		tokenRequestedLifetime:               tokenLifetime,
+		requestedLifetime:                    tokenLifetime,
 		receiveBufferSize:                    maxBufferSize,
 		sendBufferSize:                       maxBufferSize,
 		maxResponseMessageSize:               maxMessageSize,
@@ -234,18 +231,18 @@ func (ch *clientSecureChannel) SetServerURIs(value []string) {
 // Request sends a service request to the server and returns the response.
 func (ch *clientSecureChannel) Request(ctx context.Context, req ua.ServiceRequest) (ua.ServiceResponse, error) {
 	header := req.Header()
+	header.AuthenticationToken = ch.authenticationToken
 	header.Timestamp = time.Now()
 	header.RequestHandle = ch.getNextRequestHandle()
-	header.AuthenticationToken = ch.authenticationToken
 	if header.TimeoutHint == 0 {
-		header.TimeoutHint = uint32(defaultTimeoutHint.Milliseconds())
+		header.TimeoutHint = ch.timeoutHint
 	}
 	var operation = ua.NewServiceOperation(req, make(chan ua.ServiceResponse, 1))
 	ch.pendingResponsesLock.Lock()
 	ch.pendingResponses[header.RequestHandle] = operation
 	ch.pendingResponsesLock.Unlock()
 	ctx, cancel := context.WithDeadline(ctx, header.Timestamp.Add(time.Duration(int64(header.TimeoutHint)*int64(time.Millisecond))))
-	err := ch.sendRequest(ctx, operation)
+	err := ch.sendRequest(ctx, req)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -447,7 +444,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		RequestType:           ua.SecurityTokenRequestTypeIssue,
 		SecurityMode:          ch.securityMode,
 		ClientNonce:           ua.ByteString(ua.GetNextNonce(ch.securityPolicy.NonceSize())),
-		RequestedLifetime:     uint32(ch.tokenRequestedLifetime.Milliseconds()),
+		RequestedLifetime:     ch.requestedLifetime,
 	}
 	res, err := ch.Request(ctx, request)
 	if err != nil {
@@ -475,8 +472,15 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 func (ch *clientSecureChannel) Close(ctx context.Context) error {
 	ch.Lock()
 	defer ch.Unlock()
-	ch.closing.Store(true)
-	_, err := ch.Request(ctx, &ua.CloseSecureChannelRequest{})
+
+	req := &ua.CloseSecureChannelRequest{
+		RequestHeader: ua.RequestHeader{
+			Timestamp:     time.Now(),
+			RequestHandle: ch.getNextRequestHandle(),
+			TimeoutHint:   ch.timeoutHint,
+		},
+	}
+	err := ch.sendRequest(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -490,26 +494,17 @@ func (ch *clientSecureChannel) Close(ctx context.Context) error {
 func (ch *clientSecureChannel) Abort(ctx context.Context) error {
 	ch.Lock()
 	defer ch.Unlock()
-	ch.closing.Store(true)
+
 	if ch.conn != nil {
 		ch.conn.Close()
 	}
 	return nil
 }
 
-// IsClosing returns true when the channel is closing.
-func (ch *clientSecureChannel) IsClosing() bool {
-	ch.Lock()
-	defer ch.Unlock()
-	return ch.closing.Load()
-}
-
 // sendRequest sends the service request on transport channel.
-func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *ua.ServiceOperation) error {
+func (ch *clientSecureChannel) sendRequest(ctx context.Context, req ua.ServiceRequest) error {
 	ch.sendingSemaphore.Lock()
 	defer ch.sendingSemaphore.Unlock()
-
-	req := op.Request()
 
 	if ch.trace {
 		b, _ := json.MarshalIndent(req, "", " ")
@@ -526,11 +521,6 @@ func (ch *clientSecureChannel) sendRequest(ctx context.Context, op *ua.ServiceOp
 		err := ch.sendCloseSecureChannelRequest(ctx, req)
 		if err != nil {
 			return err
-		}
-		// send a success response to ourselves (the server will just close it's socket).
-		select {
-		case op.ResponseCh() <- &ua.CloseSecureChannelResponse{ResponseHeader: ua.ResponseHeader{RequestHandle: req.RequestHandle, Timestamp: time.Now()}}:
-		default:
 		}
 	default:
 		err := ch.sendServiceRequest(ctx, req)
@@ -1347,12 +1337,6 @@ func (ch *clientSecureChannel) responseWorker() {
 	for {
 		res, status := ch.readResponse()
 		if status != ua.Good {
-			if ch.closing.Load() {
-				ch.statusCode = ua.Good
-				close(ch.closed)
-				return
-			}
-			ch.statusCode = status
 			close(ch.closed)
 			return
 		}
@@ -1377,7 +1361,7 @@ func (ch *clientSecureChannel) renewTokenWorker() {
 			RequestType:           ua.SecurityTokenRequestTypeRenew,
 			SecurityMode:          ch.securityMode,
 			ClientNonce:           ua.ByteString(ua.GetNextNonce(ch.securityPolicy.NonceSize())),
-			RequestedLifetime:     uint32(ch.tokenRequestedLifetime.Milliseconds()),
+			RequestedLifetime:     ch.requestedLifetime,
 		}
 		res, err := ch.Request(context.Background(), request)
 		if err != nil {

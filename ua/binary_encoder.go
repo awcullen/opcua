@@ -64,7 +64,7 @@ func NewBinaryEncoder(w io.Writer, ec EncodingContext) *BinaryEncoder {
 // Encode encodes the value using the UA Binary protocol.
 func (enc *BinaryEncoder) Encode(v any) error {
 	typ := reflect.TypeOf(v)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	ptr := ((*interfaceHeader)(unsafe.Pointer(&v))).ptr
@@ -128,7 +128,7 @@ func getEncoder(typ reflect.Type) (encoderFunc, error) {
 		default:
 			return getSliceEncoder(typ)
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		typ = typ.Elem()
 		return getStructPtrEncoder(typ)
 	case reflect.Interface:
@@ -776,7 +776,7 @@ func (enc *BinaryEncoder) WriteExtensionObject(value ExtensionObject) error {
 	}
 	// lookup encoding id
 	typ := reflect.TypeOf(value)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	id, ok := FindBinaryEncodingIDForType(typ)

@@ -36,7 +36,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		securityPolicyURI: ua.SecurityPolicyURIBestAvailable,
 		timeoutHint:       defaultTimeoutHint,
 		diagnosticsHint:   defaultDiagnosticsHint,
-		tokenLifetime:     defaultTokenRequestedLifetime,
+		requestedLifetime: defaultRequestedLifetime,
 		connectTimeout:    defaultConnectTimeout,
 		maxBufferSize:     defaultMaxBufferSize,
 		maxMessageSize:    defaultMaxMessageSize,
@@ -137,7 +137,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		cli.suppressCertificateRevocationUnknown,
 		cli.timeoutHint,
 		cli.diagnosticsHint,
-		cli.tokenLifetime,
+		cli.requestedLifetime,
 		cli.maxBufferSize,
 		cli.maxMessageSize,
 		cli.maxChunkCount,
@@ -166,13 +166,13 @@ type Client struct {
 	sessionID                            ua.NodeID
 	sessionName                          string
 	applicationName                      string
-	sessionTimeout                       time.Duration
+	sessionTimeout                       float64
 	clientSignature                      ua.SignatureData
 	identityToken                        any
 	identityTokenSignature               ua.SignatureData
-	timeoutHint                          time.Duration
+	timeoutHint                          uint32
 	diagnosticsHint                      uint32
-	tokenLifetime                        time.Duration
+	requestedLifetime                    uint32
 	localCertificate                     []byte
 	localPrivateKey                      *rsa.PrivateKey
 	trustedCertsPath                     string
@@ -213,17 +213,12 @@ func (ch *Client) SessionID() ua.NodeID {
 
 // SessionTimeout gets the maximum duration that the session will remain open without activity.
 func (ch *Client) SessionTimeout() time.Duration {
-	return ch.sessionTimeout
+	return time.Duration(float64(ch.sessionTimeout) * float64(time.Millisecond))
 }
 
 // MaxRequestMessageSize gets the maximum size for the body of any request message. Zero equals no limit.
 func (ch *Client) MaxRequestMessageSize() uint32 {
 	return ch.channel.maxRequestMessageSize
-}
-
-// IsClosing returns true when the client is closing.
-func (ch *Client) IsClosing() bool {
-	return ch.channel.IsClosing()
 }
 
 // Request sends a service request to the server and returns the response.
@@ -247,7 +242,7 @@ func (ch *Client) open(ctx context.Context) error {
 		SessionName:             ch.sessionName,
 		ClientNonce:             ua.ByteString(localNonce),
 		ClientCertificate:       ua.ByteString(localCertificate),
-		RequestedSessionTimeout: float64(ch.sessionTimeout.Milliseconds()),
+		RequestedSessionTimeout: ch.sessionTimeout,
 		MaxResponseMessageSize:  defaultMaxMessageSize,
 	}
 
@@ -258,7 +253,7 @@ func (ch *Client) open(ctx context.Context) error {
 	ch.sessionID = createSessionResponse.SessionID
 	ch.channel.SetAuthenticationToken(createSessionResponse.AuthenticationToken)
 	remoteNonce = []byte(createSessionResponse.ServerNonce)
-	ch.sessionTimeout = time.Duration(createSessionResponse.RevisedSessionTimeout * float64(time.Millisecond))
+	ch.sessionTimeout = createSessionResponse.RevisedSessionTimeout
 	ch.channel.maxRequestMessageSize = createSessionResponse.MaxRequestMessageSize
 
 	// verify the server's certificate is the same as the certificate from the selected endpoint.
