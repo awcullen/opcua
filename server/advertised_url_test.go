@@ -32,7 +32,7 @@ func TestDiscoveryNamesTheHostTheClientUsed(t *testing.T) {
 			"./pki/server.crt",
 			"./pki/server.key",
 			endpointURL,
-			server.WithSecurityPolicyNone(true),
+			server.WithSecurityPolicyNone(),
 			server.WithInsecureSkipVerify(),
 		)
 		if err != nil {

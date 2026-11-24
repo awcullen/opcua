@@ -58,7 +58,7 @@ func TestUserNameIdentityWithAShortPrivateExponent(t *testing.T) {
 		certFile,
 		keyFile,
 		endpointURL,
-		server.WithSecurityPolicyNone(true),
+		server.WithSecurityPolicyNone(),
 		server.WithInsecureSkipVerify(),
 		server.WithAuthenticateUserNameIdentityFunc(func(id ua.UserNameIdentity, _ string, _ string) error {
 			if id.UserName != "root" || id.Password != "secret" {

@@ -41,7 +41,7 @@ var (
 	nodeset104 []byte
 )
 
-// Server implements an OpcUa server for clients.
+// Server implements an Opc Ua server.
 type Server struct {
 	sync.RWMutex
 	localDescription                     ua.ApplicationDescription
@@ -68,6 +68,9 @@ type Server struct {
 	helloTimeout                         time.Duration
 	serverDiagnostics                    bool
 	trace                                bool
+	allowSecurityPolicyNone              bool
+	allowSecurityPolicyBasic128Rsa15     bool
+	allowSecurityPolicyBasic256          bool
 	localCertificate                     []byte
 	localPrivateKey                      *rsa.PrivateKey
 	closing                              chan struct{}
@@ -83,7 +86,6 @@ type Server struct {
 	serverDiagnosticsSummary             *ua.ServerDiagnosticsSummaryDataType
 	scheduler                            *Scheduler
 	historian                            HistoryReadWriter
-	allowSecurityPolicyNone              bool
 	anonymousIdentityAuthenticator       AnonymousIdentityAuthenticator
 	userNameIdentityAuthenticator        UserNameIdentityAuthenticator
 	x509IdentityAuthenticator            X509IdentityAuthenticator
@@ -116,6 +118,9 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		helloTimeout:                       defaultHelloTimeout,
 		serverDiagnostics:                  true,
 		trace:                              false,
+		allowSecurityPolicyNone:            false,
+		allowSecurityPolicyBasic128Rsa15:   false,
+		allowSecurityPolicyBasic256:        false,
 		closing:                            make(chan struct{}),
 		serverUris:                         []string{localDescription.ApplicationURI},
 		state:                              ua.ServerStateUnknown,
@@ -951,6 +956,8 @@ func (srv *Server) initializeNamespace() error {
 
 func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 	eds := []ua.EndpointDescription{}
+
+	// Add endpoints with no security policy, if allowed.
 	if srv.allowSecurityPolicyNone {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
@@ -986,13 +993,20 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		})
 	}
 
-	uris := []string{
-		ua.SecurityPolicyURIBasic128Rsa15,
-		ua.SecurityPolicyURIBasic256,
+	uris := []string{}
+	if srv.allowSecurityPolicyBasic128Rsa15 {
+		uris = append(uris, ua.SecurityPolicyURIBasic128Rsa15)
+	}
+	if srv.allowSecurityPolicyBasic256 {
+		uris = append(uris, ua.SecurityPolicyURIBasic256)
+	}
+	uris = append(uris,
 		ua.SecurityPolicyURIBasic256Sha256,
 		ua.SecurityPolicyURIAes128Sha256RsaOaep,
 		ua.SecurityPolicyURIAes256Sha256RsaPss,
-	}
+	)
+
+	// Add endpoints with MessageSecurityModeSign.
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
@@ -1027,6 +1041,8 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 			UserIdentityTokens:  toks,
 		})
 	}
+
+	// Add endpoints with MessageSecurityModeSignAndEncrypt.
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
