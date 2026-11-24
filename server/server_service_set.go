@@ -211,7 +211,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	if len(sessionName) == 0 {
 		sessionName = req.ClientDescription.ApplicationURI
 	}
-	sessionTimeout := req.RequestedSessionTimeout
+	sessionTimeout := time.Duration(req.RequestedSessionTimeout * float64(time.Millisecond))
 	if sessionTimeout < minSessionTimeout {
 		sessionTimeout = minSessionTimeout
 	}
@@ -260,7 +260,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			},
 			SessionID:                  session.sessionId,
 			AuthenticationToken:        session.authenticationToken,
-			RevisedSessionTimeout:      session.timeout,
+			RevisedSessionTimeout:      float64(session.timeout.Milliseconds()),
 			ServerNonce:                session.sessionNonce,
 			ServerCertificate:          ua.ByteString(srv.LocalCertificate()),
 			ServerEndpoints:            srv.Endpoints(),

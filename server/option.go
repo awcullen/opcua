@@ -3,6 +3,8 @@
 package server
 
 import (
+	"time"
+
 	"github.com/awcullen/opcua/ua"
 )
 
@@ -99,10 +101,10 @@ func WithMaxWorkerThreads(value int) Option {
 	}
 }
 
-// WithHelloTimeout sets the number of milliseconds to wait for Hello on an incoming connection. (default: 20 s)
-func WithHelloTimeout(value uint32) Option {
+// WithHelloTimeout sets the duration to wait for Hello on an incoming connection. (default: 20 seconds)
+func WithHelloTimeout(value time.Duration) Option {
 	return func(srv *Server) error {
-		if value == 0 || value > 120*1000 {
+		if value <= 0 || value > 120*time.Second {
 			return ua.BadInvalidArgument
 		}
 		srv.helloTimeout = value

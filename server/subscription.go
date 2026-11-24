@@ -294,7 +294,7 @@ func (s *Subscription) startPublishing() {
 				f(t.UTC())
 			}
 		}
-	}(s.cancelPublishing, time.Duration(int64(s.publishingInterval))*time.Millisecond, s.publish)
+	}(s.cancelPublishing, time.Duration(s.publishingInterval*float64(time.Millisecond)), s.publish)
 }
 
 func (s *Subscription) stopPublishing() {

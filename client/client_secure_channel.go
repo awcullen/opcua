@@ -30,16 +30,16 @@ import (
 )
 
 const (
-	// defaultTimeoutHint is the default number of milliseconds before a request is cancelled. (15 sec)
-	defaultTimeoutHint uint32 = 15000
+	// defaultTimeoutHint is the duration before a request is cancelled.
+	defaultTimeoutHint time.Duration = 15 * time.Second
 	// defaultDiagnosticsHint is the default diagnostic hint that is sent in a request. (None)
 	defaultDiagnosticsHint uint32 = 0x00000000
-	// defaultTokenRequestedLifetime is the default number of milliseconds before a security token is expired. (60 min)
-	defaultTokenRequestedLifetime uint32 = 3600000
-	// defaultConnectTimeout is the default number of milliseconds to wait for a connection response. (15 sec)
-	defaultConnectTimeout int64 = 15000
-	// defaultSessionTimeout the default number of milliseconds that the session will remain open without activity. (2 min)
-	defaultSessionTimeout float64 = 120 * 1000
+	// defaultTokenRequestedLifetime is the default duration before a security token is expired.
+	defaultTokenRequestedLifetime time.Duration = 60 * time.Minute
+	// defaultConnectTimeout is the default duration to wait for a connection response.
+	defaultConnectTimeout time.Duration = 15 * time.Second
+	// defaultSessionTimeout the default duration that the session will remain open without activity.
+	defaultSessionTimeout time.Duration = 2 * time.Minute
 	// protocolVersion documents the version of binary protocol that this library supports.
 	protocolVersion uint32 = 0
 	// defaultMaxBufferSize is the default limit on the size of the send and receive buffers.
@@ -58,9 +58,9 @@ const (
 type clientSecureChannel struct {
 	sync.RWMutex
 	localDescription                     ua.ApplicationDescription
-	timeoutHint                          uint32
+	timeoutHint                          time.Duration
 	diagnosticsHint                      uint32
-	tokenRequestedLifetime               uint32
+	tokenRequestedLifetime               time.Duration
 	endpointURL                          string
 	receiveBufferSize                    uint32
 	sendBufferSize                       uint32
@@ -69,7 +69,7 @@ type clientSecureChannel struct {
 	maxResponseMessageSize               uint32
 	maxResponseChunkCount                uint32
 	conn                                 net.Conn
-	connectTimeout                       int64
+	connectTimeout                       time.Duration
 	trustedCertsPath                     string
 	trustedCRLsPath                      string
 	issuerCertsPath                      string
@@ -134,7 +134,7 @@ func newClientSecureChannel(
 	securityPolicyURI string,
 	securityMode ua.MessageSecurityMode,
 	remoteCertificate []byte,
-	connectTimeout int64,
+	connectTimeout time.Duration,
 	trustedCertsPath string,
 	trustedCRLsPath string,
 	issuerCertsPath string,
@@ -144,9 +144,9 @@ func newClientSecureChannel(
 	suppressCertificateExpired bool,
 	suppressCertificateChainIncomplete bool,
 	suppressCertificateRevocationUnknown bool,
-	timeoutHint uint32,
+	timeoutHint time.Duration,
 	diagnosticsHint uint32,
-	tokenLifetime uint32,
+	tokenLifetime time.Duration,
 	maxBufferSize uint32,
 	maxMessageSize uint32,
 	maxChunkCount uint32,
@@ -238,13 +238,13 @@ func (ch *clientSecureChannel) Request(ctx context.Context, req ua.ServiceReques
 	header.RequestHandle = ch.getNextRequestHandle()
 	header.AuthenticationToken = ch.authenticationToken
 	if header.TimeoutHint == 0 {
-		header.TimeoutHint = defaultTimeoutHint
+		header.TimeoutHint = uint32(defaultTimeoutHint.Milliseconds())
 	}
 	var operation = ua.NewServiceOperation(req, make(chan ua.ServiceResponse, 1))
 	ch.pendingResponsesLock.Lock()
 	ch.pendingResponses[header.RequestHandle] = operation
 	ch.pendingResponsesLock.Unlock()
-	ctx, cancel := context.WithDeadline(ctx, header.Timestamp.Add(time.Duration(header.TimeoutHint)*time.Millisecond))
+	ctx, cancel := context.WithDeadline(ctx, header.Timestamp.Add(time.Duration(int64(header.TimeoutHint)*int64(time.Millisecond))))
 	err := ch.sendRequest(ctx, operation)
 	if err != nil {
 		cancel()
@@ -300,7 +300,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		}
 	}
 
-	ch.conn, err = net.DialTimeout("tcp", remoteURL.Host, time.Duration(ch.connectTimeout)*time.Millisecond)
+	ch.conn, err = net.DialTimeout("tcp", remoteURL.Host, ch.connectTimeout)
 	if err != nil {
 		return err
 	}
@@ -447,7 +447,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 		RequestType:           ua.SecurityTokenRequestTypeIssue,
 		SecurityMode:          ch.securityMode,
 		ClientNonce:           ua.ByteString(ua.GetNextNonce(ch.securityPolicy.NonceSize())),
-		RequestedLifetime:     ch.tokenRequestedLifetime,
+		RequestedLifetime:     uint32(ch.tokenRequestedLifetime.Milliseconds()),
 	}
 	res, err := ch.Request(ctx, request)
 	if err != nil {
@@ -463,7 +463,7 @@ func (ch *clientSecureChannel) Open(ctx context.Context) error {
 	ch.tokenID = response.SecurityToken.TokenID
 	ch.localNonce = []byte(request.ClientNonce)
 	ch.remoteNonce = []byte(response.ServerNonce)
-	ch.tokenRenewalTime = time.Now().Add(time.Duration(response.SecurityToken.RevisedLifetime*3/4) * time.Millisecond)
+	ch.tokenRenewalTime = time.Now().Add(time.Duration(int64(response.SecurityToken.RevisedLifetime) * int64(time.Millisecond) * 3 / 4))
 	ch.tokenLock.Unlock()
 
 	go ch.renewTokenWorker()
@@ -1377,7 +1377,7 @@ func (ch *clientSecureChannel) renewTokenWorker() {
 			RequestType:           ua.SecurityTokenRequestTypeRenew,
 			SecurityMode:          ch.securityMode,
 			ClientNonce:           ua.ByteString(ua.GetNextNonce(ch.securityPolicy.NonceSize())),
-			RequestedLifetime:     ch.tokenRequestedLifetime,
+			RequestedLifetime:     uint32(ch.tokenRequestedLifetime.Milliseconds()),
 		}
 		res, err := ch.Request(context.Background(), request)
 		if err != nil {
@@ -1390,7 +1390,7 @@ func (ch *clientSecureChannel) renewTokenWorker() {
 		ch.tokenID = response.SecurityToken.TokenID
 		ch.localNonce = []byte(request.ClientNonce)
 		ch.remoteNonce = []byte(response.ServerNonce)
-		ch.tokenRenewalTime = time.Now().Add(time.Duration(response.SecurityToken.RevisedLifetime*3/4) * time.Millisecond)
+		ch.tokenRenewalTime = time.Now().Add(time.Duration(int64(response.SecurityToken.RevisedLifetime) * int64(time.Millisecond) * 3 / 4))
 		ch.tokenLock.Unlock()
 	}
 }

@@ -177,7 +177,7 @@ func (ch *serverSecureChannel) Open() error {
 	// log.Printf("Opening secure channel.\n")
 	buf := *(ch.bytesPool.Get().(*[]byte))
 	defer ch.bytesPool.Put(&buf)
-	ch.conn.SetDeadline(time.Now().Add(time.Duration(ch.srv.helloTimeout) * time.Millisecond))
+	ch.conn.SetDeadline(time.Now().Add(ch.srv.helloTimeout))
 	_, err := ch.read(buf)
 	if err != nil {
 		return ua.BadDecodingError
@@ -342,7 +342,7 @@ func (ch *serverSecureChannel) Open() error {
 		revisedLifetime = minTokenLifetime
 	}
 	ch.pendingTokenID = ch.getNextTokenID()
-	ch.pendingTokenExpiration = time.Now().Add(time.Duration(revisedLifetime) * time.Millisecond)
+	ch.pendingTokenExpiration = time.Now().Add(time.Duration(int64(revisedLifetime) * int64(time.Millisecond)))
 
 	res := &ua.OpenSecureChannelResponse{
 		ResponseHeader: ua.ResponseHeader{
@@ -1476,7 +1476,7 @@ func (ch *serverSecureChannel) handleOpenSecureChannel(requestid uint32, req *ua
 		revisedLifetime = minTokenLifetime
 	}
 	ch.pendingTokenID = ch.getNextTokenID()
-	ch.pendingTokenExpiration = time.Now().Add(time.Duration(revisedLifetime) * time.Millisecond)
+	ch.pendingTokenExpiration = time.Now().Add(time.Duration(int64(revisedLifetime) * int64(time.Millisecond)))
 
 	res := &ua.OpenSecureChannelResponse{
 		ResponseHeader: ua.ResponseHeader{

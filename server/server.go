@@ -20,18 +20,18 @@ import (
 )
 
 const (
-	// the minimum number of milliseconds that a session may be unused before being closed by the server. (2 min)
-	minSessionTimeout float64 = 120 * 1000
-	// the maximum number of milliseconds that a session may be unused before being closed by the server. (60 min)
-	maxSessionTimeout float64 = 3600 * 1000
-	// the default number of sessions that may be active. (no limit)
+	// the minimum duration that a session may be unused before being closed by the server.
+	minSessionTimeout time.Duration = 2 * time.Minute
+	// the maximum duration that a session may be unused before being closed by the server.
+	maxSessionTimeout time.Duration = 60 * time.Minute
+	// the default number of sessions that may be active. (zero equals no limit)
 	defaultMaxSessionCount uint32 = 0
-	// the default number of subscriptions that may be active. (no limit)
+	// the default number of subscriptions that may be active. (zero equals no limit)
 	defaultMaxSubscriptionCount uint32 = 0
 	// the default number of worker threads that may be created.
 	defaultMaxWorkerThreads int = 4
-	// the default number of milliseconds to wait for Hello on an incoming connection. (20 sec)
-	defaultHelloTimeout = 20 * 1000
+	// the default duration to wait for Hello on an incoming connection. (20 seconds)
+	defaultHelloTimeout time.Duration = 20 * time.Second
 	// the length of nonce in bytes.
 	nonceLength int = 32
 )
@@ -65,7 +65,7 @@ type Server struct {
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
 	maxWorkerThreads                     int
-	helloTimeout                         uint32
+	helloTimeout                         time.Duration
 	serverDiagnostics                    bool
 	trace                                bool
 	localCertificate                     []byte
