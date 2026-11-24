@@ -94,7 +94,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		}
 	}
 	if selectedEndpoint == nil {
-		return nil, ua.BadSecurityModeRejected
+		return nil, ua.BadSecurityPolicyRejected
 	}
 
 	cli.securityPolicyURI = selectedEndpoint.SecurityPolicyURI
