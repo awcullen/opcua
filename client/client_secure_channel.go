@@ -104,10 +104,7 @@ type clientSecureChannel struct {
 	receivingSemaphore         sync.Mutex
 	pendingResponsesLock       sync.Mutex
 	pendingResponses           map[uint32]*ua.ServiceOperation
-	closing                    atomic.Bool // read by responseWorker without ch.Mutex
-	requestHandle              uint32
-	sequenceNumber             uint32
-	closing                    bool
+	closing                    atomic.Bool
 	requestHandle              atomic.Uint32
 	sequenceNumber             atomic.Uint32
 	sendingTokenID             uint32
