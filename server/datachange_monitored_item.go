@@ -233,7 +233,7 @@ func (mi *DataChangeMonitoredItem) setSamplingInterval(samplingInterval float64)
 		}
 	}
 	mi.samplingInterval = samplingInterval
-	mi.ti = time.Duration(mi.samplingInterval) * time.Millisecond
+	mi.ti = time.Duration(mi.samplingInterval * float64(time.Millisecond))
 }
 
 func (mi *DataChangeMonitoredItem) setFilter(filter any) {
@@ -252,13 +252,13 @@ func (mi *DataChangeMonitoredItem) startMonitoring() {
 	v := mi.srv.readValue(mi.sub.session, mi.itemToMonitor)
 	mi.prequeue.PushBack(v)
 	mi.Unlock()
-	mi.srv.Scheduler().GetPollGroup(time.Duration(mi.samplingInterval) * time.Millisecond).Subscribe(mi)
+	mi.srv.Scheduler().GetPollGroup(time.Duration(mi.samplingInterval * float64(time.Millisecond))).Subscribe(mi)
 	mi.Lock()
 }
 
 func (mi *DataChangeMonitoredItem) stopMonitoring() {
 	mi.Unlock()
-	mi.srv.Scheduler().GetPollGroup(time.Duration(mi.samplingInterval) * time.Millisecond).Unsubscribe(mi)
+	mi.srv.Scheduler().GetPollGroup(time.Duration(mi.samplingInterval * float64(time.Millisecond))).Unsubscribe(mi)
 	mi.Lock()
 }
 

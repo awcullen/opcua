@@ -2,7 +2,11 @@
 
 package server
 
-import "github.com/awcullen/opcua/ua"
+import (
+	"time"
+
+	"github.com/awcullen/opcua/ua"
+)
 
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
@@ -93,6 +97,17 @@ func WithTransportLimits(maxBufferSize, maxMessageSize, maxChunkCount uint32) Op
 func WithMaxWorkerThreads(value int) Option {
 	return func(opts *Server) error {
 		opts.maxWorkerThreads = value
+		return nil
+	}
+}
+
+// WithHelloTimeout sets the duration to wait for Hello on an incoming connection. (default: 20 seconds)
+func WithHelloTimeout(value time.Duration) Option {
+	return func(srv *Server) error {
+		if value <= 0 || value > 120*time.Second {
+			return ua.BadInvalidArgument
+		}
+		srv.helloTimeout = value
 		return nil
 	}
 }

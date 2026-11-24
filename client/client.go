@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/awcullen/opcua/ua"
 	"github.com/djherbis/buffer"
@@ -165,13 +166,13 @@ type Client struct {
 	sessionID                            ua.NodeID
 	sessionName                          string
 	applicationName                      string
-	sessionTimeout                       float64
+	sessionTimeout                       time.Duration
 	clientSignature                      ua.SignatureData
 	identityToken                        any
 	identityTokenSignature               ua.SignatureData
-	timeoutHint                          uint32
+	timeoutHint                          time.Duration
 	diagnosticsHint                      uint32
-	tokenLifetime                        uint32
+	tokenLifetime                        time.Duration
 	localCertificate                     []byte
 	localPrivateKey                      *rsa.PrivateKey
 	trustedCertsPath                     string
@@ -183,7 +184,7 @@ type Client struct {
 	suppressCertificateExpired           bool
 	suppressCertificateChainIncomplete   bool
 	suppressCertificateRevocationUnknown bool
-	connectTimeout                       int64
+	connectTimeout                       time.Duration
 	maxBufferSize                        uint32
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
@@ -210,8 +211,8 @@ func (ch *Client) SessionID() ua.NodeID {
 	return ch.sessionID
 }
 
-// SessionTimeout gets the maximum number of milliseconds that the session will remain open without activity.
-func (ch *Client) SessionTimeout() float64 {
+// SessionTimeout gets the maximum duration that the session will remain open without activity.
+func (ch *Client) SessionTimeout() time.Duration {
 	return ch.sessionTimeout
 }
 
@@ -237,7 +238,7 @@ func (ch *Client) open(ctx context.Context) error {
 	}
 
 	var localNonce, localCertificate, remoteNonce []byte
-	localNonce = getNextNonce(nonceLength)
+	localNonce = ua.GetNextNonce(nonceLength)
 	localCertificate = ch.channel.localCertificate
 
 	var createSessionRequest = &ua.CreateSessionRequest{
@@ -246,7 +247,7 @@ func (ch *Client) open(ctx context.Context) error {
 		SessionName:             ch.sessionName,
 		ClientNonce:             ua.ByteString(localNonce),
 		ClientCertificate:       ua.ByteString(localCertificate),
-		RequestedSessionTimeout: ch.sessionTimeout,
+		RequestedSessionTimeout: float64(ch.sessionTimeout.Milliseconds()),
 		MaxResponseMessageSize:  defaultMaxMessageSize,
 	}
 
@@ -257,7 +258,7 @@ func (ch *Client) open(ctx context.Context) error {
 	ch.sessionID = createSessionResponse.SessionID
 	ch.channel.SetAuthenticationToken(createSessionResponse.AuthenticationToken)
 	remoteNonce = []byte(createSessionResponse.ServerNonce)
-	ch.sessionTimeout = createSessionResponse.RevisedSessionTimeout
+	ch.sessionTimeout = time.Duration(createSessionResponse.RevisedSessionTimeout * float64(time.Millisecond))
 	ch.channel.maxRequestMessageSize = createSessionResponse.MaxRequestMessageSize
 
 	// verify the server's certificate is the same as the certificate from the selected endpoint.

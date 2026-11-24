@@ -16,7 +16,7 @@ func NewScheduler(server *Server) *Scheduler {
 	s := &Scheduler{
 		server:              server,
 		tickers:             make(map[time.Duration]*PollGroup),
-		minSamplingInterval: time.Duration(server.ServerCapabilities().MinSupportedSampleRate) * time.Millisecond,
+		minSamplingInterval: time.Duration(server.ServerCapabilities().MinSupportedSampleRate * float64(time.Millisecond)),
 	}
 	return s
 }

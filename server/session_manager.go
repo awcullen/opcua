@@ -157,7 +157,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 			ServerURI:                          s.serverUri,
 			EndpointURL:                        s.endpointURL,
 			LocaleIDs:                          s.localeIds,
-			ActualSessionTimeout:               s.timeout,
+			ActualSessionTimeout:               float64(s.timeout.Milliseconds()),
 			MaxResponseMessageSize:             s.maxResponseMessageSize,
 			ClientConnectionTime:               s.timeCreated,
 			ClientLastContactTime:              s.lastAccess,
@@ -362,7 +362,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		srv.historian,
 	)
 	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
-		return ua.NewDataValue(s.timeout, 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(float64(s.timeout.Milliseconds()), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
