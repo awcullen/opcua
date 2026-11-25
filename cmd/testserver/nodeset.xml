@@ -53,6 +53,7 @@
             <Reference ReferenceType="Organizes">ns=1;s=Demo.References</Reference>
             <Reference ReferenceType="Organizes">ns=1;s=Demo.SecurityAccess</Reference>
             <Reference ReferenceType="Organizes">ns=1;s=Demo.Static</Reference>
+            <Reference ReferenceType="Organizes">ns=1;s=Demo.DynamicNodes</Reference>
         </References>
     </UAObject>
     <UAObject NodeId="ns=1;s=Demo.Methods" BrowseName="1:Methods">
@@ -1604,8 +1605,8 @@
             <uax:XmlElement><foo>bar</foo></uax:XmlElement>
         </Value>
     </UAVariable>
-    <UAObject NodeId="ns=1;i=15182" BrowseName="1:http://github.com/awcullen/opcua/testserver/" >
-    <DisplayName>http://github.com/awcullen/opcua/testserver/</DisplayName>
+    <UAObject NodeId="ns=1;i=15182" BrowseName="1:http://github.com/awcullen/opcua//testserver/" >
+    <DisplayName>http://github.com/awcullen/opcua//testserver/</DisplayName>
     <References>
       <Reference ReferenceType="HasProperty">ns=1;i=15183</Reference>
       <Reference ReferenceType="HasProperty">ns=1;i=15184</Reference>
@@ -1626,7 +1627,7 @@
       <Reference ReferenceType="HasProperty" IsForward="false">ns=1;i=15182</Reference>
     </References>
     <Value>
-      <String xmlns="http://opcfoundation.org/UA/2008/02/Types.xsd">http://github.com/awcullen/opcua/testserver/</String>
+      <String xmlns="http://opcfoundation.org/UA/2008/02/Types.xsd">http://github.com/awcullen/opcua//testserver/</String>
     </Value>
   </UAVariable>
   <UAVariable NodeId="ns=1;i=15184" BrowseName="NamespaceVersion" DataType="String" UserAccessLevel="1" AccessLevel="1">
@@ -1734,4 +1735,28 @@
       <Reference ReferenceType="HasTypeDefinition">i=58</Reference>
     </References>
   </UAObject>
+      <UAObject NodeId="ns=1;s=Demo.DynamicNodes" BrowseName="1:DynamicNodes">
+        <DisplayName>DynamicNodes</DisplayName>
+        <References>
+            <Reference ReferenceType="Organizes" IsForward="false">ns=1;s=Demo</Reference>
+            <Reference ReferenceType="HasTypeDefinition">i=61</Reference>
+            <Reference ReferenceType="HasComponent">ns=1;s=Demo.DynamicNodes.CreateDynamicNode</Reference>
+            <Reference ReferenceType="HasComponent">ns=1;s=Demo.DynamicNodes.DeleteDynamicNode</Reference>
+        </References>
+    </UAObject>
+    <UAMethod NodeId="ns=1;s=Demo.DynamicNodes.CreateDynamicNode" BrowseName="1:CreateDynamicNode">
+        <DisplayName>CreateDynamicNode</DisplayName>
+        <Description>Method to create a node.</Description>
+        <References>
+            <Reference ReferenceType="HasComponent" IsForward="false">ns=1;s=Demo.DynamicNodes</Reference>
+        </References>
+    </UAMethod>
+    <UAMethod NodeId="ns=1;s=Demo.DynamicNodes.DeleteDynamicNode" BrowseName="1:DeleteDynamicNode">
+        <DisplayName>DeleteDynamicNode</DisplayName>
+        <Description>Method delete a node.</Description>
+        <References>
+            <Reference ReferenceType="HasComponent" IsForward="false">ns=1;s=Demo.DynamicNodes</Reference>
+        </References>
+    </UAMethod>
+
 </UANodeSet>

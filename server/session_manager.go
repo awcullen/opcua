@@ -39,7 +39,7 @@ func NewSessionManager(server *Server) *SessionManager {
 func (m *SessionManager) Get(authenticationToken ua.NodeID) (*Session, bool) {
 	m.RLock()
 	defer m.RUnlock()
-	if s, ok := m.sessionsByToken[authenticationToken]; ok && !s.IsExpired(){
+	if s, ok := m.sessionsByToken[authenticationToken]; ok && !s.IsExpired() {
 		s.SetLastAccess(time.Now())
 		return s, ok
 	}
@@ -157,7 +157,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 			ServerURI:                          s.serverUri,
 			EndpointURL:                        s.endpointURL,
 			LocaleIDs:                          s.localeIds,
-			ActualSessionTimeout:               s.timeout,
+			ActualSessionTimeout:               float64(s.timeout.Milliseconds()),
 			MaxResponseMessageSize:             s.maxResponseMessageSize,
 			ClientConnectionTime:               s.timeCreated,
 			ClientLastContactTime:              s.lastAccess,
@@ -362,7 +362,7 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 		srv.historian,
 	)
 	n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
-		return ua.NewDataValue(s.timeout, 0, time.Now(), 0, time.Now(), 0)
+		return ua.NewDataValue(float64(s.timeout.Milliseconds()), 0, time.Now(), 0, time.Now(), 0)
 	})
 	nodes = append(nodes, n)
 	n = NewVariableNode(
@@ -1712,7 +1712,6 @@ func (m *SessionManager) addDiagnosticsNode(s *Session) {
 }
 
 func (m *SessionManager) removeDiagnosticsNode(s *Session) {
-	if n, ok := m.server.NamespaceManager().FindNode(s.SessionId()); ok {
-		m.server.NamespaceManager().DeleteNode(n, true)
-	}
+	nm := m.server.NamespaceManager()
+	nm.DeleteNodes(s.SessionId())
 }

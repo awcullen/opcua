@@ -31,7 +31,7 @@ type Session struct {
 	sessionId                               ua.NodeID
 	sessionName                             string
 	authenticationToken                     ua.NodeID
-	timeout                                 float64
+	timeout                                 time.Duration
 	userIdentity                            any
 	sessionNonce                            ua.ByteString
 	lastAccess                              time.Time
@@ -116,7 +116,7 @@ type Session struct {
 	clientUserIdHistory                     []string
 }
 
-func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authenticationToken ua.NodeID, sessionNonce ua.ByteString, timeout float64, clientDescription ua.ApplicationDescription, serverUri string, endpointUrl string, clientCertificate ua.ByteString, maxResponseMessageSize uint32) *Session {
+func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authenticationToken ua.NodeID, sessionNonce ua.ByteString, timeout time.Duration, clientDescription ua.ApplicationDescription, serverUri string, endpointUrl string, clientCertificate ua.ByteString, maxResponseMessageSize uint32) *Session {
 	return &Session{
 		sessionId:                    sessionId,
 		sessionName:                  sessionName,
@@ -145,7 +145,7 @@ func NewSession(server *Server, sessionId ua.NodeID, sessionName string, authent
 func (s *Session) IsExpired() bool {
 	s.RLock()
 	defer s.RUnlock()
-	return time.Since(s.lastAccess).Milliseconds() > int64(s.timeout)
+	return time.Since(s.lastAccess) > s.timeout
 }
 
 func (s *Session) delete() {
@@ -189,7 +189,7 @@ func (s *Session) AuthenticationToken() ua.NodeID {
 	return s.authenticationToken
 }
 
-func (s *Session) Timeout() float64 {
+func (s *Session) Timeout() time.Duration {
 	s.RLock()
 	defer s.RUnlock()
 	return s.timeout
@@ -322,7 +322,7 @@ func (s *Session) removePublishRequest() (*serverSecureChannel, uint32, *ua.Publ
 			rid := op.requestId
 			results := op.results
 			// check if expired
-			if time.Now().After(req.RequestHeader.Timestamp.Add(time.Duration(req.RequestHeader.TimeoutHint) * time.Millisecond)) {
+			if time.Now().After(req.RequestHeader.Timestamp.Add(time.Duration(int64(req.RequestHeader.TimeoutHint) * int64(time.Millisecond)))) {
 				err := ch.Write(
 					&ua.ServiceFault{
 						ResponseHeader: ua.ResponseHeader{

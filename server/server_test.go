@@ -30,7 +30,7 @@ var (
 	endpointURL = fmt.Sprintf("opc.tcp://%s:%d", host, port) // our testserver
 )
 
-// TestMain is run at the start of client testing. If an opcua server is not already running,
+// TestMain is run at the start of server testing. If an opcua server is not already running,
 // then testserver is started.
 func TestMain(m *testing.M) {
 	if err := ensurePKI(); err != nil {
@@ -845,6 +845,151 @@ func TestReadHistory(t *testing.T) {
 	ch.Close(ctx)
 }
 */
+
+// TestSubscribe_DeleteNode tests client subscription response to deleting a monitored node
+func TestSubscribe_DeleteNode(t *testing.T) {
+	ctx := context.Background()
+	ch, err := client.Dial(
+		ctx,
+		endpointURL,
+		client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
+		client.WithInsecureSkipVerify(),
+		client.WithUserNameIdentity("root", "secret"),
+	)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error connecting to server"))
+		return
+	}
+	t.Logf("Success connecting to server: %s", ch.EndpointURL())
+
+	// call method to add a new node to namespace
+	req := &ua.CallRequest{
+		MethodsToCall: []ua.CallMethodRequest{{
+			ObjectID:       ua.ParseNodeID("ns=2;s=Demo.DynamicNodes"), // parent node
+			MethodID:       ua.ParseNodeID("ns=2;s=Demo.DynamicNodes.CreateDynamicNode"),
+			InputArguments: []ua.Variant{}},
+		},
+	}
+	_, err = ch.Call(ctx, req)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error calling method"))
+		ch.Abort(ctx)
+		return
+	}
+
+	// create initial subscription
+	req1 := &ua.CreateSubscriptionRequest{
+		RequestedPublishingInterval: 1000.0,
+		RequestedMaxKeepAliveCount:  30,
+		RequestedLifetimeCount:      30 * 3,
+		PublishingEnabled:           true,
+	}
+	res1, err := ch.CreateSubscription(ctx, req1)
+	if err != nil {
+		t.Fatalf("Error creating subscription. %s\n", err.Error())
+	}
+
+	// create monitored item
+	req2 := &ua.CreateMonitoredItemsRequest{
+		SubscriptionID:     res1.SubscriptionID,
+		TimestampsToReturn: ua.TimestampsToReturnBoth,
+		ItemsToCreate: []ua.MonitoredItemCreateRequest{
+			{
+				ItemToMonitor: ua.ReadValueID{
+					NodeID:      ua.ParseNodeID("ns=2;s=Demo.DynamicNodes.DynamicNode"),
+					AttributeID: ua.AttributeIDValue,
+				},
+				MonitoringMode: ua.MonitoringModeReporting,
+				// specify a unique ClientHandle. The ClientHandle is returned in the PublishResponse
+				RequestedParameters: ua.MonitoringParameters{
+					ClientHandle: 42, QueueSize: 1, DiscardOldest: true, SamplingInterval: 1000.0},
+			},
+		},
+	}
+	_, err = ch.CreateMonitoredItems(ctx, req2)
+	if err != nil {
+		t.Fatalf("Error creating item. %s\n", err.Error())
+	}
+
+	// prepare an initial publish request
+	req3 := &ua.PublishRequest{
+		RequestHeader:                ua.RequestHeader{TimeoutHint: 60000},
+		SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{},
+	}
+
+	// send initial publish request to the server.
+	res3, err := ch.Publish(ctx, req3)
+	if err != nil {
+		t.Fatalf("Error calling Publish. %s\n", err.Error())
+	}
+
+	// verify initial publish response.
+	flag := false
+	for _, nd := range res3.NotificationMessage.NotificationData {
+		switch body := nd.(type) {
+		case ua.DataChangeNotification:
+			for _, mi := range body.MonitoredItems {
+				if mi.ClientHandle == 42 && mi.Value.StatusCode == ua.Good {
+					flag = true
+				}
+			}
+		}
+	}
+	if !flag {
+		t.Fatalf("Error verifying initial PublishResponse.\n")
+	}
+
+	// call method to delete node from namespace
+	req4 := &ua.CallRequest{
+		MethodsToCall: []ua.CallMethodRequest{{
+			ObjectID:       ua.ParseNodeID("ns=2;s=Demo.DynamicNodes"), // parent node
+			MethodID:       ua.ParseNodeID("ns=2;s=Demo.DynamicNodes.DeleteDynamicNode"),
+			InputArguments: []ua.Variant{}},
+		},
+	}
+	_, err = ch.Call(ctx, req4)
+	if err != nil {
+		t.Error(errors.Wrap(err, "Error calling method"))
+		ch.Abort(ctx)
+		return
+	}
+
+	// prepare a second publish request
+	req5 := &ua.PublishRequest{
+		RequestHeader: ua.RequestHeader{TimeoutHint: 60000},
+		SubscriptionAcknowledgements: []ua.SubscriptionAcknowledgement{
+			{SequenceNumber: res3.NotificationMessage.SequenceNumber, SubscriptionID: res3.SubscriptionID},
+		},
+	}
+
+	// send second publish request to the server.
+	res5, err := ch.Publish(ctx, req5)
+	if err != nil {
+		t.Fatalf("Error calling Publish. %s\n", err.Error())
+	}
+
+	// verify second publish response. StatusCode should be BadNodeIDUnknown.
+	flag = false
+	for _, nd := range res5.NotificationMessage.NotificationData {
+		switch body := nd.(type) {
+		case ua.DataChangeNotification:
+			for _, mi := range body.MonitoredItems {
+				if mi.ClientHandle == 42 && mi.Value.StatusCode == ua.BadNodeIDUnknown {
+					flag = true
+				}
+			}
+		}
+	}
+	if !flag {
+		t.Fatalf("Error verifying second PublishResponse.\n")
+	}
+
+	// close connection
+	err = ch.Close(ctx)
+	if err != nil {
+		t.Fatalf("Error closing connection. %s\n", err.Error())
+	}
+}
 
 func createNewCertificate(appName, certFile, keyFile string) error {
 

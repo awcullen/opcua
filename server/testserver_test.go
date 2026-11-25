@@ -19,6 +19,7 @@ var (
 	SoftwareVersion = "1.0.0"
 	//go:embed testnodeset_test.xml
 	testnodeset []byte
+	dynamicNode server.Node
 )
 
 func NewTestServer() (*server.Server, error) {
@@ -86,7 +87,7 @@ func NewTestServer() (*server.Server, error) {
 			// log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
 			return nil
 		}),
-		server.WithSecurityPolicyNone(true),
+		server.WithSecurityPolicyNone(),
 		server.WithInsecureSkipVerify(),
 	)
 	if err != nil {
@@ -168,5 +169,50 @@ func NewTestServer() (*server.Server, error) {
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
 		})
 	}
+
+	// install CreateDynamicNode method
+	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.DynamicNodes.CreateDynamicNode")); ok {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
+			if dynamicNode != nil {
+				return ua.CallMethodResult{StatusCode: ua.BadInvalidState}
+			}
+			// create node
+			dynamicNode = server.NewVariableNode(
+				srv,
+				ua.NewNodeIDString(2, "Demo.DynamicNodes.DynamicNode"),
+				ua.NewQualifiedName(2, "DynamicNode"),
+				ua.NewLocalizedText("DynamicNode", "en"),
+				ua.NewLocalizedText("Variable node for testing", "en"),
+				nil,
+				[]ua.Reference{
+					{ReferenceTypeID: ua.ReferenceTypeIDHasTypeDefinition, IsInverse: false, TargetID: ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)},
+					{ReferenceTypeID: ua.ReferenceTypeIDOrganizes, IsInverse: true, TargetID: ua.NewExpandedNodeID(ua.NewNodeIDString(2, "Demo.DynamicNodes"))},
+				},
+				ua.DataValue{Value: int32(42)},
+				ua.DataTypeIDInt32,
+				ua.ValueRankScalar,
+				nil,
+				ua.AccessLevelsCurrentRead|ua.AccessLevelsCurrentWrite,
+				300.0,
+				false,
+				nil,
+			)
+			nm.AddNodes(dynamicNode)
+			return ua.CallMethodResult{}
+		})
+	}
+
+	// install DeleteDynamicNode method
+	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.DynamicNodes.DeleteDynamicNode")); ok {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
+			if dynamicNode == nil {
+				return ua.CallMethodResult{StatusCode: ua.BadInvalidState}
+			}
+			nm.DeleteNodes(dynamicNode.NodeID())
+			dynamicNode = nil
+			return ua.CallMethodResult{}
+		})
+	}
+
 	return srv, nil
 }

@@ -101,11 +101,8 @@ func (m *SubscriptionManager) checkForExpiredSubscriptions() {
 		if s.IsExpired() {
 			delete(m.subscriptionsByID, k)
 			if m.server.serverDiagnostics {
-				// remove diagnostic node
-				nm := m.server.NamespaceManager()
-				if n, ok := nm.FindNode(s.diagnosticsNodeId); ok {
-					nm.DeleteNode(n, true)
-				}
+				m.removeDiagnosticsNode(s)
+
 				m.server.Lock()
 				m.server.serverDiagnosticsSummary.CurrentSubscriptionCount = uint32(len(m.subscriptionsByID))
 				m.server.Unlock()
@@ -948,7 +945,5 @@ func (m *SubscriptionManager) addDiagnosticsNode(s *Subscription) {
 
 func (m *SubscriptionManager) removeDiagnosticsNode(s *Subscription) {
 	nm := m.server.NamespaceManager()
-	if n, ok := nm.FindNode(s.diagnosticsNodeId); ok {
-		nm.DeleteNode(n, true)
-	}
+	nm.DeleteNodes(s.diagnosticsNodeId)
 }

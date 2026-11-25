@@ -53,6 +53,7 @@
             <Reference ReferenceType="Organizes">ns=1;s=Demo.References</Reference>
             <Reference ReferenceType="Organizes">ns=1;s=Demo.SecurityAccess</Reference>
             <Reference ReferenceType="Organizes">ns=1;s=Demo.Static</Reference>
+            <Reference ReferenceType="Organizes">ns=1;s=Demo.DynamicNodes</Reference>
         </References>
     </UAObject>
     <UAObject NodeId="ns=1;s=Demo.Methods" BrowseName="1:Methods">
@@ -1734,4 +1735,28 @@
       <Reference ReferenceType="HasTypeDefinition">i=58</Reference>
     </References>
   </UAObject>
+      <UAObject NodeId="ns=1;s=Demo.DynamicNodes" BrowseName="1:DynamicNodes">
+        <DisplayName>DynamicNodes</DisplayName>
+        <References>
+            <Reference ReferenceType="Organizes" IsForward="false">ns=1;s=Demo</Reference>
+            <Reference ReferenceType="HasTypeDefinition">i=61</Reference>
+            <Reference ReferenceType="HasComponent">ns=1;s=Demo.DynamicNodes.CreateDynamicNode</Reference>
+            <Reference ReferenceType="HasComponent">ns=1;s=Demo.DynamicNodes.DeleteDynamicNode</Reference>
+        </References>
+    </UAObject>
+    <UAMethod NodeId="ns=1;s=Demo.DynamicNodes.CreateDynamicNode" BrowseName="1:CreateDynamicNode">
+        <DisplayName>CreateDynamicNode</DisplayName>
+        <Description>Method to create a node.</Description>
+        <References>
+            <Reference ReferenceType="HasComponent" IsForward="false">ns=1;s=Demo.DynamicNodes</Reference>
+        </References>
+    </UAMethod>
+    <UAMethod NodeId="ns=1;s=Demo.DynamicNodes.DeleteDynamicNode" BrowseName="1:DeleteDynamicNode">
+        <DisplayName>DeleteDynamicNode</DisplayName>
+        <Description>Method delete a node.</Description>
+        <References>
+            <Reference ReferenceType="HasComponent" IsForward="false">ns=1;s=Demo.DynamicNodes</Reference>
+        </References>
+    </UAMethod>
+
 </UANodeSet>

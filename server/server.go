@@ -20,16 +20,18 @@ import (
 )
 
 const (
-	// the minimum number of milliseconds that a session may be unused before being closed by the server. (2 min)
-	minSessionTimeout float64 = 10 * 1000
-	// the maximum number of milliseconds that a session may be unused before being closed by the server. (60 min)
-	maxSessionTimeout float64 = 3600 * 1000
-	// the default number of sessions that may be active. (no limit)
+	// the minimum duration that a session may be unused before being closed by the server.
+	minSessionTimeout time.Duration = 2 * time.Minute
+	// the maximum duration that a session may be unused before being closed by the server.
+	maxSessionTimeout time.Duration = 60 * time.Minute
+	// the default number of sessions that may be active. (zero equals no limit)
 	defaultMaxSessionCount uint32 = 0
-	// the default number of subscriptions that may be active. (no limit)
+	// the default number of subscriptions that may be active. (zero equals no limit)
 	defaultMaxSubscriptionCount uint32 = 0
 	// the default number of worker threads that may be created.
 	defaultMaxWorkerThreads int = 4
+	// the default duration to wait for Hello on an incoming connection. (20 seconds)
+	defaultHelloTimeout time.Duration = 20 * time.Second
 	// the length of nonce in bytes.
 	nonceLength int = 32
 )
@@ -39,7 +41,7 @@ var (
 	nodeset104 []byte
 )
 
-// Server implements an OpcUa server for clients.
+// Server implements an Opc Ua server.
 type Server struct {
 	sync.RWMutex
 	localDescription                     ua.ApplicationDescription
@@ -63,8 +65,10 @@ type Server struct {
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
 	maxWorkerThreads                     int
+	helloTimeout                         time.Duration
 	serverDiagnostics                    bool
 	trace                                bool
+	allowSecurityPolicyNone              bool
 	localCertificate                     []byte
 	localPrivateKey                      *rsa.PrivateKey
 	closing                              chan struct{}
@@ -80,7 +84,7 @@ type Server struct {
 	serverDiagnosticsSummary             *ua.ServerDiagnosticsSummaryDataType
 	scheduler                            *Scheduler
 	historian                            HistoryReadWriter
-	allowSecurityPolicyNone              bool
+	allowSecurityPolicies                map[string]bool
 	anonymousIdentityAuthenticator       AnonymousIdentityAuthenticator
 	userNameIdentityAuthenticator        UserNameIdentityAuthenticator
 	x509IdentityAuthenticator            X509IdentityAuthenticator
@@ -112,8 +116,11 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		maxMessageSize:                     defaultMaxMessageSize,
 		maxChunkCount:                      defaultMaxChunkCount,
 		maxWorkerThreads:                   defaultMaxWorkerThreads,
+		helloTimeout:                       defaultHelloTimeout,
 		serverDiagnostics:                  true,
 		trace:                              false,
+		allowSecurityPolicyNone:            false,
+		allowSecurityPolicies:              map[string]bool{ua.SecurityPolicyURIBasic256Sha256: true, ua.SecurityPolicyURIAes128Sha256RsaOaep: true, ua.SecurityPolicyURIAes256Sha256RsaPss: true},
 		closing:                            make(chan struct{}),
 		serverUris:                         []string{localDescription.ApplicationURI},
 		state:                              ua.ServerStateUnknown,
@@ -526,30 +533,19 @@ func (srv *Server) initializeNamespace() error {
 	if n, ok := nm.FindVariable(ua.VariableIDServerAuditing); ok {
 		n.SetValue(ua.NewDataValue(false, 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindNode(ua.MethodIDServerRequestServerStateChange); ok {
-		nm.DeleteNode(n, true)
-	}
-	if n, ok := nm.FindNode(ua.MethodIDServerSetSubscriptionDurable); ok {
-		nm.DeleteNode(n, true)
-	}
+	nm.DeleteNodes(ua.MethodIDServerRequestServerStateChange,
+		ua.MethodIDServerSetSubscriptionDurable)
+
 	if n, ok := nm.FindVariable(ua.VariableIDServerServiceLevel); ok {
 		n.SetValue(ua.NewDataValue(byte(255), 0, time.Now(), 0, time.Now(), 0))
 	}
 	if n, ok := nm.FindVariable(ua.VariableIDServerServerRedundancyRedundancySupport); ok {
 		n.SetValue(ua.NewDataValue(int32(0), 0, time.Now(), 0, time.Now(), 0))
 	}
-	if n, ok := nm.FindNode(ua.VariableIDServerServerRedundancyCurrentServerID); ok {
-		nm.DeleteNode(n, false)
-	}
-	if n, ok := nm.FindNode(ua.VariableIDServerServerRedundancyRedundantServerArray); ok {
-		nm.DeleteNode(n, true)
-	}
-	if n, ok := nm.FindNode(ua.VariableIDServerServerRedundancyServerNetworkGroups); ok {
-		nm.DeleteNode(n, true)
-	}
-	if n, ok := nm.FindNode(ua.VariableIDServerServerRedundancyServerURIArray); ok {
-		nm.DeleteNode(n, true)
-	}
+	nm.DeleteNodes(ua.VariableIDServerServerRedundancyCurrentServerID,
+		ua.VariableIDServerServerRedundancyRedundantServerArray,
+		ua.VariableIDServerServerRedundancyServerNetworkGroups,
+		ua.VariableIDServerServerRedundancyServerURIArray)
 
 	if n, ok := nm.FindVariable(ua.VariableIDServerNamespaceArray); ok {
 		n.SetReadValueHandler(func(session *Session, req ua.ReadValueID) ua.DataValue {
@@ -867,9 +863,7 @@ func (srv *Server) initializeNamespace() error {
 			return ua.NewDataValue(a, 0, time.Now(), 0, time.Now(), 0)
 		})
 	}
-	if n, ok := nm.FindNode(ua.VariableIDServerServerDiagnosticsSamplingIntervalDiagnosticsArray); ok {
-		nm.DeleteNode(n, true)
-	}
+	nm.DeleteNodes(ua.VariableIDServerServerDiagnosticsSamplingIntervalDiagnosticsArray)
 
 	if n, ok := nm.FindMethod(ua.MethodIDServerGetMonitoredItems); ok {
 		n.SetCallMethodHandler(func(session *Session, req ua.CallMethodRequest) ua.CallMethodResult {
@@ -975,7 +969,9 @@ func (srv *Server) initializeNamespace() error {
 
 func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 	eds := []ua.EndpointDescription{}
-	if srv.allowSecurityPolicyNone {
+
+	// add endpoints with no security policy, if allowed.
+	if srv.allowSecurityPolicyNone || srv.allowSecurityPolicies[ua.SecurityPolicyURINone] {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
@@ -1010,13 +1006,21 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		})
 	}
 
-	uris := []string{
+	// build list of security policy uris that are allowed, sorted from least to most secure
+	uris := []string{}
+	for _, uri := range []string{
 		ua.SecurityPolicyURIBasic128Rsa15,
 		ua.SecurityPolicyURIBasic256,
 		ua.SecurityPolicyURIBasic256Sha256,
 		ua.SecurityPolicyURIAes128Sha256RsaOaep,
 		ua.SecurityPolicyURIAes256Sha256RsaPss,
+	} {
+		if srv.allowSecurityPolicies[uri] {
+			uris = append(uris, uri)
+		}
 	}
+
+	// add endpoints with MessageSecurityModeSign.
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
@@ -1051,6 +1055,8 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 			UserIdentityTokens:  toks,
 		})
 	}
+
+	// add endpoints with MessageSecurityModeSignAndEncrypt.
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {

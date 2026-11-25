@@ -36,7 +36,7 @@ type decoderFunc func(*BinaryDecoder, unsafe.Pointer) error
 // Decode decodes the value using the UA Binary protocol.
 func (dec *BinaryDecoder) Decode(v any) error {
 	typ := reflect.TypeOf(v)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	ptr := ((*interfaceHeader)(unsafe.Pointer(&v))).ptr
@@ -93,7 +93,7 @@ func getDecoder(typ reflect.Type) (decoderFunc, error) {
 		default:
 			return getSliceDecoder(typ)
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		typ = typ.Elem()
 		return getStructPtrDecoder(typ)
 	case reflect.Interface:
@@ -2055,33 +2055,33 @@ func (dec *BinaryDecoder) ReadVariant(value *Variant) error {
 
 // split recursively creates a multi-dimensional array from a set of values
 // and some given dimensions.
-func split(level, i, j int, dims []int, vals reflect.Value) reflect.Value {
-	if level == len(dims)-1 {
-		a := vals.Slice(i, j)
-		return a
-	}
+// func split(level, i, j int, dims []int, vals reflect.Value) reflect.Value {
+// 	if level == len(dims)-1 {
+// 		a := vals.Slice(i, j)
+// 		return a
+// 	}
 
-	// split next level
-	var elems []reflect.Value
-	if vals.Len() > 0 {
-		step := (j - i) / dims[level]
-		for ; i < j; i += step {
-			elems = append(elems, split(level+1, i, i+step, dims, vals))
-		}
-	} else {
-		for k := 0; k < dims[level]; k++ {
-			elems = append(elems, split(level+1, 0, 0, dims, vals))
-		}
-	}
+// 	// split next level
+// 	var elems []reflect.Value
+// 	if vals.Len() > 0 {
+// 		step := (j - i) / dims[level]
+// 		for ; i < j; i += step {
+// 			elems = append(elems, split(level+1, i, i+step, dims, vals))
+// 		}
+// 	} else {
+// 		for k := 0; k < dims[level]; k++ {
+// 			elems = append(elems, split(level+1, 0, 0, dims, vals))
+// 		}
+// 	}
 
-	// now construct the typed slice, i.e. [](type of inner slice)
-	innerT := elems[0].Type()
-	a := reflect.MakeSlice(reflect.SliceOf(innerT), len(elems), len(elems))
-	for k := range elems {
-		a.Index(k).Set(elems[k])
-	}
-	return a
-}
+// 	// now construct the typed slice, i.e. [](type of inner slice)
+// 	innerT := elems[0].Type()
+// 	a := reflect.MakeSlice(reflect.SliceOf(innerT), len(elems), len(elems))
+// 	for k := range elems {
+// 		a.Index(k).Set(elems[k])
+// 	}
+// 	return a
+// }
 
 // ReadDiagnosticInfo reads a DiagnosticInfo.
 func (dec *BinaryDecoder) ReadDiagnosticInfo(value *DiagnosticInfo) error {

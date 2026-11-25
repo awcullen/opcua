@@ -13,31 +13,27 @@ import (
 	"sync"
 	"time"
 
+	"slices"
+
 	"github.com/awcullen/opcua/ua"
 	"github.com/gammazero/deque"
 	"github.com/google/uuid"
 )
 
-var (
-	hasChildandSubtypes = []ua.NodeID{ua.ReferenceTypeIDHasComponent, ua.ReferenceTypeIDHasProperty, ua.ReferenceTypeIDHasSubtype, ua.ReferenceTypeIDHasOrderedComponent}
-)
-
 // NamespaceManager manages the namespaces for a server.
 type NamespaceManager struct {
 	sync.RWMutex
-	server         *Server
-	namespaces     []string
-	nodes          map[ua.NodeID]Node
-	variantTypeMap map[ua.NodeID]byte
+	server     *Server
+	namespaces []string
+	nodes      map[ua.NodeID]Node
 }
 
 // NewNamespaceManager instantiates a new NamespaceManager.
 func NewNamespaceManager(server *Server) *NamespaceManager {
 	return &NamespaceManager{
-		server:         server,
-		namespaces:     []string{"http://opcfoundation.org/UA/", server.LocalDescription().ApplicationURI},
-		nodes:          make(map[ua.NodeID]Node, 4096),
-		variantTypeMap: make(map[ua.NodeID]byte, 32),
+		server:     server,
+		namespaces: []string{"http://opcfoundation.org/UA/", server.LocalDescription().ApplicationURI},
+		nodes:      make(map[ua.NodeID]Node, 4096),
 	}
 }
 
@@ -69,7 +65,7 @@ func (m *NamespaceManager) NamespaceUris() []string {
 	return m.namespaces
 }
 
-// FindNode returns the node with the given NodeID from the namespace.
+// FindNode returns the Node with the given NodeID from the namespace.
 func (m *NamespaceManager) FindNode(id ua.NodeID) (node Node, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
@@ -77,7 +73,7 @@ func (m *NamespaceManager) FindNode(id ua.NodeID) (node Node, ok bool) {
 	return
 }
 
-// FindObject returns the node with the given NodeID from the namespace.
+// FindObject returns the Object with the given NodeID from the namespace.
 func (m *NamespaceManager) FindObject(id ua.NodeID) (node *ObjectNode, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
@@ -87,12 +83,62 @@ func (m *NamespaceManager) FindObject(id ua.NodeID) (node *ObjectNode, ok bool) 
 	return
 }
 
-// FindVariable returns the node with the given NodeID from the namespace.
+// FindVariable returns the Variable with the given NodeID from the namespace.
 func (m *NamespaceManager) FindVariable(id ua.NodeID) (node *VariableNode, ok bool) {
 	m.RLock()
 	defer m.RUnlock()
 	if node1, ok1 := m.nodes[id]; ok1 {
 		node, ok = node1.(*VariableNode)
+	}
+	return
+}
+
+// FindMethod returns the Method with the given NodeID from the namespace.
+func (m *NamespaceManager) FindMethod(id ua.NodeID) (node *MethodNode, ok bool) {
+	m.RLock()
+	defer m.RUnlock()
+	if node1, ok1 := m.nodes[id]; ok1 {
+		node, ok = node1.(*MethodNode)
+	}
+	return
+}
+
+// FindDataType returns the DataType with the given NodeID from the namespace.
+func (m *NamespaceManager) FindDataType(id ua.NodeID) (node *DataTypeNode, ok bool) {
+	m.RLock()
+	defer m.RUnlock()
+	if node1, ok1 := m.nodes[id]; ok1 {
+		node, ok = node1.(*DataTypeNode)
+	}
+	return
+}
+
+// FindObjectType returns the ObjectType with the given NodeID from the namespace.
+func (m *NamespaceManager) FindObjectType(id ua.NodeID) (node *ObjectTypeNode, ok bool) {
+	m.RLock()
+	defer m.RUnlock()
+	if node1, ok1 := m.nodes[id]; ok1 {
+		node, ok = node1.(*ObjectTypeNode)
+	}
+	return
+}
+
+// FindReferenceType returns the ReferenceType with the given NodeID from the namespace.
+func (m *NamespaceManager) FindReferenceType(id ua.NodeID) (node *ReferenceTypeNode, ok bool) {
+	m.RLock()
+	defer m.RUnlock()
+	if node1, ok1 := m.nodes[id]; ok1 {
+		node, ok = node1.(*ReferenceTypeNode)
+	}
+	return
+}
+
+// FindVariableType returns the VariableType with the given NodeID from the namespace.
+func (m *NamespaceManager) FindVariableType(id ua.NodeID) (node *VariableTypeNode, ok bool) {
+	m.RLock()
+	defer m.RUnlock()
+	if node1, ok1 := m.nodes[id]; ok1 {
+		node, ok = node1.(*VariableTypeNode)
 	}
 	return
 }
@@ -133,27 +179,13 @@ func (m *NamespaceManager) FindComponent(startNode Node, browseName ua.Qualified
 	return
 }
 
-// FindMethod returns the node with the given NodeID from the namespace.
-func (m *NamespaceManager) FindMethod(id ua.NodeID) (node *MethodNode, ok bool) {
+// IsSubtype returns whether the given subtype is derived from the given supertype.
+func (m *NamespaceManager) IsSubtype(subtype, supertype ua.NodeID) bool {
 	m.RLock()
 	defer m.RUnlock()
-	if node1, ok1 := m.nodes[id]; ok1 {
-		node, ok = node1.(*MethodNode)
-	}
-	return
-}
-
-// IsSubtype returns whether the subtype is derived from the given supertype in the namespace.
-func (m *NamespaceManager) IsSubtype(subtype, supertype ua.NodeID) bool {
 	id := subtype
-	i := 0
 loop:
-	if i > 100 {
-		log.Printf("IsSubtype() exceeded limits.\n")
-		return false
-	}
-	i++
-	if n, ok := m.FindNode(id); ok {
+	if n, ok := m.nodes[id]; ok {
 		for _, r := range n.References() {
 			if r.IsInverse && ua.ReferenceTypeIDHasSubtype == r.ReferenceTypeID {
 				id = ua.ToNodeID(r.TargetID, m.NamespaceUris())
@@ -167,119 +199,64 @@ loop:
 	return false
 }
 
-// FindSuperType returns the immediate supertype for the type.
-func (m *NamespaceManager) FindSuperType(typeid ua.NodeID) ua.NodeID {
-	if n, ok := m.FindNode(typeid); ok {
+// FindSuperType returns the supertype of the given subtype.
+func (m *NamespaceManager) FindSuperType(subType ua.NodeID) (superType ua.NodeID, ok bool) {
+	m.RLock()
+	defer m.RUnlock()
+	if n, ok := m.nodes[subType]; ok {
 		for _, r := range n.References() {
 			if r.IsInverse && ua.ReferenceTypeIDHasSubtype == r.ReferenceTypeID {
-				return ua.ToNodeID(r.TargetID, m.NamespaceUris())
+				return ua.ToNodeID(r.TargetID, m.NamespaceUris()), true
 			}
 		}
 	}
-	return nil
+	return nil, false
 }
 
-// FindVariantType gets the variant type for the variable
-func (m *NamespaceManager) FindVariantType(dataType ua.NodeID) byte {
-	m.RLock()
-	vt, ok := m.variantTypeMap[dataType]
-	if ok {
-		m.RUnlock()
-		return vt
+var (
+	variantTypeMap = map[ua.NodeID]byte{
+		ua.DataTypeIDBoolean:        ua.VariantTypeBoolean,
+		ua.DataTypeIDSByte:          ua.VariantTypeSByte,
+		ua.DataTypeIDByte:           ua.VariantTypeByte,
+		ua.DataTypeIDInt16:          ua.VariantTypeInt16,
+		ua.DataTypeIDUInt16:         ua.VariantTypeUInt16,
+		ua.DataTypeIDInt32:          ua.VariantTypeInt32,
+		ua.DataTypeIDUInt32:         ua.VariantTypeUInt32,
+		ua.DataTypeIDInt64:          ua.VariantTypeInt64,
+		ua.DataTypeIDUInt64:         ua.VariantTypeUInt64,
+		ua.DataTypeIDFloat:          ua.VariantTypeFloat,
+		ua.DataTypeIDDouble:         ua.VariantTypeDouble,
+		ua.DataTypeIDString:         ua.VariantTypeString,
+		ua.DataTypeIDDateTime:       ua.VariantTypeDateTime,
+		ua.DataTypeIDGUID:           ua.VariantTypeGUID,
+		ua.DataTypeIDByteString:     ua.VariantTypeByteString,
+		ua.DataTypeIDXMLElement:     ua.VariantTypeXMLElement,
+		ua.DataTypeIDNodeID:         ua.VariantTypeNodeID,
+		ua.DataTypeIDExpandedNodeID: ua.VariantTypeExpandedNodeID,
+		ua.DataTypeIDStatusCode:     ua.VariantTypeStatusCode,
+		ua.DataTypeIDQualifiedName:  ua.VariantTypeQualifiedName,
+		ua.DataTypeIDLocalizedText:  ua.VariantTypeLocalizedText,
+		ua.DataTypeIDStructure:      ua.VariantTypeExtensionObject,
+		ua.DataTypeIDDataValue:      ua.VariantTypeDataValue,
+		ua.DataTypeIDBaseDataType:   ua.VariantTypeVariant,
+		ua.DataTypeIDDiagnosticInfo: ua.VariantTypeDiagnosticInfo,
+		ua.DataTypeIDEnumeration:    ua.VariantTypeInt32,
 	}
-	m.RUnlock()
-	t := dataType
+)
+
+// FindVariantType returns the VariantType enumeration for the given DataType.
+func (m *NamespaceManager) FindVariantType(dataType ua.NodeID) (variantType byte, ok bool) {
+	dataType1, ok1 := dataType, true
 	for {
-		switch t {
-		case ua.DataTypeIDBoolean:
-			vt = ua.VariantTypeBoolean
-			goto exit
-		case ua.DataTypeIDSByte:
-			vt = ua.VariantTypeSByte
-			goto exit
-		case ua.DataTypeIDByte:
-			vt = ua.VariantTypeByte
-			goto exit
-		case ua.DataTypeIDInt16:
-			vt = ua.VariantTypeInt16
-			goto exit
-		case ua.DataTypeIDUInt16:
-			vt = ua.VariantTypeUInt16
-			goto exit
-		case ua.DataTypeIDInt32:
-			vt = ua.VariantTypeInt32
-			goto exit
-		case ua.DataTypeIDUInt32:
-			vt = ua.VariantTypeUInt32
-			goto exit
-		case ua.DataTypeIDInt64:
-			vt = ua.VariantTypeInt64
-			goto exit
-		case ua.DataTypeIDUInt64:
-			vt = ua.VariantTypeUInt64
-			goto exit
-		case ua.DataTypeIDFloat:
-			vt = ua.VariantTypeFloat
-			goto exit
-		case ua.DataTypeIDDouble:
-			vt = ua.VariantTypeDouble
-			goto exit
-		case ua.DataTypeIDString:
-			vt = ua.VariantTypeString
-			goto exit
-		case ua.DataTypeIDDateTime:
-			vt = ua.VariantTypeDateTime
-			goto exit
-		case ua.DataTypeIDGUID:
-			vt = ua.VariantTypeGUID
-			goto exit
-		case ua.DataTypeIDByteString:
-			vt = ua.VariantTypeByteString
-			goto exit
-		case ua.DataTypeIDXMLElement:
-			vt = ua.VariantTypeXMLElement
-			goto exit
-		case ua.DataTypeIDNodeID:
-			vt = ua.VariantTypeNodeID
-			goto exit
-		case ua.DataTypeIDExpandedNodeID:
-			vt = ua.VariantTypeExpandedNodeID
-			goto exit
-		case ua.DataTypeIDStatusCode:
-			vt = ua.VariantTypeStatusCode
-			goto exit
-		case ua.DataTypeIDQualifiedName:
-			vt = ua.VariantTypeQualifiedName
-			goto exit
-		case ua.DataTypeIDLocalizedText:
-			vt = ua.VariantTypeLocalizedText
-			goto exit
-		case ua.DataTypeIDStructure:
-			vt = ua.VariantTypeExtensionObject
-			goto exit
-		case ua.DataTypeIDDataValue:
-			vt = ua.VariantTypeDataValue
-			goto exit
-		case ua.DataTypeIDBaseDataType:
-			vt = ua.VariantTypeVariant
-			goto exit
-		case ua.DataTypeIDDiagnosticInfo:
-			vt = ua.VariantTypeDiagnosticInfo
-			goto exit
-		case ua.DataTypeIDEnumeration:
-			vt = ua.VariantTypeInt32 // enum?
-			goto exit
-		case nil:
-			vt = ua.VariantTypeNull
-			goto exit
+		variantType, ok = variantTypeMap[dataType1]
+		if ok {
+			return
 		}
-		t = m.FindSuperType(t)
+		dataType1, ok1 = m.FindSuperType(dataType1)
+		if !ok1 {
+			return
+		}
 	}
-exit:
-	m.Lock()
-	m.variantTypeMap[dataType] = vt
-	m.Unlock()
-	return vt
 }
 
 // SetAnalogTypeBehavior sets the behavoir of a variable of type AnalogType.
@@ -345,19 +322,26 @@ func toEnumValues(v []ua.ExtensionObject) []ua.EnumValueType {
 	return ret
 }
 
-func (m *NamespaceManager) addNodes(nodes []Node) error {
+// AddNodes adds the nodes to the namespace.
+// This method also adds the inverse references.
+func (m *NamespaceManager) AddNodes(nodes ...Node) error {
+	m.Lock()
+	defer m.Unlock()
+	// first, add all nodes to namespace
 	for _, node := range nodes {
 		m.nodes[node.NodeID()] = node
 	}
-	// add inverse refs of added nodes
+	// then, add all the inverse references
 	for _, node := range nodes {
 		id := node.NodeID()
+		// for each reference
 		for _, r := range node.References() {
 			if r.ReferenceTypeID == ua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == ua.ReferenceTypeIDHasModellingRule {
 				continue
 			}
-			t, ok := m.nodes[ua.ToNodeID(r.TargetID, m.namespaces)]
-			if ok {
+			// if target node exists
+			if t, ok := m.nodes[ua.ToNodeID(r.TargetID, m.namespaces)]; ok {
+				// check if inverse reference exists
 				flag := false
 				for _, tr := range t.References() {
 					if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && ua.ToNodeID(tr.TargetID, m.namespaces) == id {
@@ -365,6 +349,7 @@ func (m *NamespaceManager) addNodes(nodes []Node) error {
 						break
 					}
 				}
+				// if inverse reference does not exist, add it
 				if !flag {
 					// log.Printf("Adding reference source: %s, target: %s, type: %s, isInverse: %t\n", t.NodeID(), id, r.ReferenceTypeID, !r.IsInverse)
 					inverseRef := ua.Reference{
@@ -381,114 +366,232 @@ func (m *NamespaceManager) addNodes(nodes []Node) error {
 	return nil
 }
 
-// AddNodes adds the nodes to the namespace.
-// This method adds the inverse refs as well.
-func (m *NamespaceManager) AddNodes(nodes ...Node) error {
-	m.Lock()
-	defer m.Unlock()
-	return m.addNodes(nodes)
+// isProtectedNode checks if a node should be protected from deletion.
+// Protected nodes include nodes from OPC Foundation.
+func isProtectedNode(id ua.NodeID) bool {
+	// check if nodeID has NamespaceIndex == 0 (from OPC Foundation)
+	if id != nil {
+		switch v := id.(type) {
+		case ua.NodeIDNumeric:
+			if v.NamespaceIndex == 0 {
+				return true
+			}
+		case ua.NodeIDString:
+			if v.NamespaceIndex == 0 {
+				return true
+			}
+		case ua.NodeIDGUID:
+			if v.NamespaceIndex == 0 {
+				return true
+			}
+		case ua.NodeIDOpaque:
+			if v.NamespaceIndex == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
-// AddNode adds the node to the namespace.
-// This method adds the inverse refs as well.
-func (m *NamespaceManager) AddNode(node Node) error {
+// DeleteNodes removes the given nodes from the namespace.
+// This method also removes the inverse references and any child nodes. (HasChild reference subtypes)
+func (m *NamespaceManager) DeleteNodes(nodes ...ua.NodeID) error {
 	m.Lock()
 	defer m.Unlock()
-	return m.addNodes([]Node{node})
-}
-
-// DeleteNodes removes the nodes from the namespace.
-// This method removes the inverse refs as well.
-func (m *NamespaceManager) DeleteNodes(nodes []Node, deleteChildren bool) error {
-	m.Lock()
-	defer m.Unlock()
-	children := []Node{}
-	for _, node := range nodes {
-		children = append(children, m.GetChildren(node, m.namespaces, hasChildandSubtypes)...)
+	// build slice of HasChild reference subtypes
+	hasChildSubtypes := []ua.NodeID{}
+	queue := deque.Deque[ua.NodeID]{}
+	queue.PushBack(ua.ReferenceTypeIDHasChild)
+	{
+		for queue.Len() > 0 {
+			if node, ok := m.nodes[queue.PopFront()]; ok {
+				for _, r := range node.References() {
+					if !r.IsInverse && r.ReferenceTypeID == ua.ReferenceTypeIDHasSubtype {
+						target := ua.ToNodeID(r.TargetID, m.namespaces)
+						queue.PushBack(target)
+						hasChildSubtypes = append(hasChildSubtypes, target)
+					}
+				}
+			}
+		}
 	}
-	for _, node := range children {
-		m.deleteNodeandInverseReferences(node, m.namespaces)
-	}
-	for _, node := range nodes {
-		m.deleteNodeandInverseReferences(node, m.namespaces)
-	}
-	return nil
-}
-
-func (m *NamespaceManager) deleteNodeandInverseReferences(node Node, uris []string) error {
-	id := node.NodeID()
-	// delete inverse references from target nodes.
-	for _, r := range node.References() {
-		if r.ReferenceTypeID == ua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == ua.ReferenceTypeIDHasModellingRule {
+	for _, id := range nodes {
+		// check if node exists in namespace
+		node, ok := m.nodes[id]
+		if !ok {
 			continue
 		}
-		t, ok := m.nodes[ua.ToNodeID(r.TargetID, uris)]
-		if ok {
-			refs := []ua.Reference{}
-			for _, tr := range t.References() {
-				if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && ua.ToNodeID(tr.TargetID, uris) == id {
+		// check if node is protected
+		if isProtectedNode(id) {
+			continue
+		}
+		// build slice of children nodes
+		children := []ua.NodeID{}
+		queue.PushBack(id)
+		for queue.Len() > 0 {
+			if node, ok := m.nodes[queue.PopFront()]; ok {
+				for _, r := range node.References() {
+					if !r.IsInverse && slices.Contains(hasChildSubtypes, r.ReferenceTypeID) {
+						target := ua.ToNodeID(r.TargetID, m.namespaces)
+						queue.PushBack(target)
+						children = append(children, target)
+					}
+				}
+			}
+		}
+		for _, id := range children {
+			// check if child exists in namespace
+			child, ok := m.nodes[id]
+			if !ok {
+				continue
+			}
+			// check if node is protected
+			if isProtectedNode(id) {
+				continue
+			}
+			// delete inverse references to node
+			for _, r := range child.References() {
+				if r.ReferenceTypeID == ua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == ua.ReferenceTypeIDHasModellingRule {
 					continue
 				}
-				refs = append(refs, tr)
+				if target, ok := m.nodes[ua.ToNodeID(r.TargetID, m.namespaces)]; ok {
+					refs := []ua.Reference{}
+					for _, tr := range target.References() {
+						if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && ua.ToNodeID(tr.TargetID, m.namespaces) == id {
+							continue
+						}
+						refs = append(refs, tr)
+					}
+					target.SetReferences(refs)
+					// log.Printf("Removing reference source: %s, target: %s, type: %s, isInverse: %t\n", t.NodeID(), id, r.ReferenceTypeID, !r.IsInverse)
+				} else {
+					log.Printf("Error finding reference target: %s\n", r.TargetID)
+				}
 			}
-			t.SetReferences(refs)
-			// log.Printf("Removing reference source: %s, target: %s, type: %s, isInverse: %t\n", t.NodeID(), id, r.ReferenceTypeID, !r.IsInverse)
-		} else {
-			log.Printf("Error finding reference target: %s\n", r.TargetID)
+			// finally, delete node from namespace
+			delete(m.nodes, id)
 		}
+
+		// delete inverse references to node
+		for _, r := range node.References() {
+			if r.ReferenceTypeID == ua.ReferenceTypeIDHasTypeDefinition || r.ReferenceTypeID == ua.ReferenceTypeIDHasModellingRule {
+				continue
+			}
+			if target, ok := m.nodes[ua.ToNodeID(r.TargetID, m.namespaces)]; ok {
+				refs := []ua.Reference{}
+				for _, tr := range target.References() {
+					if tr.ReferenceTypeID == r.ReferenceTypeID && tr.IsInverse != r.IsInverse && ua.ToNodeID(tr.TargetID, m.namespaces) == id {
+						continue
+					}
+					refs = append(refs, tr)
+				}
+				target.SetReferences(refs)
+				// log.Printf("Removing reference source: %s, target: %s, type: %s, isInverse: %t\n", t.NodeID(), id, r.ReferenceTypeID, !r.IsInverse)
+			} else {
+				log.Printf("Error finding reference target: %s\n", r.TargetID)
+			}
+		}
+		// finally, delete node from namespace
+		delete(m.nodes, id)
 	}
-	// delete node from namespace.
-	delete(m.nodes, id)
 	return nil
 }
 
-// DeleteNode removes the node from the namespace.
-// This method removes the inverse refs as well.
-func (m *NamespaceManager) DeleteNode(node Node, deleteChildren bool) error {
-	return m.DeleteNodes([]Node{node}, deleteChildren)
-}
-
-// GetSubTypes traverses the tree to get all target nodes with HasSubtype reference type.
-func (m *NamespaceManager) GetSubTypes(node Node) []Node {
-	children := []Node{}
-	queue := deque.Deque[Node]{}
-	queue.PushBack(node)
+// GetSubTypes returns all subtypes of the given node. (HasSubtype references)
+func (m *NamespaceManager) GetSubTypes(nodeID ua.NodeID) []ua.NodeID {
+	m.RLock()
+	defer m.RUnlock()
+	subTypes := []ua.NodeID{}
+	queue := deque.Deque[ua.NodeID]{}
+	queue.PushBack(nodeID)
 	for queue.Len() > 0 {
-		node := queue.PopFront()
-		for _, r := range node.References() {
-			if !r.IsInverse && r.ReferenceTypeID == ua.ReferenceTypeIDHasSubtype {
-				queue.PushBack(node)
-				children = append(children, node)
+		if node, ok := m.nodes[queue.PopFront()]; ok {
+			for _, r := range node.References() {
+				if !r.IsInverse && r.ReferenceTypeID == ua.ReferenceTypeIDHasSubtype {
+					target := ua.ToNodeID(r.TargetID, m.namespaces)
+					queue.PushBack(target)
+					subTypes = append(subTypes, target)
+				}
 			}
 		}
 	}
-	return children
+	return subTypes
 }
 
-// GetChildren traverses the tree to get all target nodes with the given reference types.
-func (m *NamespaceManager) GetChildren(node Node, uris []string, withRefTypes []ua.NodeID) []Node {
-	children := []Node{}
-	type queuedItem struct {
-		Node    Node
-		Visited bool
-	}
-	queue := deque.Deque[queuedItem]{}
-	queue.PushBack(queuedItem{node, false})
-	for queue.Len() > 0 {
-		item := queue.PopFront()
-		if item.Visited {
-			continue
+// GetChildren returns all children of the given parent node. (HasChild reference subtypes)
+func (m *NamespaceManager) GetChildren(parentID ua.NodeID) []ua.NodeID {
+	m.RLock()
+	defer m.RUnlock()
+	// build slice of HasChild reference subtypes
+	hasChildSubtypes := []ua.NodeID{}
+	queue := deque.Deque[ua.NodeID]{}
+	queue.PushBack(ua.ReferenceTypeIDHasChild)
+	{
+		for queue.Len() > 0 {
+			if node, ok := m.nodes[queue.PopFront()]; ok {
+				for _, r := range node.References() {
+					if !r.IsInverse && r.ReferenceTypeID == ua.ReferenceTypeIDHasSubtype {
+						target := ua.ToNodeID(r.TargetID, m.namespaces)
+						queue.PushBack(target)
+						hasChildSubtypes = append(hasChildSubtypes, target)
+					}
+				}
+			}
 		}
-		for _, r := range item.Node.References() {
-			if !r.IsInverse && (withRefTypes == nil || Contains(withRefTypes, r.ReferenceTypeID)) {
-				if target, ok := m.nodes[ua.ToNodeID(r.TargetID, uris)]; ok {
-					queue.PushBack(queuedItem{target, false})
+	}
+	// build slice of children nodes
+	children := []ua.NodeID{}
+	queue.PushBack(parentID)
+	for queue.Len() > 0 {
+		if node, ok := m.nodes[queue.PopFront()]; ok {
+			for _, r := range node.References() {
+				if !r.IsInverse && slices.Contains(hasChildSubtypes, r.ReferenceTypeID) {
+					target := ua.ToNodeID(r.TargetID, m.namespaces)
+					queue.PushBack(target)
 					children = append(children, target)
 				}
 			}
 		}
 	}
 	return children
+}
+
+// GetComponents returns all components of the given object node. (HasComponent references and subtypes)
+func (m *NamespaceManager) GetComponents(objectID ua.NodeID) []ua.NodeID {
+	m.RLock()
+	defer m.RUnlock()
+	// build slice of HasComponent reference subtypes
+	hasComponentandSubtypes := []ua.NodeID{}
+	queue := deque.Deque[ua.NodeID]{}
+	queue.PushBack(ua.ReferenceTypeIDHasComponent)
+	hasComponentandSubtypes = append(hasComponentandSubtypes, ua.ReferenceTypeIDHasComponent)
+	{
+		for queue.Len() > 0 {
+			if node, ok := m.nodes[queue.PopFront()]; ok {
+				for _, r := range node.References() {
+					if !r.IsInverse && r.ReferenceTypeID == ua.ReferenceTypeIDHasSubtype {
+						target := ua.ToNodeID(r.TargetID, m.namespaces)
+						queue.PushBack(target)
+						hasComponentandSubtypes = append(hasComponentandSubtypes, target)
+					}
+				}
+			}
+		}
+	}
+	components := []ua.NodeID{}
+	queue.PushBack(objectID)
+	for queue.Len() > 0 {
+		if node, ok := m.nodes[queue.PopFront()]; ok {
+			for _, r := range node.References() {
+				if !r.IsInverse && slices.Contains(hasComponentandSubtypes, r.ReferenceTypeID) {
+					target := ua.ToNodeID(r.TargetID, m.namespaces)
+					queue.PushBack(target)
+					components = append(components, target)
+				}
+			}
+		}
+	}
+	return components
 }
 
 // OnEvent raises the event, starting from the target node, follows HasNotifier references until the Server node.
@@ -512,26 +615,6 @@ func (m *NamespaceManager) OnEvent(target *ObjectNode, evt ua.Event) error {
 	}
 	target.OnEvent(evt)
 	return nil
-}
-
-// Any returns true if the given function returns true for any of the given nodes.
-func Any(nodes []ua.NodeID, f func(n ua.NodeID) bool) bool {
-	for _, n := range nodes {
-		if f(n) {
-			return true
-		}
-	}
-	return false
-}
-
-// Contains returns true if the given node is found to equal any of the given nodes.
-func Contains(nodes []ua.NodeID, node ua.NodeID) bool {
-	for _, n := range nodes {
-		if n == node {
-			return true
-		}
-	}
-	return false
 }
 
 // LoadNodeSetFromFile loads the UANodeSet XML from a file with the given path into the namespace.
@@ -681,8 +764,7 @@ func (m *NamespaceManager) LoadNodeSetFromBuffer(buf []byte) error {
 			)
 		}
 	}
-	err = m.AddNodes(nodes...)
-	if err != nil {
+	if err = m.AddNodes(nodes...); err != nil {
 		log.Printf("Error adding nodes. %s\n", err)
 		return err
 	}

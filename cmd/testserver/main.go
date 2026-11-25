@@ -36,7 +36,8 @@ var (
 	port            = 46010
 	SoftwareVersion = "1.0.0"
 	//go:embed nodeset.xml
-	nodeset []byte
+	nodeset     []byte
+	dynamicNode server.Node
 )
 
 type CustomStruct struct {
@@ -56,7 +57,7 @@ func main() {
 
 	// create directory with certificate and key, if not found.
 	if err := ensurePKI(); err != nil {
-		log.Println("Error creating PKI.")
+		log.Println(errors.Wrap(err, "Error creating PKI."))
 		return
 	}
 
@@ -143,24 +144,26 @@ func main() {
 			log.Printf("Login %s from %s\n", certs[0].Subject.CommonName, applicationURI)
 			return nil
 		}),
-		server.WithSecurityPolicyNone(true),
+		server.WithSecurityPolicyNone(),
 		//server.WithInsecureSkipVerify(),
 		server.WithTrustedCertificatesPaths("./pki/ApplicationInstance_PKI/trusted/certs", "./pki/ApplicationInstance_PKI/trusted/crl"),
 		server.WithIssuerCertificatesPaths("./pki/ApplicationInstance_PKI/issuers/certs", "./pki/ApplicationInstance_PKI/issuers/crl"),
 		server.WithRejectedCertificatesPath("./pki/ApplicationInstance_PKI/rejected"),
-		server.WithServerDiagnostics(true),
+		server.WithServerDiagnostics(),
 		server.WithMaxSessionCount(10),
 		server.WithMaxSubscriptionCount(100),
 		server.WithMaxWorkerThreads(1),
 		// server.WithTrace(),
 	)
 	if err != nil {
+		log.Println(errors.Wrap(err, "Error creating new server."))
 		os.Exit(1)
 	}
 
 	// load nodeset
 	nm := srv.NamespaceManager()
 	if err := nm.LoadNodeSetFromBuffer(nodeset); err != nil {
+		log.Println(errors.Wrap(err, "Error loading nodeset."))
 		os.Exit(2)
 	}
 
@@ -169,6 +172,9 @@ func main() {
 		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
 			return ua.CallMethodResult{}
 		})
+	} else {
+		log.Println("Error finding method.")
+		os.Exit(3)
 	}
 
 	// install MethodI method
@@ -192,6 +198,9 @@ func main() {
 			}
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{}}
 		})
+	} else {
+		log.Println("Error finding method.")
+		os.Exit(3)
 	}
 
 	// install MethodO method
@@ -203,6 +212,9 @@ func main() {
 			result := uint32(42)
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
 		})
+	} else {
+		log.Println("Error finding method.")
+		os.Exit(3)
 	}
 
 	// install MethodIO method
@@ -231,6 +243,53 @@ func main() {
 			}
 			result := a + b
 			return ua.CallMethodResult{OutputArguments: []ua.Variant{uint32(result)}}
+		})
+	} else {
+		log.Println("Error finding method.")
+		os.Exit(3)
+	}
+
+	// install CreateDynamicNode method
+	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.DynamicNodes.CreateDynamicNode")); ok {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
+			if dynamicNode != nil {
+				return ua.CallMethodResult{StatusCode: ua.BadInvalidState}
+			}
+			// create node
+			dynamicNode = server.NewVariableNode(
+				srv,
+				ua.NewNodeIDString(2, "Demo.DynamicNodes.DynamicNode"),
+				ua.NewQualifiedName(2, "DynamicNode"),
+				ua.NewLocalizedText("DynamicNode", "en"),
+				ua.NewLocalizedText("Variable node for testing", "en"),
+				nil,
+				[]ua.Reference{
+					{ReferenceTypeID: ua.ReferenceTypeIDHasTypeDefinition, IsInverse: false, TargetID: ua.NewExpandedNodeID(ua.VariableTypeIDBaseDataVariableType)},
+					{ReferenceTypeID: ua.ReferenceTypeIDOrganizes, IsInverse: true, TargetID: ua.NewExpandedNodeID(ua.NewNodeIDString(2, "Demo.DynamicNodes"))},
+				},
+				ua.DataValue{Value: int32(42)},
+				ua.DataTypeIDInt32,
+				ua.ValueRankScalar,
+				nil,
+				ua.AccessLevelsCurrentRead|ua.AccessLevelsCurrentWrite,
+				300.0,
+				false,
+				nil,
+			)
+			nm.AddNodes(dynamicNode)
+			return ua.CallMethodResult{}
+		})
+	}
+
+	// install DeleteDynamicNode method
+	if n, ok := nm.FindMethod(ua.ParseNodeID("ns=2;s=Demo.DynamicNodes.DeleteDynamicNode")); ok {
+		n.SetCallMethodHandler(func(session *server.Session, req ua.CallMethodRequest) ua.CallMethodResult {
+			if dynamicNode == nil {
+				return ua.CallMethodResult{StatusCode: ua.BadInvalidState}
+			}
+			nm.DeleteNodes(dynamicNode.NodeID())
+			dynamicNode = nil
+			return ua.CallMethodResult{}
 		})
 	}
 
@@ -395,7 +454,7 @@ func main() {
 	// start server
 	log.Printf("Starting server '%s' at '%s'\n", srv.LocalDescription().ApplicationName.Text, srv.EndpointURL())
 	if err := srv.ListenAndServe(); err != ua.BadServerHalted {
-		log.Println(errors.Wrap(err, "Error starting server"))
+		log.Println(errors.Wrap(err, "Error starting server."))
 	}
 }
 
