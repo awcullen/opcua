@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/rsa"
 	"crypto/tls"
+	"time"
 
 	"github.com/awcullen/opcua/ua"
 )
@@ -13,7 +14,7 @@ import (
 // Option is a functional option to be applied to a client during initialization.
 type Option func(*Client) error
 
-// WithSecurityPolicyURI selects endpoint with given security policy URI and MessageSecurityMode. (default: "" selects most secure endpoint)
+// WithSecurityPolicyURI selects endpoint with given security policy URI and MessageSecurityMode. (default: select most secure endpoint)
 func WithSecurityPolicyURI(uri string, securityMode ua.MessageSecurityMode) Option {
 	return func(c *Client) error {
 		c.securityPolicyURI = uri
@@ -22,7 +23,7 @@ func WithSecurityPolicyURI(uri string, securityMode ua.MessageSecurityMode) Opti
 	}
 }
 
-// WithUserNameIdentity sets the user identity to a UserNameIdentity created from a username and password. (default: AnonymousIdentity)
+// WithUserNameIdentity sets the user identity to a UserNameIdentity created from a username and password.
 func WithUserNameIdentity(userName, password string) Option {
 	return func(c *Client) error {
 		c.userIdentity = ua.UserNameIdentity{UserName: userName, Password: password}
@@ -30,7 +31,7 @@ func WithUserNameIdentity(userName, password string) Option {
 	}
 }
 
-// WithX509Identity sets the user identity to an X509Identity created from a certificate and private key. (default: AnonymousIdentity)
+// WithX509Identity sets the user identity to an X509Identity created from a certificate and private key.
 func WithX509Identity(certificate []byte, privateKey *rsa.PrivateKey) Option {
 	return func(c *Client) error {
 		c.userIdentity = ua.X509Identity{Certificate: ua.ByteString(certificate), Key: privateKey}
@@ -38,7 +39,7 @@ func WithX509Identity(certificate []byte, privateKey *rsa.PrivateKey) Option {
 	}
 }
 
-// WithX509IdentityFile sets the user identity to an X509Identity created from the file paths of the certificate and private key. (default: AnonymousIdentity)
+// WithX509IdentityFile sets the user identity to an X509Identity created from the file paths of the certificate and private key.
 // Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
 // DEPRECIATED. Use WithX509IdentityPaths().
 func WithX509IdentityFile(certPath, keyPath string) Option {
@@ -52,7 +53,7 @@ func WithX509IdentityFile(certPath, keyPath string) Option {
 	}
 }
 
-// WithX509IdentityPaths sets the user identity to an X509Identity created from the file paths of the certificate and private key. (default: AnonymousIdentity)
+// WithX509IdentityPaths sets the user identity to an X509Identity created from the file paths of the certificate and private key.
 // Reads and parses a public/private key pair from a pair of files. The files must contain PEM encoded data.
 func WithX509IdentityPaths(certPath, keyPath string) Option {
 	return func(c *Client) error {
@@ -65,7 +66,7 @@ func WithX509IdentityPaths(certPath, keyPath string) Option {
 	}
 }
 
-// WithIssuedIdentity sets the user identity to an IssuedIdentity created from token data. (default: AnonymousIdentity)
+// WithIssuedIdentity sets the user identity to an IssuedIdentity created from token data.
 func WithIssuedIdentity(tokenData []byte) Option {
 	return func(c *Client) error {
 		c.userIdentity = ua.IssuedIdentity{TokenData: ua.ByteString(tokenData)}
@@ -89,10 +90,19 @@ func WithSessionName(value string) Option {
 	}
 }
 
-// WithSessionTimeout sets the number of milliseconds that a session may be unused before being closed by the server. (default: 2 min)
+// WithSessionTimeout sets the number of milliseconds that a session may be unused before being closed by the server. (default: 120000)
+// DEPRECIATED. Use WithSessionTimeoutDuration().
 func WithSessionTimeout(value float64) Option {
 	return func(c *Client) error {
 		c.sessionTimeout = value
+		return nil
+	}
+}
+
+// WithSessionTimeoutDuration sets the duration that a session may be unused before being closed by the server. (default: 2 minutes)
+func WithSessionTimeoutDuration(value time.Duration) Option {
+	return func(c *Client) error {
+		c.sessionTimeout = float64(value.Milliseconds())
 		return nil
 	}
 }
@@ -186,7 +196,8 @@ func WithInsecureSkipVerify() Option {
 	}
 }
 
-// WithTimeoutHint sets the default number of milliseconds to wait before the ServiceRequest is cancelled. (default: 1500)
+// WithTimeoutHint sets the default number of milliseconds to wait before the ServiceRequest is cancelled. (default: 15000)
+// DEPRECIATED. Use WithTimeoutHintDuration().
 func WithTimeoutHint(value uint32) Option {
 	return func(c *Client) error {
 		c.timeoutHint = value
@@ -194,7 +205,16 @@ func WithTimeoutHint(value uint32) Option {
 	}
 }
 
+// WithTimeoutHintDuration sets the default duration to wait before the ServiceRequest is cancelled. (default: 15 seconds)
+func WithTimeoutHintDuration(value time.Duration) Option {
+	return func(c *Client) error {
+		c.timeoutHint = uint32(value.Milliseconds())
+		return nil
+	}
+}
+
 // WithDiagnosticsHint sets the default diagnostic hint that is sent in a request. (default: None)
+// DEPRECIATED.
 func WithDiagnosticsHint(value uint32) Option {
 	return func(c *Client) error {
 		c.diagnosticsHint = value
@@ -202,16 +222,34 @@ func WithDiagnosticsHint(value uint32) Option {
 	}
 }
 
-// WithTokenLifetime sets the requested number of milliseconds before a security token is renewed. (default: 60 min)
+// WithTokenLifetime sets the requested number of milliseconds before a security token is renewed. (default: 3600000)
+// DEPRECIATED. Use WithTokenLifetimeDuration().
 func WithTokenLifetime(value uint32) Option {
 	return func(c *Client) error {
-		c.tokenLifetime = value
+		c.requestedLifetime = value
 		return nil
 	}
 }
 
-// WithConnectTimeout sets the number of milliseconds to wait for a connection response. (default:5000)
+// WithTokenLifetimeDuration sets the requested duration before a security token is renewed. (default: 60 minutes)
+func WithTokenLifetimeDuration(value time.Duration) Option {
+	return func(c *Client) error {
+		c.requestedLifetime = uint32(value.Milliseconds())
+		return nil
+	}
+}
+
+// WithConnectTimeout sets the number of milliseconds to wait for a connection response. (default: 15000)
+// DEPRECIATED. Use WithConnectTimeoutDuration().
 func WithConnectTimeout(value int64) Option {
+	return func(c *Client) error {
+		c.connectTimeout = time.Duration(int64(value) * int64(time.Millisecond))
+		return nil
+	}
+}
+
+// WithConnectTimeoutDuration sets the duration to wait for a connection response. (default: 15 seconds)
+func WithConnectTimeoutDuration(value time.Duration) Option {
 	return func(c *Client) error {
 		c.connectTimeout = value
 		return nil

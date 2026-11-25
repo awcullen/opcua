@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/awcullen/opcua/ua"
 	"github.com/djherbis/buffer"
@@ -35,7 +36,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		securityPolicyURI: ua.SecurityPolicyURIBestAvailable,
 		timeoutHint:       defaultTimeoutHint,
 		diagnosticsHint:   defaultDiagnosticsHint,
-		tokenLifetime:     defaultTokenRequestedLifetime,
+		requestedLifetime: defaultRequestedLifetime,
 		connectTimeout:    defaultConnectTimeout,
 		maxBufferSize:     defaultMaxBufferSize,
 		maxMessageSize:    defaultMaxMessageSize,
@@ -93,7 +94,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		}
 	}
 	if selectedEndpoint == nil {
-		return nil, ua.BadSecurityModeRejected
+		return nil, ua.BadSecurityPolicyRejected
 	}
 
 	cli.securityPolicyURI = selectedEndpoint.SecurityPolicyURI
@@ -136,7 +137,7 @@ func Dial(ctx context.Context, endpointURL string, opts ...Option) (c *Client, e
 		cli.suppressCertificateRevocationUnknown,
 		cli.timeoutHint,
 		cli.diagnosticsHint,
-		cli.tokenLifetime,
+		cli.requestedLifetime,
 		cli.maxBufferSize,
 		cli.maxMessageSize,
 		cli.maxChunkCount,
@@ -171,7 +172,7 @@ type Client struct {
 	identityTokenSignature               ua.SignatureData
 	timeoutHint                          uint32
 	diagnosticsHint                      uint32
-	tokenLifetime                        uint32
+	requestedLifetime                    uint32
 	localCertificate                     []byte
 	localPrivateKey                      *rsa.PrivateKey
 	trustedCertsPath                     string
@@ -183,7 +184,7 @@ type Client struct {
 	suppressCertificateExpired           bool
 	suppressCertificateChainIncomplete   bool
 	suppressCertificateRevocationUnknown bool
-	connectTimeout                       int64
+	connectTimeout                       time.Duration
 	maxBufferSize                        uint32
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
@@ -210,19 +211,14 @@ func (ch *Client) SessionID() ua.NodeID {
 	return ch.sessionID
 }
 
-// SessionTimeout gets the maximum number of milliseconds that the session will remain open without activity.
-func (ch *Client) SessionTimeout() float64 {
-	return ch.sessionTimeout
+// SessionTimeout gets the maximum duration that the session will remain open without activity.
+func (ch *Client) SessionTimeout() time.Duration {
+	return time.Duration(float64(ch.sessionTimeout) * float64(time.Millisecond))
 }
 
 // MaxRequestMessageSize gets the maximum size for the body of any request message. Zero equals no limit.
 func (ch *Client) MaxRequestMessageSize() uint32 {
 	return ch.channel.maxRequestMessageSize
-}
-
-// IsClosing returns true when the client is closing.
-func (ch *Client) IsClosing() bool {
-	return ch.channel.IsClosing()
 }
 
 // Request sends a service request to the server and returns the response.
@@ -237,7 +233,7 @@ func (ch *Client) open(ctx context.Context) error {
 	}
 
 	var localNonce, localCertificate, remoteNonce []byte
-	localNonce = getNextNonce(nonceLength)
+	localNonce = ua.GetNextNonce(nonceLength)
 	localCertificate = ch.channel.localCertificate
 
 	var createSessionRequest = &ua.CreateSessionRequest{

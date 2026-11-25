@@ -27,7 +27,8 @@ import (
 // FindServers returns the Servers known to a Server or Discovery Server.
 func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *ua.FindServersRequest) error {
 	srvs := make([]ua.ApplicationDescription, 0, 1)
-	for _, s := range []ua.ApplicationDescription{srv.LocalDescription()} {
+	host := clientHost(req.EndpointURL, ch.conn)
+	for _, s := range []ua.ApplicationDescription{describeFor(srv.LocalDescription(), host)} {
 		if len(req.ServerURIs) > 0 {
 			for _, su := range req.ServerURIs {
 				if s.ApplicationURI == su {
@@ -57,18 +58,17 @@ func (srv *Server) findServers(ch *serverSecureChannel, requestid uint32, req *u
 
 // GetEndpoints returns the endpoint descriptions supported by the server.
 func (srv *Server) getEndpoints(ch *serverSecureChannel, requestid uint32, req *ua.GetEndpointsRequest) error {
-	eps := make([]ua.EndpointDescription, 0, len(srv.Endpoints()))
-	for _, ep := range srv.Endpoints() {
+	all := srv.endpointsFor(req.EndpointURL, ch.conn)
+	eps := make([]ua.EndpointDescription, 0, len(all))
+	for _, ep := range all {
 		if len(req.ProfileURIs) > 0 {
 			for _, pu := range req.ProfileURIs {
 				if ep.TransportProfileURI == pu {
-					ep.EndpointURL = req.EndpointURL
 					eps = append(eps, ep)
 					break
 				}
 			}
 		} else {
-			ep.EndpointURL = req.EndpointURL
 			eps = append(eps, ep)
 		}
 	}
@@ -211,7 +211,7 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	if len(sessionName) == 0 {
 		sessionName = req.ClientDescription.ApplicationURI
 	}
-	sessionTimeout := req.RequestedSessionTimeout
+	sessionTimeout := time.Duration(req.RequestedSessionTimeout * float64(time.Millisecond))
 	if sessionTimeout < minSessionTimeout {
 		sessionTimeout = minSessionTimeout
 	}
@@ -220,10 +220,10 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 	}
 	session := NewSession(
 		srv,
-		ua.NewNodeIDOpaque(1, ua.ByteString(getNextNonce(15))),
+		ua.NewNodeIDOpaque(1, ua.ByteString(ua.GetNextNonce(15))),
 		sessionName,
-		ua.NewNodeIDOpaque(0, ua.ByteString(getNextNonce(nonceLength))),
-		ua.ByteString(getNextNonce(nonceLength)),
+		ua.NewNodeIDOpaque(0, ua.ByteString(ua.GetNextNonce(nonceLength))),
+		ua.ByteString(ua.GetNextNonce(nonceLength)),
 		sessionTimeout,
 		req.ClientDescription,
 		req.ServerURI,
@@ -260,10 +260,10 @@ func (srv *Server) handleCreateSession(ch *serverSecureChannel, requestid uint32
 			},
 			SessionID:                  session.sessionId,
 			AuthenticationToken:        session.authenticationToken,
-			RevisedSessionTimeout:      session.timeout,
+			RevisedSessionTimeout:      float64(session.timeout.Milliseconds()),
 			ServerNonce:                session.sessionNonce,
 			ServerCertificate:          ua.ByteString(srv.LocalCertificate()),
-			ServerEndpoints:            srv.Endpoints(),
+			ServerEndpoints:            srv.endpointsFor(req.EndpointURL, ch.conn),
 			ServerSoftwareCertificates: nil,
 			ServerSignature:            serverSignature,
 			MaxRequestMessageSize:      srv.maxMessageSize,
@@ -586,7 +586,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf.Write(cipherBytes)
-			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
+			cipherText := make([]byte, srv.localPrivateKey.Size())
 			for cipherBuf.Len() > 0 {
 				cipherBuf.Read(cipherText)
 				// decrypt with local private key.
@@ -646,7 +646,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf.Write(cipherBytes)
-			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
+			cipherText := make([]byte, srv.localPrivateKey.Size())
 			for cipherBuf.Len() > 0 {
 				cipherBuf.Read(cipherText)
 				// decrypt with local private key.
@@ -706,7 +706,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 			plainBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf := buffer.NewPartitionAt(ch.bufferPool)
 			cipherBuf.Write(cipherBytes)
-			cipherText := make([]byte, int32(len(srv.localPrivateKey.D.Bytes())))
+			cipherText := make([]byte, srv.localPrivateKey.Size())
 			for cipherBuf.Len() > 0 {
 				cipherBuf.Read(cipherText)
 				// decrypt with local private key.
@@ -839,7 +839,7 @@ func (srv *Server) handleActivateSession(ch *serverSecureChannel, requestid uint
 	}
 
 	session.SetUserIdentity(userIdentity)
-	session.SetSessionNonce(ua.ByteString(getNextNonce(nonceLength)))
+	session.SetSessionNonce(ua.ByteString(ua.GetNextNonce(nonceLength)))
 	session.SetSecureChannelId(ch.ChannelID())
 	session.SetSecurityMode(ch.securityMode)
 	session.SetSecurityPolicyURI(ch.securityPolicyURI)

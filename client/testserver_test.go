@@ -98,7 +98,7 @@ func NewTestServer() (*server.Server, error) {
 			// log.Printf("Login %s from %s\n", cert.Subject, applicationURI)
 			return nil
 		}),
-		server.WithSecurityPolicyNone(true),
+		server.WithSecurityPolicyNone(),
 		server.WithInsecureSkipVerify(),
 	)
 	if err != nil {

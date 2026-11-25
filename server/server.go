@@ -20,16 +20,18 @@ import (
 )
 
 const (
-	// the minimum number of milliseconds that a session may be unused before being closed by the server. (2 min)
-	minSessionTimeout float64 = 10 * 1000
-	// the maximum number of milliseconds that a session may be unused before being closed by the server. (60 min)
-	maxSessionTimeout float64 = 3600 * 1000
-	// the default number of sessions that may be active. (no limit)
+	// the minimum duration that a session may be unused before being closed by the server.
+	minSessionTimeout time.Duration = 2 * time.Minute
+	// the maximum duration that a session may be unused before being closed by the server.
+	maxSessionTimeout time.Duration = 60 * time.Minute
+	// the default number of sessions that may be active. (zero equals no limit)
 	defaultMaxSessionCount uint32 = 0
-	// the default number of subscriptions that may be active. (no limit)
+	// the default number of subscriptions that may be active. (zero equals no limit)
 	defaultMaxSubscriptionCount uint32 = 0
 	// the default number of worker threads that may be created.
 	defaultMaxWorkerThreads int = 4
+	// the default duration to wait for Hello on an incoming connection. (20 seconds)
+	defaultHelloTimeout time.Duration = 20 * time.Second
 	// the length of nonce in bytes.
 	nonceLength int = 32
 )
@@ -39,7 +41,7 @@ var (
 	nodeset104 []byte
 )
 
-// Server implements an OpcUa server for clients.
+// Server implements an Opc Ua server.
 type Server struct {
 	sync.RWMutex
 	localDescription                     ua.ApplicationDescription
@@ -63,8 +65,12 @@ type Server struct {
 	maxMessageSize                       uint32
 	maxChunkCount                        uint32
 	maxWorkerThreads                     int
+	helloTimeout                         time.Duration
 	serverDiagnostics                    bool
 	trace                                bool
+	allowSecurityPolicyNone              bool
+	allowSecurityPolicyBasic128Rsa15     bool
+	allowSecurityPolicyBasic256          bool
 	localCertificate                     []byte
 	localPrivateKey                      *rsa.PrivateKey
 	closing                              chan struct{}
@@ -111,8 +117,12 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		maxMessageSize:                     defaultMaxMessageSize,
 		maxChunkCount:                      defaultMaxChunkCount,
 		maxWorkerThreads:                   defaultMaxWorkerThreads,
+		helloTimeout:                       defaultHelloTimeout,
 		serverDiagnostics:                  true,
 		trace:                              false,
+		allowSecurityPolicyNone:            false,
+		allowSecurityPolicyBasic128Rsa15:   false,
+		allowSecurityPolicyBasic256:        false,
 		closing:                            make(chan struct{}),
 		serverUris:                         []string{localDescription.ApplicationURI},
 		state:                              ua.ServerStateUnknown,
@@ -948,6 +958,8 @@ func (srv *Server) initializeNamespace() error {
 
 func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 	eds := []ua.EndpointDescription{}
+
+	// Add endpoints with no security policy, if allowed.
 	if srv.allowSecurityPolicyNone {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
@@ -1029,6 +1041,8 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 			UserIdentityTokens:  toks,
 		})
 	}
+
+	// Add endpoints with MessageSecurityModeSignAndEncrypt.
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {

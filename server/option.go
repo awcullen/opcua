@@ -2,7 +2,11 @@
 
 package server
 
-import "github.com/awcullen/opcua/ua"
+import (
+	"time"
+
+	"github.com/awcullen/opcua/ua"
+)
 
 // Option is a functional option to be applied to a server during initialization.
 type Option func(*Server) error
@@ -91,16 +95,27 @@ func WithTransportLimits(maxBufferSize, maxMessageSize, maxChunkCount uint32) Op
 
 // WithMaxWorkerThreads sets the default number of worker threads that may be created. (default: 4)
 func WithMaxWorkerThreads(value int) Option {
-	return func(opts *Server) error {
-		opts.maxWorkerThreads = value
+	return func(srv *Server) error {
+		srv.maxWorkerThreads = value
 		return nil
 	}
 }
 
-// WithServerDiagnostics sets whether to enable the collection of data used for ServerDiagnostics node.
-func WithServerDiagnostics(value bool) Option {
-	return func(opts *Server) error {
-		opts.serverDiagnostics = value
+// WithHelloTimeout sets the duration to wait for Hello on an incoming connection. (default: 20 seconds)
+func WithHelloTimeout(value time.Duration) Option {
+	return func(srv *Server) error {
+		if value <= 0 || value > 120*time.Second {
+			return ua.BadInvalidArgument
+		}
+		srv.helloTimeout = value
+		return nil
+	}
+}
+
+// WithServerDiagnostics enables the collection of data used for ServerDiagnostics node.
+func WithServerDiagnostics() Option {
+	return func(srv *Server) error {
+		srv.serverDiagnostics = true
 		return nil
 	}
 }
@@ -113,24 +128,36 @@ func WithTrace() Option {
 	}
 }
 
-// WithAnonymousIdentity sets whether to allow anonymous identity.
-func WithAnonymousIdentity(value bool) Option {
+// WithAnonymousIdentity allows anonymous identity.
+func WithAnonymousIdentity() Option {
 	return func(srv *Server) error {
-		if value {
-			srv.anonymousIdentityAuthenticator = AuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
-				return nil
-			})
-		} else {
-			srv.anonymousIdentityAuthenticator = nil
-		}
+		srv.anonymousIdentityAuthenticator = AuthenticateAnonymousIdentityFunc(func(userIdentity ua.AnonymousIdentity, applicationURI string, endpointURL string) error {
+			return nil
+		})
 		return nil
 	}
 }
 
-// WithSecurityPolicyNone sets whether to allow security policy with no encryption.
-func WithSecurityPolicyNone(value bool) Option {
+// WithSecurityPolicyNone allows security policy with no encryption.
+func WithSecurityPolicyNone() Option {
 	return func(srv *Server) error {
-		srv.allowSecurityPolicyNone = value
+		srv.allowSecurityPolicyNone = true
+		return nil
+	}
+}
+
+// WithSecurityPolicyBasic128Rsa15 allows the Basic128Rsa15 security policy.
+func WithSecurityPolicyBasic128Rsa15() Option {
+	return func(srv *Server) error {
+		srv.allowSecurityPolicyBasic128Rsa15 = true
+		return nil
+	}
+}
+
+// WithSecurityPolicyBasic256 allows the Basic256 security policy.
+func WithSecurityPolicyBasic256() Option {
+	return func(srv *Server) error {
+		srv.allowSecurityPolicyBasic256 = true
 		return nil
 	}
 }

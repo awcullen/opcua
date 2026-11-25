@@ -111,20 +111,19 @@ func TestOpenClientlWithoutSecurity(t *testing.T) {
 	}
 }
 
-// TestOpenClientWithSecurity tests opening a connection with a server using each security policy the server offers.
+// TestOpenClientWithSecurity tests opening a connection with a server using allowed security policies.
 func TestOpenClientWithSecurity(t *testing.T) {
 	ctx := context.Background()
-	res, err := client.GetEndpoints(context.Background(), &ua.GetEndpointsRequest{EndpointURL: endpointURL})
-	if err != nil {
-		t.Error(errors.Wrap(err, "Error calling GetEndpoints"))
-		return
+	uris := []string{
+		ua.SecurityPolicyURIBasic256Sha256,
+		ua.SecurityPolicyURIAes128Sha256RsaOaep,
+		ua.SecurityPolicyURIAes256Sha256RsaPss,
 	}
-	t.Logf("Success calling getEndpoints:")
-	for _, e := range res.Endpoints {
+	for _, e := range uris {
 		ch, err := client.Dial(
 			ctx,
 			endpointURL,
-			client.WithSecurityPolicyURI(e.SecurityPolicyURI, e.SecurityMode),
+			client.WithSecurityPolicyURI(e, ua.MessageSecurityModeSignAndEncrypt),
 			client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
 			client.WithInsecureSkipVerify(),
 			client.WithUserNameIdentity("root", "secret"),
@@ -142,6 +141,30 @@ func TestOpenClientWithSecurity(t *testing.T) {
 			ch.Abort(ctx)
 			return
 		}
+	}
+}
+
+// TestOpenClientWithDeprecatedSecurityPolicies tests opening a connection with a server using depreciated security policies.
+func TestOpenClientWithDeprecatedSecurityPolicies(t *testing.T) {
+	ctx := context.Background()
+	uris := []string{
+		ua.SecurityPolicyURIBasic128Rsa15,
+		ua.SecurityPolicyURIBasic256,
+	}
+	for _, e := range uris {
+		ch, err := client.Dial(
+			ctx,
+			endpointURL,
+			client.WithSecurityPolicyURI(e, ua.MessageSecurityModeSignAndEncrypt),
+			client.WithClientCertificatePaths("./pki/client.crt", "./pki/client.key"),
+			client.WithInsecureSkipVerify(),
+			client.WithUserNameIdentity("root", "secret"),
+		)
+		if err != nil {
+			continue
+		}
+		ch.Abort(ctx)
+		t.Error(errors.Wrap(err, "Error depreciated security policy should be rejected"))
 	}
 }
 
