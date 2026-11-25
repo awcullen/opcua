@@ -69,8 +69,6 @@ type Server struct {
 	serverDiagnostics                    bool
 	trace                                bool
 	allowSecurityPolicyNone              bool
-	allowSecurityPolicyBasic128Rsa15     bool
-	allowSecurityPolicyBasic256          bool
 	localCertificate                     []byte
 	localPrivateKey                      *rsa.PrivateKey
 	closing                              chan struct{}
@@ -86,8 +84,7 @@ type Server struct {
 	serverDiagnosticsSummary             *ua.ServerDiagnosticsSummaryDataType
 	scheduler                            *Scheduler
 	historian                            HistoryReadWriter
-	allowSecurityPolicyNone              bool
-	disabledSecurityPolicies             map[string]bool
+	enabledSecurityPolicies              map[string]bool
 	anonymousIdentityAuthenticator       AnonymousIdentityAuthenticator
 	userNameIdentityAuthenticator        UserNameIdentityAuthenticator
 	x509IdentityAuthenticator            X509IdentityAuthenticator
@@ -121,8 +118,6 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		serverDiagnostics:                  true,
 		trace:                              false,
 		allowSecurityPolicyNone:            false,
-		allowSecurityPolicyBasic128Rsa15:   false,
-		allowSecurityPolicyBasic256:        false,
 		closing:                            make(chan struct{}),
 		serverUris:                         []string{localDescription.ApplicationURI},
 		state:                              ua.ServerStateUnknown,
@@ -131,6 +126,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		rolesProvider:                      DefaultRolesProvider,
 		rolePermissions:                    DefaultRolePermissions,
 		lastChannelID:                      mathrand.Uint32(),
+		enabledSecurityPolicies:            map[string]bool{ua.SecurityPolicyURINone: true, ua.SecurityPolicyURIBasic256Sha256: true, ua.SecurityPolicyURIAes128Sha256RsaOaep: true, ua.SecurityPolicyURIAes256Sha256RsaPss: true},
 	}
 
 	// apply each option to the default
@@ -1003,7 +999,7 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		ua.SecurityPolicyURIAes128Sha256RsaOaep,
 		ua.SecurityPolicyURIAes256Sha256RsaPss,
 	} {
-		if !srv.disabledSecurityPolicies[uri] {
+		if srv.enabledSecurityPolicies[uri] {
 			uris = append(uris, uri)
 		}
 	}

@@ -1215,11 +1215,10 @@ func (ch *serverSecureChannel) readRequest() (ua.ServiceRequest, uint32, error) 
 				return nil, 0, ua.BadDecodingError
 			}
 			plainHeaderSize = count - stream.Len()
-
-			if ch.srv.disabledSecurityPolicies[ch.securityPolicyURI] {
+			// check security policy enabled
+			if !ch.srv.enabledSecurityPolicies[ch.securityPolicyURI] {
 				return nil, 0, ua.BadSecurityPolicyRejected
 			}
-
 			// setSecurityPolicy
 			switch ch.securityPolicyURI {
 			case ua.SecurityPolicyURINone:

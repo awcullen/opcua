@@ -29,7 +29,7 @@ func TestDisabledSecurityPolicies(t *testing.T) {
 			DiscoveryURLs:   []string{url},
 		},
 		"./pki/server.crt", "./pki/server.key", url,
-		server.WithSecurityPolicyNone(true),
+		server.WithSecurityPolicyNone(),
 		server.WithInsecureSkipVerify(),
 		server.WithAuthenticateUserNameIdentityFunc(func(id ua.UserNameIdentity, _ string, _ string) error {
 			if id.UserName == "root" && id.Password == "secret" {
@@ -37,7 +37,7 @@ func TestDisabledSecurityPolicies(t *testing.T) {
 			}
 			return ua.BadUserAccessDenied
 		}),
-		server.WithDisabledSecurityPolicies(ua.SecurityPolicyURIBasic128Rsa15, ua.SecurityPolicyURIBasic256),
+		server.WithSecurityPolicies(ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep, ua.SecurityPolicyURIAes256Sha256RsaPss),
 	)
 	if err != nil {
 		t.Fatal(err)

@@ -146,34 +146,12 @@ func WithSecurityPolicyNone() Option {
 	}
 }
 
-// WithSecurityPolicyBasic128Rsa15 allows the Basic128Rsa15 security policy.
-func WithSecurityPolicyBasic128Rsa15() Option {
+// WithSecurityPolicies sets the list of security policies that the server will offer.
+func WithSecurityPolicies(uris ...string) Option {
 	return func(srv *Server) error {
-		srv.allowSecurityPolicyBasic128Rsa15 = true
-		return nil
-	}
-}
-
-// WithSecurityPolicyBasic256 allows the Basic256 security policy.
-func WithSecurityPolicyBasic256() Option {
-	return func(srv *Server) error {
-		srv.allowSecurityPolicyBasic256 = true
-		return nil
-	}
-}
-
-// WithDisabledSecurityPolicies stops the server offering the given security
-// policies. They are left out of every endpoint description and a client that
-// opens a secure channel with one anyway is refused with BadSecurityPolicyRejected.
-// Pass the ua.SecurityPolicyURI constants, for example ua.SecurityPolicyURIBasic128Rsa15
-// and ua.SecurityPolicyURIBasic256, which are deprecated. (default: none disabled)
-func WithDisabledSecurityPolicies(uris ...string) Option {
-	return func(srv *Server) error {
-		if srv.disabledSecurityPolicies == nil {
-			srv.disabledSecurityPolicies = make(map[string]bool, len(uris))
-		}
+		srv.enabledSecurityPolicies = make(map[string]bool, len(uris))
 		for _, uri := range uris {
-			srv.disabledSecurityPolicies[uri] = true
+			srv.enabledSecurityPolicies[uri] = true
 		}
 		return nil
 	}
