@@ -81,6 +81,11 @@ func FindServers(ctx context.Context, request *ua.FindServersRequest) (*ua.FindS
 // GetEndpoints returns the endpoint descriptions supported by the server.
 // See https://reference.opcfoundation.org/v104/Core/docs/Part4/5.4.4/
 func GetEndpoints(ctx context.Context, request *ua.GetEndpointsRequest) (*ua.GetEndpointsResponse, error) {
+	return getEndpoints(ctx, request, nil)
+}
+
+// getEndpoints returns the endpoint descriptions supported by the server, connecting with the dialer if not nil.
+func getEndpoints(ctx context.Context, request *ua.GetEndpointsRequest, dialer Dialer) (*ua.GetEndpointsResponse, error) {
 	ch := newClientSecureChannel(
 		ua.ApplicationDescription{
 			ApplicationName: ua.LocalizedText{Text: "DiscoveryClient"},
@@ -110,6 +115,8 @@ func GetEndpoints(ctx context.Context, request *ua.GetEndpointsRequest) (*ua.Get
 		defaultMaxChunkCount,
 		false,
 	)
+
+	ch.dialer = dialer
 
 	err := ch.Open(ctx)
 	if err != nil {
