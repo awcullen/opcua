@@ -139,6 +139,7 @@ func WithAnonymousIdentity() Option {
 }
 
 // WithSecurityPolicyNone allows security policy with no encryption.
+// Deprecated: Use WithSecurityPolicies(ua.SecurityPolicyURINone) instead.
 func WithSecurityPolicyNone() Option {
 	return func(srv *Server) error {
 		srv.allowSecurityPolicyNone = true
@@ -147,11 +148,12 @@ func WithSecurityPolicyNone() Option {
 }
 
 // WithSecurityPolicies sets the list of security policies that the server will offer.
+// If not set, the server will offer ua.SecurityPolicyURIBasic256Sha256, ua.SecurityPolicyURIAes128Sha256RsaOaep, ua.SecurityPolicyURIAes256Sha256RsaPss.
 func WithSecurityPolicies(uris ...string) Option {
 	return func(srv *Server) error {
-		srv.enabledSecurityPolicies = make(map[string]bool, len(uris))
+		srv.allowSecurityPolicies = make(map[string]bool, len(uris))
 		for _, uri := range uris {
-			srv.enabledSecurityPolicies[uri] = true
+			srv.allowSecurityPolicies[uri] = true
 		}
 		return nil
 	}

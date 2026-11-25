@@ -84,7 +84,7 @@ type Server struct {
 	serverDiagnosticsSummary             *ua.ServerDiagnosticsSummaryDataType
 	scheduler                            *Scheduler
 	historian                            HistoryReadWriter
-	enabledSecurityPolicies              map[string]bool
+	allowSecurityPolicies                map[string]bool
 	anonymousIdentityAuthenticator       AnonymousIdentityAuthenticator
 	userNameIdentityAuthenticator        UserNameIdentityAuthenticator
 	x509IdentityAuthenticator            X509IdentityAuthenticator
@@ -118,6 +118,7 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		serverDiagnostics:                  true,
 		trace:                              false,
 		allowSecurityPolicyNone:            false,
+		allowSecurityPolicies:              map[string]bool{ua.SecurityPolicyURIBasic256Sha256: true, ua.SecurityPolicyURIAes128Sha256RsaOaep: true, ua.SecurityPolicyURIAes256Sha256RsaPss: true},
 		closing:                            make(chan struct{}),
 		serverUris:                         []string{localDescription.ApplicationURI},
 		state:                              ua.ServerStateUnknown,
@@ -126,7 +127,6 @@ func New(localDescription ua.ApplicationDescription, certPath, keyPath, endpoint
 		rolesProvider:                      DefaultRolesProvider,
 		rolePermissions:                    DefaultRolePermissions,
 		lastChannelID:                      mathrand.Uint32(),
-		enabledSecurityPolicies:            map[string]bool{ua.SecurityPolicyURINone: true, ua.SecurityPolicyURIBasic256Sha256: true, ua.SecurityPolicyURIAes128Sha256RsaOaep: true, ua.SecurityPolicyURIAes256Sha256RsaPss: true},
 	}
 
 	// apply each option to the default
@@ -955,8 +955,8 @@ func (srv *Server) initializeNamespace() error {
 func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 	eds := []ua.EndpointDescription{}
 
-	// Add endpoints with no security policy, if allowed.
-	if srv.allowSecurityPolicyNone {
+	// add endpoints with no security policy, if allowed.
+	if srv.allowSecurityPolicyNone || srv.allowSecurityPolicies[ua.SecurityPolicyURINone] {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
 			toks = append(toks, ua.UserTokenPolicy{
@@ -991,6 +991,7 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		})
 	}
 
+	// build list of security policy uris that are allowed, sorted from least to most secure
 	uris := []string{}
 	for _, uri := range []string{
 		ua.SecurityPolicyURIBasic128Rsa15,
@@ -999,10 +1000,12 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		ua.SecurityPolicyURIAes128Sha256RsaOaep,
 		ua.SecurityPolicyURIAes256Sha256RsaPss,
 	} {
-		if srv.enabledSecurityPolicies[uri] {
+		if srv.allowSecurityPolicies[uri] {
 			uris = append(uris, uri)
 		}
 	}
+
+	// add endpoints with MessageSecurityModeSign.
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {
@@ -1038,7 +1041,7 @@ func (srv *Server) buildEndpointDescriptions() []ua.EndpointDescription {
 		})
 	}
 
-	// Add endpoints with MessageSecurityModeSignAndEncrypt.
+	// add endpoints with MessageSecurityModeSignAndEncrypt.
 	for _, uri := range uris {
 		toks := []ua.UserTokenPolicy{}
 		if srv.anonymousIdentityAuthenticator != nil {

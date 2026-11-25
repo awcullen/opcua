@@ -160,11 +160,11 @@ func TestOpenClientWithDeprecatedSecurityPolicies(t *testing.T) {
 			client.WithInsecureSkipVerify(),
 			client.WithUserNameIdentity("root", "secret"),
 		)
-		if err != nil {
+		if err == error(ua.BadSecurityPolicyRejected) {
 			continue
 		}
 		ch.Abort(ctx)
-		t.Error(errors.Wrap(err, "Error depreciated security policy should be rejected"))
+		t.Error(errors.Wrap(err, "Error depreciated security policy should return BadSecurityPolicyRejected"))
 	}
 }
 
