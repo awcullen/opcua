@@ -162,6 +162,23 @@ func WithSecurityPolicyBasic256() Option {
 	}
 }
 
+// WithDisabledSecurityPolicies stops the server offering the given security
+// policies. They are left out of every endpoint description and a client that
+// opens a secure channel with one anyway is refused with BadSecurityPolicyRejected.
+// Pass the ua.SecurityPolicyURI constants, for example ua.SecurityPolicyURIBasic128Rsa15
+// and ua.SecurityPolicyURIBasic256, which are deprecated. (default: none disabled)
+func WithDisabledSecurityPolicies(uris ...string) Option {
+	return func(srv *Server) error {
+		if srv.disabledSecurityPolicies == nil {
+			srv.disabledSecurityPolicies = make(map[string]bool, len(uris))
+		}
+		for _, uri := range uris {
+			srv.disabledSecurityPolicies[uri] = true
+		}
+		return nil
+	}
+}
+
 // WithAnonymousIdentityAuthenticator sets the authenticator for AnonymousIdentity.
 // Provided authenticator can check applicationURI of the client certificate, if provided.
 func WithAnonymousIdentityAuthenticator(authenticator AnonymousIdentityAuthenticator) Option {
