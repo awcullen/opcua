@@ -45,7 +45,7 @@ func TestReverseConnect(t *testing.T) {
 		"./pki/server.crt",
 		"./pki/server.key",
 		rcEndpointURL,
-		server.WithSecurityPolicyNone(true),
+		server.WithSecurityPolicyNone(),
 		server.WithInsecureSkipVerify(),
 		server.WithAuthenticateAnonymousIdentityFunc(func(ua.AnonymousIdentity, string, string) error { return nil }),
 		server.WithReverseConnect("opc.tcp://"+clientAddr),
@@ -159,11 +159,11 @@ func startReverseConnectServer(t *testing.T, port int, clientAddr string, opts .
 		"./pki/server.crt",
 		"./pki/server.key",
 		endpointURL,
-		append([]server.Option{
-			server.WithSecurityPolicyNone(true),
+		append(opts,
+			server.WithSecurityPolicyNone(),
 			server.WithInsecureSkipVerify(),
-			server.WithReverseConnect("opc.tcp://" + clientAddr),
-		}, opts...)...,
+			server.WithReverseConnect("opc.tcp://"+clientAddr),
+		)...,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +225,7 @@ func TestReverseConnectToAPeerThatIsNotAClientBacksOff(t *testing.T) {
 	}
 	// 50+100+200+200+200 ms of backoff fit in a second: about six dials.
 	if n := accepted.Load(); n > 10 {
-		t.Fatalf("the server dialled a peer that is not a client %d times in 1s; want backoff (at most 10)", n)
+		t.Fatalf("the server dialed a peer that is not a client %d times in 1s; want backoff (at most 10)", n)
 	}
 }
 
@@ -322,7 +322,7 @@ func TestReverseHelloNamesTheAddressTheClientReaches(t *testing.T) {
 		"./pki/server.crt",
 		"./pki/server.key",
 		endpointURL,
-		server.WithSecurityPolicyNone(true),
+		server.WithSecurityPolicyNone(),
 		server.WithInsecureSkipVerify(),
 		server.WithReverseConnect("opc.tcp://"+ln.Addr().String()),
 	)
