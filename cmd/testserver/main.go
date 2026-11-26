@@ -145,14 +145,11 @@ func main() {
 			return nil
 		}),
 		server.WithSecurityPolicyNone(),
-		//server.WithInsecureSkipVerify(),
+		// server.WithInsecureSkipVerify(),
 		server.WithTrustedCertificatesPaths("./pki/ApplicationInstance_PKI/trusted/certs", "./pki/ApplicationInstance_PKI/trusted/crl"),
 		server.WithIssuerCertificatesPaths("./pki/ApplicationInstance_PKI/issuers/certs", "./pki/ApplicationInstance_PKI/issuers/crl"),
 		server.WithRejectedCertificatesPath("./pki/ApplicationInstance_PKI/rejected"),
 		server.WithServerDiagnostics(),
-		server.WithMaxSessionCount(10),
-		server.WithMaxSubscriptionCount(100),
-		server.WithMaxWorkerThreads(1),
 		// server.WithTrace(),
 	)
 	if err != nil {
